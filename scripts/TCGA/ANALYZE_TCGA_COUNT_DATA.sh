@@ -24,11 +24,8 @@ R --slave -e 'Cstack_info()'
 
 # Run the R scripts
 
-#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Compare_A3_Expression_Sources.R
-#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Prep_mutation_analysis_files.R
-#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Global_TCGA_A3s_vs_SBS2.R
-#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R
-#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_3D_A3s.R
-Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_Network_Analysis.R
+Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Prep_mutation_analysis_files.R
+Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R
+Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_3D_A3s.R
 
 exit
