@@ -3,33 +3,39 @@
 Step02_Merge_SBS_Signatures.py
 
 Merge the cleaned TCGA expression matrix with COSMIC SBS mutation
-signature weights. Remove duplicate samples and identify available
-cancer types.
+signature weights. Identify available cancer types.
+
+Merge is performed directly on the full TCGA barcode:
+    Expression table:  Entity_ID
+    Signature table:   TCGA_Gene_Expression_Entity_ID
+
+These columns contain identical full 28-character TCGA barcodes,
+so no shortening or truncation is needed. This avoids the artificial
+duplicates that barcode shortening can create.
 
 Corresponds to original pipeline Steps 10–11.
 
 Input:
-    01_cleaned_expression/TCGA_expression_cleaned.parquet
+    01_cleaned_expression/TCGA_expression_cleaned.pkl
     Mutation_Table_Tumors_TCGA.tsv  (from data/FIG_1/)
 
 Output (-> data/FIG_2/02_merged_with_SBS/):
-    TCGA_merged_expression_SBS.parquet  — merged matrix (expression + SBS weights)
-    cancer_types_available.txt          — list of cancer types in the dataset
-    step02_summary.txt                  — QC summary
+    TCGA_merged_expression_SBS.pkl  — merged matrix (expression + SBS weights)
+    TCGA_merged_expression_SBS.tsv  — same, for inspection
+    cancer_types_available.txt      — list of cancer types in the dataset
+    step02_summary.txt              — QC summary
 
 Usage:
     python Step02_Merge_SBS_Signatures.py
 """
 
 import os
-import json
 import numpy as np
 import pandas as pd
 
 from network_config import (
     MUTATION_SIGNATURE_PATH, SIGNATURE_SAMPLE_COL,
-    BARCODE_PARTS_FOR_MERGE, CLINICAL_COLS,
-    A3_GENES, A3_ID_TO_ALIAS,
+    CLINICAL_COLS, A3_GENES, A3_ID_TO_ALIAS,
     DIR_01_CLEANED, DIR_02_MERGED,
     banner, log, ensure_dir
 )
@@ -40,10 +46,11 @@ from network_config import (
 # =============================================================================
 banner("[STEP 10] Load cleaned TCGA expression")
 
-expr_path = os.path.join(DIR_01_CLEANED, "TCGA_expression_cleaned.parquet")
+expr_path = os.path.join(DIR_01_CLEANED, "TCGA_expression_cleaned.pkl")
 log(f"[STEP 10] Reading: {expr_path}")
-tcga_df = pd.read_parquet(expr_path)
+tcga_df = pd.read_pickle(expr_path)
 log(f"[STEP 10] Shape: {tcga_df.shape}")
+log(f"[STEP 10] Entity_ID examples: {tcga_df['Entity_ID'].head(3).tolist()}")
 
 
 # =============================================================================
@@ -59,7 +66,6 @@ if MUTATION_SIGNATURE_PATH.endswith(".tsv"):
 elif MUTATION_SIGNATURE_PATH.endswith(".csv"):
     sig_df = pd.read_csv(MUTATION_SIGNATURE_PATH)
 else:
-    # Try TSV first, fall back to CSV
     try:
         sig_df = pd.read_csv(MUTATION_SIGNATURE_PATH, sep="\t")
     except Exception:
@@ -70,7 +76,6 @@ log(f"[STEP 10] Signature file columns (first 10): {sig_df.columns[:10].tolist()
 
 # Verify sample ID column exists
 if SIGNATURE_SAMPLE_COL not in sig_df.columns:
-    # Try common alternatives
     alt_cols = ["Sample Names", "Sample_Names", "sample_name", "Entity_ID"]
     found = [c for c in alt_cols if c in sig_df.columns]
     if found:
@@ -84,43 +89,62 @@ if SIGNATURE_SAMPLE_COL not in sig_df.columns:
 else:
     SIGNATURE_SAMPLE_COL_USED = SIGNATURE_SAMPLE_COL
 
-
-# =============================================================================
-# MERGE on shortened TCGA barcode
-# =============================================================================
-banner("[STEP 10] Merge expression + signatures on shortened barcode")
-
-def shorten_barcode(x, n_parts=BARCODE_PARTS_FOR_MERGE):
-    """TCGA-XX-YYYY-ZZZZ-... -> TCGA-XX-YYYY-ZZZZ (first n_parts)"""
-    return "-".join(str(x).split("-")[:n_parts])
-
-tcga_df["Entity_ID_short"] = tcga_df["Entity_ID"].apply(shorten_barcode)
-sig_df["Entity_ID_short"]  = sig_df[SIGNATURE_SAMPLE_COL_USED].apply(shorten_barcode)
-
-log(f"[STEP 10] Expression unique short IDs: {tcga_df['Entity_ID_short'].nunique()}")
-log(f"[STEP 10] Signature unique short IDs:  {sig_df['Entity_ID_short'].nunique()}")
-
-# Inner merge
-merged = pd.merge(tcga_df, sig_df, on="Entity_ID_short", how="inner")
-log(f"[STEP 10] Merged shape (before dedup): {merged.shape}")
+log(f"[STEP 10] Signature sample column: {SIGNATURE_SAMPLE_COL_USED}")
+log(f"[STEP 10] Signature ID examples: {sig_df[SIGNATURE_SAMPLE_COL_USED].head(3).tolist()}")
 
 
 # =============================================================================
-# REMOVE duplicated samples (drop BOTH copies)
+# MERGE on full Entity_ID (no barcode shortening)
 # =============================================================================
-banner("[STEP 10B] Remove duplicated samples")
+# Jake's data setup: Entity_ID in the expression table and
+# TCGA_Gene_Expression_Entity_ID in the signature table both contain
+# the full 28-character TCGA aliquot barcode. Merging directly on
+# these avoids creating artificial duplicates from barcode truncation.
+# =============================================================================
+banner("[STEP 10] Merge expression + signatures on full Entity_ID")
 
-dup_mask = merged["Entity_ID_short"].duplicated(keep=False)
-n_dup_rows = dup_mask.sum()
-n_dup_ids  = merged.loc[dup_mask, "Entity_ID_short"].nunique()
+# Diagnostic: check for overlap before merging
+expr_ids = set(tcga_df["Entity_ID"].dropna().unique())
+sig_ids  = set(sig_df[SIGNATURE_SAMPLE_COL_USED].dropna().unique())
+overlap  = expr_ids & sig_ids
 
-log(f"[STEP 10B] Duplicated rows: {n_dup_rows} ({n_dup_ids} unique short IDs)")
+log(f"[STEP 10] Expression unique Entity_IDs: {len(expr_ids)}")
+log(f"[STEP 10] Signature unique sample IDs:  {len(sig_ids)}")
+log(f"[STEP 10] Overlapping IDs (will merge):  {len(overlap)}")
 
-if n_dup_rows > 0:
-    log("[STEP 10B] Dropping ALL rows with duplicated Entity_ID_short (conservative)")
+if len(overlap) == 0:
+    log("[STEP 10] WARNING: Zero overlap! Check that barcode formats match.")
+    log(f"  Expression example: {tcga_df['Entity_ID'].iloc[0]}")
+    log(f"  Signature example:  {sig_df[SIGNATURE_SAMPLE_COL_USED].iloc[0]}")
+    log("  These should be identical full TCGA barcodes.")
+
+# Rename the signature sample column to Entity_ID for a clean merge
+sig_df_renamed = sig_df.rename(columns={SIGNATURE_SAMPLE_COL_USED: "Entity_ID"})
+
+# Inner merge on full Entity_ID
+merged = pd.merge(tcga_df, sig_df_renamed, on="Entity_ID", how="inner")
+log(f"[STEP 10] Merged shape: {merged.shape}")
+
+
+# =============================================================================
+# SAFETY CHECK — Verify no duplicate Entity_IDs after merge
+# =============================================================================
+# With full-barcode merging this should find 0 duplicates. If it does
+# find any, it means the source files themselves have repeated entries.
+# =============================================================================
+banner("[STEP 10B] Duplicate safety check")
+
+dup_mask = merged["Entity_ID"].duplicated(keep=False)
+n_dup_rows = int(dup_mask.sum())
+n_dup_ids  = int(merged.loc[dup_mask, "Entity_ID"].nunique()) if n_dup_rows > 0 else 0
+
+if n_dup_rows == 0:
+    log("[STEP 10B] No duplicates found (expected with full-barcode merge)")
+else:
+    log(f"[STEP 10B] WARNING: {n_dup_rows} duplicated rows ({n_dup_ids} unique IDs)")
+    log("[STEP 10B] Dropping ALL rows with duplicated Entity_ID (conservative)")
     merged = merged[~dup_mask].copy()
-
-log(f"[STEP 10B] Shape after dedup: {merged.shape}")
+    log(f"[STEP 10B] Shape after dedup: {merged.shape}")
 
 
 # =============================================================================
@@ -168,12 +192,12 @@ banner("[SAVE] Writing merged outputs")
 
 out_dir = ensure_dir(DIR_02_MERGED)
 
-# Merged matrix
-parquet_path = os.path.join(out_dir, "TCGA_merged_expression_SBS.parquet")
-merged.to_parquet(parquet_path, index=False)
-log(f"[SAVE] Merged matrix -> {parquet_path}")
+# Pickle (fast I/O between steps)
+pickle_path = os.path.join(out_dir, "TCGA_merged_expression_SBS.pkl")
+merged.to_pickle(pickle_path)
+log(f"[SAVE] Merged matrix (pickle) -> {pickle_path}")
 
-# Also save as TSV for inspection (large file — optional)
+# TSV for inspection
 tsv_path = os.path.join(out_dir, "TCGA_merged_expression_SBS.tsv")
 merged.to_csv(tsv_path, sep="\t", index=False)
 log(f"[SAVE] Merged matrix (TSV) -> {tsv_path}")
@@ -190,9 +214,12 @@ with open(summary_path, "w") as f:
     f.write("=" * 50 + "\n")
     f.write(f"Expression input: {expr_path}\n")
     f.write(f"Signature input: {MUTATION_SIGNATURE_PATH}\n")
-    f.write(f"Signature sample column: {SIGNATURE_SAMPLE_COL_USED}\n")
-    f.write(f"Merged shape (after dedup): {merged.shape}\n")
-    f.write(f"Duplicated rows removed: {n_dup_rows}\n")
+    f.write(f"Merge column (expression): Entity_ID\n")
+    f.write(f"Merge column (signature): {SIGNATURE_SAMPLE_COL_USED}\n")
+    f.write(f"Merge method: direct inner join on full barcode (no shortening)\n")
+    f.write(f"Overlapping IDs: {len(overlap)}\n")
+    f.write(f"Merged shape: {merged.shape}\n")
+    f.write(f"Duplicate rows found: {n_dup_rows}\n")
     f.write(f"Cancer types: {len(cancer_types_all)}\n")
     for ct in cancer_types_all:
         n = (merged["Project_ID"] == ct).sum()

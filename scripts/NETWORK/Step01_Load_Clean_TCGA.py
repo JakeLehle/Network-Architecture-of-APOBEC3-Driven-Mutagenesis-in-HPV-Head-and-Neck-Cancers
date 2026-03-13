@@ -12,7 +12,7 @@ Input:
     TCGA_master_FPKM_UQ.tsv  (from Figure 1 data download)
 
 Output (-> data/FIG_2/01_cleaned_expression/):
-    TCGA_expression_cleaned.parquet   — samples × ENSG expression matrix + clinical cols
+    TCGA_expression_cleaned.pkl       — samples × ENSG expression matrix + clinical cols
     ensg_to_symbol.json               — {ENSG_ID: gene_symbol} mapping
     step01_summary.txt                — QC summary
 
@@ -98,15 +98,36 @@ log(f"[STEP 04] Example biotypes:   {biotype_flags.iloc[:5].tolist()}")
 
 
 # =============================================================================
-# STEP 05 — Clean ENSG IDs (remove .XX version suffix)
+# STEP 05 — Clean ENSG IDs (remove .XX version suffix if present)
 # =============================================================================
-banner("[STEP 05] Clean ENSG IDs (remove version suffix)")
+# NOTE (Jake): This is a SAFETY GUARD, not an active transformation.
+# Jake's R pipeline (Master_TCGA_RNA-seq_Counts_Table.R) already produces
+# unversioned ENSG IDs, so this step should be a no-op (0 duplicates).
+#
+# WHY KEEP IT: Downstream pathway tools (g:Profiler, clusterProfiler,
+# Enrichr, Reactome) require bare ENSG IDs (no .XX suffix). If the upstream
+# R pipeline ever changes or a different input file is used, this catches it.
+#
+# EARMARKED FOR REMOVAL: If confirmed unnecessary after full pipeline run,
+# this block can be safely deleted — no downstream steps depend on the
+# cleaning function itself, only on the resulting IDs being unversioned.
+# =============================================================================
+banner("[STEP 05] Clean ENSG IDs (safety check for version suffixes)")
 
 def clean_ensg(x):
     """ENSG00000141510.18 -> ENSG00000141510"""
     return re.sub(r"\.\d+$", "", str(x))
 
-ensg_ids_clean = ensg_ids_raw.map(clean_ensg)
+# Check whether any versioned IDs actually exist before cleaning
+n_versioned = ensg_ids_raw.str.contains(r"\.\d+$", regex=True, na=False).sum()
+log(f"[STEP 05] ENSG IDs with version suffix (.XX): {n_versioned} / {len(ensg_ids_raw)}")
+
+if n_versioned == 0:
+    log("[STEP 05] No versioned IDs found — IDs are already clean (safety check passed)")
+    ensg_ids_clean = ensg_ids_raw.copy()
+else:
+    log(f"[STEP 05] Stripping version suffixes from {n_versioned} IDs...")
+    ensg_ids_clean = ensg_ids_raw.map(clean_ensg)
 
 n_total = len(ensg_ids_raw)
 n_unique = ensg_ids_clean.nunique()
@@ -115,6 +136,8 @@ n_dups = n_total - n_unique
 log(f"[STEP 05] Total gene columns: {n_total}")
 log(f"[STEP 05] Unique base ENSG IDs: {n_unique}")
 log(f"[STEP 05] Duplicates from version removal: {n_dups}")
+if n_dups > 0:
+    log(f"[STEP 05] WARNING: {n_dups} duplicates will be merged by SUM in Step 08")
 
 
 # =============================================================================
@@ -172,28 +195,34 @@ log(f"[STEP 09] Examples: {list(ensg_to_symbol.items())[:5]}")
 # =============================================================================
 # STEP 09A — Combine meta + expr and filter to tumor samples only
 # =============================================================================
+# Uses the Tissue_Type metadata column (set to "Tumor" or "Normal" by
+# Jake's R pipeline in Master_TCGA_RNA-seq_Counts_Table.R) rather than
+# parsing the TCGA barcode. This is more direct and reliable.
+# =============================================================================
 banner("[STEP 09A] Combine and filter to tumor samples")
 
 tcga_df = pd.concat([meta, expr], axis=1)
 log(f"[STEP 09A] Combined shape: {tcga_df.shape}")
 
-# Determine sample type from TCGA barcode (position 14-15: 01-09 = tumor, 10-19 = normal)
-def tcga_sample_type(barcode):
-    parts = str(barcode).split("-")
-    if len(parts) < 4:
-        return ""
-    return parts[3][:2]
+# Verify Tissue_Type column exists and inspect values
+if "Tissue_Type" not in tcga_df.columns:
+    raise ValueError(
+        "Tissue_Type column not found in metadata. "
+        f"Available columns: {tcga_df.columns[:10].tolist()}"
+    )
 
-tcga_df["sample_type"] = tcga_df["Entity_ID"].apply(tcga_sample_type)
+tissue_counts = tcga_df["Tissue_Type"].value_counts(dropna=False)
+log(f"[STEP 09A] Tissue_Type distribution:")
+for val, count in tissue_counts.items():
+    log(f"  {val}: {count}")
 
-n_tumor  = (tcga_df["sample_type"] == "01").sum()
-n_normal = (tcga_df["sample_type"] == "11").sum()
+n_tumor  = (tcga_df["Tissue_Type"] == "Tumor").sum()
+n_normal = (tcga_df["Tissue_Type"] == "Normal").sum()
 n_other  = len(tcga_df) - n_tumor - n_normal
 
-log(f"[STEP 09A] Sample types: Tumor(01)={n_tumor}, Normal(11)={n_normal}, Other={n_other}")
+log(f"[STEP 09A] Summary: Tumor={n_tumor}, Normal={n_normal}, Other={n_other}")
 
-tcga_df = tcga_df[tcga_df["sample_type"] == "01"].copy()
-tcga_df = tcga_df.drop(columns=["sample_type"])
+tcga_df = tcga_df[tcga_df["Tissue_Type"] == "Tumor"].copy()
 log(f"[STEP 09A] After tumor-only filter: {tcga_df.shape}")
 
 
@@ -204,12 +233,12 @@ banner("[SAVE] Writing cleaned outputs")
 
 out_dir = ensure_dir(DIR_01_CLEANED)
 
-# Save expression as parquet (fast I/O, preserves dtypes)
-parquet_path = os.path.join(out_dir, "TCGA_expression_cleaned.parquet")
-tcga_df.to_parquet(parquet_path, index=False)
-log(f"[SAVE] Expression matrix -> {parquet_path}")
+# Save expression as pickle (fast I/O between steps, no pyarrow dependency)
+pickle_path = os.path.join(out_dir, "TCGA_expression_cleaned.pkl")
+tcga_df.to_pickle(pickle_path)
+log(f"[SAVE] Expression matrix (pickle) -> {pickle_path}")
 
-# Also save as TSV for inspection
+# Also save as TSV for inspection in spreadsheet/text editor
 tsv_path = os.path.join(out_dir, "TCGA_expression_cleaned.tsv")
 tcga_df.to_csv(tsv_path, sep="\t", index=False)
 log(f"[SAVE] Expression matrix (TSV) -> {tsv_path}")
@@ -228,7 +257,9 @@ with open(summary_path, "w") as f:
     f.write(f"Input file: {TCGA_EXPRESSION_PATH}\n")
     f.write(f"Raw shape: {df_raw.shape}\n")
     f.write(f"PAR_Y columns removed: {len(cols_to_drop)}\n")
+    f.write(f"ENSG IDs with version suffix: {n_versioned} (safety check)\n")
     f.write(f"Duplicate ENSG columns merged: {n_dups}\n")
+    f.write(f"Tumor filter: Tissue_Type == 'Tumor'\n")
     f.write(f"Tumor samples retained: {len(tcga_df)}\n")
     f.write(f"Final gene columns: {len(tcga_df.columns) - len(CLINICAL_COLS)}\n")
     f.write(f"ENSG->Symbol mapping entries: {len(ensg_to_symbol)}\n")

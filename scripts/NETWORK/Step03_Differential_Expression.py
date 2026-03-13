@@ -9,14 +9,14 @@ always retaining A3 family members. Produce volcano and Manhattan plots.
 Corresponds to original pipeline Step 12.
 
 Input:
-    02_merged_with_SBS/TCGA_merged_expression_SBS.parquet
+    02_merged_with_SBS/TCGA_merged_expression_SBS.pkl
 
 Output (-> data/FIG_2/03_differential_expression/{cancer_type}/):
     {cancer_type}_diffexpr_stats.csv         — per-gene t-test results
     {cancer_type}_selected_genes.csv         — genes passing thresholds
     {cancer_type}_volcano.png                — volcano plot
     {cancer_type}_manhattan.png              — Manhattan-style plot
-    {cancer_type}_cancer_df2.parquet         — filtered dataframe (clinical + selected genes + SBS2/A3)
+    {cancer_type}_cancer_df2.pkl         — filtered dataframe (clinical + selected genes + SBS2/A3)
 
 Usage:
     python Step03_Differential_Expression.py
@@ -60,9 +60,9 @@ def bh_fdr(pvals):
 # =============================================================================
 banner("[STEP 12] Load merged expression + SBS data")
 
-merged_path = os.path.join(DIR_02_MERGED, "TCGA_merged_expression_SBS.parquet")
+merged_path = os.path.join(DIR_02_MERGED, "TCGA_merged_expression_SBS.pkl")
 log(f"[STEP 12] Reading: {merged_path}")
-merged = pd.read_parquet(merged_path)
+merged = pd.read_pickle(merged_path)
 log(f"[STEP 12] Shape: {merged.shape}")
 
 # Identify all ENSG gene columns
@@ -260,8 +260,8 @@ for cancer_type in CANCER_TYPES:
         log("[OK] No duplicate columns")
 
     # Save
-    df2_path = os.path.join(cancer_dir, f"{cancer_type}_cancer_df2.parquet")
-    cancer_df2.to_parquet(df2_path, index=False)
+    df2_path = os.path.join(cancer_dir, f"{cancer_type}_cancer_df2.pkl")
+    cancer_df2.to_pickle(df2_path)
     log(f"[SAVE] cancer_df2 -> {df2_path}")
 
     log(f"\n[STEP 12 COMPLETE for {cancer_type}]")

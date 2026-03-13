@@ -12,12 +12,12 @@ Produces the SBS2-vs-A3-score selection plot → Figure 2a candidate.
 Corresponds to original pipeline Step 13.
 
 Input:
-    03_differential_expression/{cancer_type}/{cancer_type}_cancer_df2.parquet
+    03_differential_expression/{cancer_type}/{cancer_type}_cancer_df2.pkl
     03_differential_expression/{cancer_type}/{cancer_type}_selected_genes.csv
 
 Output (-> data/FIG_2/04_TOP_BOTTOM_groups/{cancer_type}/):
-    {ct}_TOP_group.parquet / .csv         — TOP group (high SBS2, high A3)
-    {ct}_BOTTOM_group.parquet / .csv      — BOTTOM group (low SBS2, high A3)
+    {ct}_TOP_group.pkl / .csv         — TOP group (high SBS2, high A3)
+    {ct}_BOTTOM_group.pkl / .csv      — BOTTOM group (low SBS2, high A3)
     {ct}_selected_genes_filtered.csv      — genes present in both groups
     {ct}_SBS2_vs_A3score_selection.png    — selection plot (Figure 2a)
     {ct}_group_summary.txt               — group size/threshold summary
@@ -66,12 +66,12 @@ for cancer_type in CANCER_TYPES:
     cancer_dir = ensure_dir(os.path.join(DIR_04_GROUPS, cancer_type))
 
     # ---- Load cancer_df2 from Step 03
-    df2_path = os.path.join(DIR_03_DIFFEXPR, cancer_type, f"{cancer_type}_cancer_df2.parquet")
+    df2_path = os.path.join(DIR_03_DIFFEXPR, cancer_type, f"{cancer_type}_cancer_df2.pkl")
     if not os.path.exists(df2_path):
         log(f"[SKIP] cancer_df2 not found: {df2_path}")
         continue
 
-    cancer_df2 = pd.read_parquet(df2_path)
+    cancer_df2 = pd.read_pickle(df2_path)
     log(f"[STEP 13] Loaded cancer_df2: {cancer_df2.shape}")
 
     # ---- Load selected genes
@@ -178,16 +178,16 @@ for cancer_type in CANCER_TYPES:
     log(f"[SAVE] Selection plot -> {plot_path}")
 
     # ---- Save group DataFrames
-    top_parquet = os.path.join(cancer_dir, f"{cancer_type}_TOP_group.parquet")
-    bot_parquet = os.path.join(cancer_dir, f"{cancer_type}_BOTTOM_group.parquet")
-    group_top.to_parquet(top_parquet, index=False)
-    group_bot.to_parquet(bot_parquet, index=False)
-    log(f"[SAVE] TOP group -> {top_parquet}")
-    log(f"[SAVE] BOTTOM group -> {bot_parquet}")
+    top_pkl = os.path.join(cancer_dir, f"{cancer_type}_TOP_group.pkl")
+    bot_pkl = os.path.join(cancer_dir, f"{cancer_type}_BOTTOM_group.pkl")
+    group_top.to_pickle(top_pkl)
+    group_bot.to_pickle(bot_pkl)
+    log(f"[SAVE] TOP group -> {top_pkl}")
+    log(f"[SAVE] BOTTOM group -> {bot_pkl}")
 
     # Also CSV for easy inspection
-    group_top.to_csv(top_parquet.replace(".parquet", ".csv"), index=False)
-    group_bot.to_csv(bot_parquet.replace(".parquet", ".csv"), index=False)
+    group_top.to_csv(top_pkl.replace(".pkl", ".csv"), index=False)
+    group_bot.to_csv(bot_pkl.replace(".pkl", ".csv"), index=False)
 
     # Save filtered gene list
     genes_path = os.path.join(cancer_dir, f"{cancer_type}_selected_genes_filtered.csv")

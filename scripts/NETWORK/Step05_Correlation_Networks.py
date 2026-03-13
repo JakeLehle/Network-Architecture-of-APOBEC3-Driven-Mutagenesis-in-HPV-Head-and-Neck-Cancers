@@ -9,13 +9,13 @@ thresholds to create weighted graphs.
 Corresponds to original pipeline Step 14.
 
 Input:
-    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_TOP_group.parquet
-    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_BOTTOM_group.parquet
+    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_TOP_group.pkl
+    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_BOTTOM_group.pkl
     04_TOP_BOTTOM_groups/{cancer_type}/{ct}_selected_genes_filtered.csv
     01_cleaned_expression/ensg_to_symbol.json
 
 Output (-> data/FIG_2/05_correlation_networks/{cancer_type}/):
-    corr_matrices/     — TOP, BOTTOM, DIFF correlation matrices (.parquet + .csv)
+    corr_matrices/     — TOP, BOTTOM, DIFF correlation matrices (.pkl + .csv)
     heatmaps/          — clustered heatmaps + correlation distribution plots
     edge_lists/        — network edge lists (for Cytoscape/Gephi)
     network_plots/     — TOP, BOTTOM, DIFF network visualizations
@@ -132,8 +132,8 @@ for cancer_type in CANCER_TYPES:
     plot_dir = ensure_dir(os.path.join(base_dir, "network_plots"))
 
     # ---- Load groups
-    top_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_TOP_group.parquet")
-    bot_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_BOTTOM_group.parquet")
+    top_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_TOP_group.pkl")
+    bot_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_BOTTOM_group.pkl")
     genes_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_selected_genes_filtered.csv")
 
     for p in [top_path, bot_path, genes_path]:
@@ -141,8 +141,8 @@ for cancer_type in CANCER_TYPES:
             log(f"[SKIP] Missing file: {p}")
             continue
 
-    top_df = pd.read_parquet(top_path)
-    bot_df = pd.read_parquet(bot_path)
+    top_df = pd.read_pickle(top_path)
+    bot_df = pd.read_pickle(bot_path)
     selected_genes = pd.read_csv(genes_path)["gene"].tolist()
 
     log(f"[STEP 14.0] TOP samples: {len(top_df)}")
@@ -167,9 +167,9 @@ for cancer_type in CANCER_TYPES:
     log(f"[STEP 14.1] Correlation matrix shape: {corr_top.shape}")
 
     # Save correlation matrices
-    corr_top.to_parquet(os.path.join(corr_dir, f"{cancer_type}_corr_TOP.parquet"))
-    corr_bot.to_parquet(os.path.join(corr_dir, f"{cancer_type}_corr_BOTTOM.parquet"))
-    corr_diff.to_parquet(os.path.join(corr_dir, f"{cancer_type}_corr_DIFF.parquet"))
+    corr_top.to_pickle(os.path.join(corr_dir, f"{cancer_type}_corr_TOP.pkl"))
+    corr_bot.to_pickle(os.path.join(corr_dir, f"{cancer_type}_corr_BOTTOM.pkl"))
+    corr_diff.to_pickle(os.path.join(corr_dir, f"{cancer_type}_corr_DIFF.pkl"))
     log(f"[SAVE] Correlation matrices -> {corr_dir}")
 
     # ---- Correlation distribution plots
