@@ -1,0 +1,23 @@
+# =============================================================================
+# Conda environment for APOBEC3-SBS2 Network Analysis Pipeline (Figure 2)
+#
+# Create:  conda env create -f environment_NETWORK.yml
+# Activate: conda activate NETWORK
+# =============================================================================
+name: NETWORK
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - numpy=1.26.4
+  - pandas=2.2.3
+  - scipy>=1.11
+  - networkx>=3.1
+  - matplotlib>=3.7
+  - seaborn>=0.12
+  - scikit-learn>=1.3
+  - pip
+  - pip:
+    - leidenalg>=0.10
+    - igraph>=0.11
