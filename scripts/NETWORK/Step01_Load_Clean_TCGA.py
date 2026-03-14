@@ -249,6 +249,24 @@ with open(json_path, "w") as f:
     json.dump(ensg_to_symbol, f, indent=2)
 log(f"[SAVE] ENSG->Symbol mapping -> {json_path}")
 
+# Save biotype mapping (needed by Step03 for protein-coding filter)
+ensg_to_biotype = {}
+for e_clean, bio in zip(ensg_ids_clean.tolist(), biotype_flags.tolist()):
+    if e_clean not in ensg_to_biotype:
+        ensg_to_biotype[e_clean] = bio
+
+biotype_path = os.path.join(out_dir, "ensg_to_biotype.json")
+with open(biotype_path, "w") as f:
+    json.dump(ensg_to_biotype, f, indent=2)
+log(f"[SAVE] ENSG->Biotype mapping -> {biotype_path}")
+
+# Report biotype distribution
+from collections import Counter
+bio_counts = Counter(ensg_to_biotype.values())
+log(f"[SAVE] Biotype distribution (top 10):")
+for bio, cnt in bio_counts.most_common(10):
+    log(f"  {bio}: {cnt}")
+
 # Summary
 summary_path = os.path.join(out_dir, "step01_summary.txt")
 with open(summary_path, "w") as f:

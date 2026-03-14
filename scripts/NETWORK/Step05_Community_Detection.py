@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step06_Community_Detection.py
+Step05_Community_Detection.py
 
 Run Leiden community detection on the DIFF network across multiple
 resolutions. Evaluate stability (ARI/NMI across runs), merge small
@@ -20,7 +20,7 @@ Output (-> data/FIG_2/06_communities/{cancer_type}/):
     {ct}_community_gene_lists.csv  — genes per community
 
 Usage:
-    python Step06_Community_Detection.py
+    python Step05_Community_Detection.py
 """
 
 import os
@@ -41,7 +41,7 @@ from network_config import (
     COMMUNITY_METHOD, COMMUNITY_RESOLUTIONS, RUNS_PER_RESOLUTION,
     COMMUNITY_BASE_SEED, USE_LARGEST_COMPONENT,
     TARGET_BIG_COMMUNITIES, MIN_COMMUNITY_SIZE,
-    DIR_01_CLEANED, DIR_05_NETWORKS, DIR_06_COMMUNITIES,
+    DIR_01_CLEANED, DIR_04_NETWORKS, DIR_05_COMMUNITIES,
     banner, log, ensure_dir
 )
 
@@ -151,11 +151,11 @@ for cancer_type in CANCER_TYPES:
 
     banner(f"[STEP 15] Community Detection — {cancer_type}", char="=")
 
-    cancer_dir = ensure_dir(os.path.join(DIR_06_COMMUNITIES, cancer_type))
+    cancer_dir = ensure_dir(os.path.join(DIR_05_COMMUNITIES, cancer_type))
     sweep_dir = ensure_dir(os.path.join(cancer_dir, "sweep"))
 
     # ---- Load DIFF graph
-    pkl_path = os.path.join(DIR_05_NETWORKS, cancer_type, "graph_objects",
+    pkl_path = os.path.join(DIR_04_NETWORKS, cancer_type, "graph_objects",
                             f"{cancer_type}_G_diff_noiso.gpickle")
     if not os.path.exists(pkl_path):
         log(f"[SKIP] DIFF graph not found: {pkl_path}")
