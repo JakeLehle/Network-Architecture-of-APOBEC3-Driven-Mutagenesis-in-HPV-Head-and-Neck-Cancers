@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step07_Centrality_Metrics.py
+Step06_Centrality_Metrics.py
 
 Compute per-gene network centrality metrics (degree, betweenness,
 closeness, eigenvector, strength) for TOP, BOTTOM, and DIFF networks.
@@ -20,7 +20,7 @@ Output (-> data/FIG_2/07_centrality_metrics/{cancer_type}/):
     {ct}_centrality_comparison.png         — TOP vs BOTTOM centrality scatter
 
 Usage:
-    python Step07_Centrality_Metrics.py
+    python Step06_Centrality_Metrics.py
 """
 
 import os
@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 
 from network_config import (
     CANCER_TYPES, A3_GENES, A3_ID_TO_ALIAS, BIOMARKERS,
-    DIR_01_CLEANED, DIR_05_NETWORKS, DIR_06_COMMUNITIES, DIR_07_CENTRALITY,
+    DIR_01_CLEANED, DIR_04_NETWORKS, DIR_05_COMMUNITIES, DIR_06_CENTRALITY,
     banner, log, ensure_dir
 )
 
@@ -99,10 +99,10 @@ for cancer_type in CANCER_TYPES:
 
     banner(f"[STEP 16] Centrality Metrics — {cancer_type}", char="=")
 
-    cancer_dir = ensure_dir(os.path.join(DIR_07_CENTRALITY, cancer_type))
+    cancer_dir = ensure_dir(os.path.join(DIR_06_CENTRALITY, cancer_type))
 
     # ---- Load graphs
-    graph_dir = os.path.join(DIR_05_NETWORKS, cancer_type, "graph_objects")
+    graph_dir = os.path.join(DIR_04_NETWORKS, cancer_type, "graph_objects")
 
     graphs = {}
     for name in ["G_top", "G_bot", "G_diff"]:
@@ -236,7 +236,7 @@ for cancer_type in CANCER_TYPES:
     # ---- Annotate hub genes with community membership (if available)
     banner("[STEP 16.5] Annotate hubs with community membership")
 
-    part_path = os.path.join(DIR_06_COMMUNITIES, cancer_type, f"{cancer_type}_best_partition.csv")
+    part_path = os.path.join(DIR_05_COMMUNITIES, cancer_type, f"{cancer_type}_best_partition.csv")
     if os.path.exists(part_path) and "DIFF" in metrics_dfs:
         partition = pd.read_csv(part_path)
         gene_to_comm = dict(zip(partition["gene"], partition["community"]))

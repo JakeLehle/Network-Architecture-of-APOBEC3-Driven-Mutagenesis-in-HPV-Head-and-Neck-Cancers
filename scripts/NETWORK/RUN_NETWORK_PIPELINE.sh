@@ -1,23 +1,29 @@
 #!/bin/bash
 #SBATCH --job-name=NETWORK
-#SBATCH --output=NETWORK_%j.out
-#SBATCH --error=NETWORK_%j.err
+#SBATCH --output=/master/jlehle/WORKING/LOGS/NETWORK_%j.out
+#SBATCH --error=/master/jlehle/WORKING/LOGS/NETWORK_%j.err
 #SBATCH --time=24:00:00
-#SBATCH --mem=200G
-#SBATCH --cpus-per-task=8
+#SBATCH --mem=500G
+#SBATCH --cpus-per-task=32
 #SBATCH --partition=normal
 
 # =============================================================================
 # RUN_NETWORK_PIPELINE.sh
 #
 # SLURM batch script for the APOBEC3-SBS2 Network Analysis Pipeline (Figure 2)
-# Runs Steps 01-07 sequentially.
+# Runs Steps 01-06 sequentially.
+#
+# Pipeline:
+#   Step 01 — Load & clean TCGA expression data
+#   Step 02 — Merge with SBS mutation signatures
+#   Step 03 — Gene filtering, group definition, differential expression
+#             (also defines HIGH/LOW groups for network analysis)
+#   Step 04 — Correlation networks (TOP/BOTTOM/DIFF)
+#   Step 05 — Community detection (Leiden)
+#   Step 06 — Centrality metrics
 #
 # Usage:
 #   sbatch RUN_NETWORK_PIPELINE.sh
-#
-# Or run individual steps:
-#   sbatch --wrap="conda activate NETWORK_FIG2 && python Step03_Differential_Expression.py" ...
 #
 # =============================================================================
 
@@ -35,7 +41,7 @@ echo "============================================================"
 source ~/anaconda3/bin/activate 2>/dev/null || conda activate NETWORK
 
 # ---- Navigate to script directory
-SCRIPT_DIR="/master/jlehle/WORKING/2026_NMF_PAPER/scripts/NETWORK"
+SCRIPT_DIR="/master/jlehle/WORKING/2026_NMF_PAPER/scripts"
 cd "$SCRIPT_DIR"
 echo "Working directory: $(pwd)"
 echo ""
@@ -62,49 +68,40 @@ python Step02_Merge_SBS_Signatures.py
 echo "    STEP 02 DONE: $(date)"
 
 # =============================================================================
-# STEP 03 — Differential Expression
+# STEP 03 — Gene Filtering + Group Definition + Differential Expression
 # =============================================================================
 echo ""
-echo ">>> STEP 03: Differential Expression"
+echo ">>> STEP 03: Gene Filtering + Groups + Differential Expression"
 echo "    $(date)"
 python Step03_Differential_Expression.py
 echo "    STEP 03 DONE: $(date)"
 
 # =============================================================================
-# STEP 04 — Define TOP/BOTTOM Groups
+# STEP 04 — Correlation Networks
 # =============================================================================
 echo ""
-echo ">>> STEP 04: Define TOP/BOTTOM Groups"
+echo ">>> STEP 04: Correlation Networks"
 echo "    $(date)"
-python Step04_Define_Groups.py
+python Step04_Correlation_Networks.py
 echo "    STEP 04 DONE: $(date)"
 
 # =============================================================================
-# STEP 05 — Correlation Networks
+# STEP 05 — Community Detection
 # =============================================================================
 echo ""
-echo ">>> STEP 05: Correlation Networks"
+echo ">>> STEP 05: Community Detection"
 echo "    $(date)"
-python Step05_Correlation_Networks.py
+python Step05_Community_Detection.py
 echo "    STEP 05 DONE: $(date)"
 
 # =============================================================================
-# STEP 06 — Community Detection
+# STEP 06 — Centrality Metrics
 # =============================================================================
 echo ""
-echo ">>> STEP 06: Community Detection"
+echo ">>> STEP 06: Centrality Metrics"
 echo "    $(date)"
-python Step06_Community_Detection.py
+python Step06_Centrality_Metrics.py
 echo "    STEP 06 DONE: $(date)"
-
-# =============================================================================
-# STEP 07 — Centrality Metrics
-# =============================================================================
-echo ""
-echo ">>> STEP 07: Centrality Metrics"
-echo "    $(date)"
-python Step07_Centrality_Metrics.py
-echo "    STEP 07 DONE: $(date)"
 
 # =============================================================================
 # DONE

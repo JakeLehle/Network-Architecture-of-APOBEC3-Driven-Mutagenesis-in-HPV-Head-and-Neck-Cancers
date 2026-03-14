@@ -42,13 +42,14 @@ SIGNATURE_SAMPLE_COL = "TCGA_Gene_Expression_Entity_ID"
 FIG2_ROOT = os.path.join(PROJECT_ROOT, "data", "FIG_2")
 
 # Per-step output directories (created automatically by each script)
-DIR_01_CLEANED    = os.path.join(FIG2_ROOT, "01_cleaned_expression")
-DIR_02_MERGED     = os.path.join(FIG2_ROOT, "02_merged_with_SBS")
-DIR_03_DIFFEXPR   = os.path.join(FIG2_ROOT, "03_differential_expression")
-DIR_04_GROUPS     = os.path.join(FIG2_ROOT, "04_TOP_BOTTOM_groups")
-DIR_05_NETWORKS   = os.path.join(FIG2_ROOT, "05_correlation_networks")
-DIR_06_COMMUNITIES = os.path.join(FIG2_ROOT, "06_communities")
-DIR_07_CENTRALITY = os.path.join(FIG2_ROOT, "07_centrality_metrics")
+DIR_01_CLEANED     = os.path.join(FIG2_ROOT, "01_cleaned_expression")
+DIR_02_MERGED      = os.path.join(FIG2_ROOT, "02_merged_with_SBS")
+DIR_03_DIFFEXPR    = os.path.join(FIG2_ROOT, "03_differential_expression")
+# NOTE: Step03 now also outputs group definitions (HIGH/LOW) and filtered gene lists.
+#       The old DIR_04_GROUPS has been eliminated.
+DIR_04_NETWORKS    = os.path.join(FIG2_ROOT, "04_correlation_networks")
+DIR_05_COMMUNITIES = os.path.join(FIG2_ROOT, "05_communities")
+DIR_06_CENTRALITY  = os.path.join(FIG2_ROOT, "06_centrality_metrics")
 
 # =============================================================================
 # CANCER TYPE(S) TO ANALYZE
@@ -131,32 +132,44 @@ BIOMARKERS = [
 # =============================================================================
 # STEP 02 — MERGE PARAMETERS
 # =============================================================================
-# How to shorten TCGA barcodes for merge (first N dash-separated parts)
-BARCODE_PARTS_FOR_MERGE = 4   # TCGA-XX-YYYY-ZZZZ
+# (No barcode shortening needed — direct Entity_ID merge)
 
 # =============================================================================
 # STEP 03 — DIFFERENTIAL EXPRESSION PARAMETERS
 # =============================================================================
-# SBS2 percentile thresholds for high vs low groups (for t-test)
-SBS2_HIGH_PERCENTILE = 0.80
-SBS2_LOW_PERCENTILE  = 0.20
+# Gene filtering (aligned with single-cell workflow)
+MIN_SAMPLES_DETECTED = 20     # gene must have FPKM-UQ > 0 in at least this many samples
+                               # (analog of sc.pp.filter_genes(min_cells=20))
 
-# p-value threshold (raw, before FDR)
-P_VALUE_THRESHOLD = 0.025
+# Group definition (A3-controlled, within Step03)
+# 1. Sum A3A + A3B raw FPKM-UQ per tumor
+# 2. Keep tumors above median of summed A3A+A3B
+# 3. Within high-A3: rank by SBS2, take top/bottom quartiles
+A3_SUM_PERCENTILE = 0.50      # median — minimum summed A3A+A3B to include
+SBS2_HIGH_PERCENTILE = 0.75   # top 25% of SBS2 within high-A3 = SBS2-HIGH group
+SBS2_LOW_PERCENTILE  = 0.25   # bottom 25% of SBS2 within high-A3 = SBS2-LOW group
+
+# Statistical test: Wilcoxon rank-sum on log1p(FPKM-UQ)
+# (matches sc.tl.rank_genes_groups method='wilcoxon')
+
+# Selection thresholds (aligned with single-cell workflow)
+FDR_THRESHOLD  = 0.05         # Benjamini-Hochberg adjusted p-value
+LOGFC_THRESHOLD = 1.5         # |log2FC| must exceed this (both up and down)
 
 # Always retain A3 genes even if not significant
 FORCE_KEEP_A3 = True
 
+# Legacy (kept for reference, no longer used in Step03)
+P_VALUE_THRESHOLD = 0.025
+
 # =============================================================================
 # STEP 04 — GROUP DEFINITION PARAMETERS
 # =============================================================================
-# A3 score uses A3A + A3B (normalized within cohort)
-# High-A3 cutoff: median of A3 score
-A3_SCORE_PERCENTILE = 0.50   # median
-
-# Within high-A3 tumors, split SBS2:
-GROUP_SBS2_HIGH_PERCENTILE = 0.80   # TOP group = top 20%
-GROUP_SBS2_LOW_PERCENTILE  = 0.20   # BOTTOM group = bottom 20%
+# Step04 now INHERITS groups from Step03 (same TOP/BOTTOM groups).
+# These legacy parameters are kept for reference but are not used.
+A3_SCORE_PERCENTILE = 0.50
+GROUP_SBS2_HIGH_PERCENTILE = 0.75
+GROUP_SBS2_LOW_PERCENTILE  = 0.25
 
 # Minimum group size to proceed
 MIN_GROUP_SIZE = 8

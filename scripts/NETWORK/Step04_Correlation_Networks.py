@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step05_Correlation_Networks.py
+Step04_Correlation_Networks.py
 
 Build Spearman co-expression networks for TOP and BOTTOM groups
 separately, compute the DIFF network (TOP - BOTTOM), and apply
@@ -9,9 +9,9 @@ thresholds to create weighted graphs.
 Corresponds to original pipeline Step 14.
 
 Input:
-    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_TOP_group.pkl
-    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_BOTTOM_group.pkl
-    04_TOP_BOTTOM_groups/{cancer_type}/{ct}_selected_genes_filtered.csv
+    03_differential_expression/{cancer_type}/{ct}_SBS2_HIGH_group.pkl
+    03_differential_expression/{cancer_type}/{ct}_SBS2_LOW_group.pkl
+    03_differential_expression/{cancer_type}/{ct}_selected_genes_filtered.csv
     01_cleaned_expression/ensg_to_symbol.json
 
 Output (-> data/FIG_2/05_correlation_networks/{cancer_type}/):
@@ -21,7 +21,7 @@ Output (-> data/FIG_2/05_correlation_networks/{cancer_type}/):
     network_plots/     — TOP, BOTTOM, DIFF network visualizations
 
 Usage:
-    python Step05_Correlation_Networks.py
+    python Step04_Correlation_Networks.py
 """
 
 import os
@@ -37,7 +37,7 @@ import seaborn as sns
 from network_config import (
     CANCER_TYPES, CLINICAL_COLS, A3_GENES, A3_ID_TO_ALIAS, BIOMARKERS,
     CORRELATION_METHOD, CORR_THRESHOLD, DIFF_THRESHOLD,
-    DIR_01_CLEANED, DIR_04_GROUPS, DIR_05_NETWORKS,
+    DIR_01_CLEANED, DIR_03_DIFFEXPR, DIR_04_NETWORKS,
     banner, log, ensure_dir
 )
 
@@ -125,16 +125,16 @@ for cancer_type in CANCER_TYPES:
     banner(f"[STEP 14] Correlation Networks — {cancer_type}", char="=")
 
     # ---- Setup output directories
-    base_dir = ensure_dir(os.path.join(DIR_05_NETWORKS, cancer_type))
+    base_dir = ensure_dir(os.path.join(DIR_04_NETWORKS, cancer_type))
     corr_dir = ensure_dir(os.path.join(base_dir, "corr_matrices"))
     heat_dir = ensure_dir(os.path.join(base_dir, "heatmaps"))
     edge_dir = ensure_dir(os.path.join(base_dir, "edge_lists"))
     plot_dir = ensure_dir(os.path.join(base_dir, "network_plots"))
 
     # ---- Load groups
-    top_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_TOP_group.pkl")
-    bot_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_BOTTOM_group.pkl")
-    genes_path = os.path.join(DIR_04_GROUPS, cancer_type, f"{cancer_type}_selected_genes_filtered.csv")
+    top_path = os.path.join(DIR_03_DIFFEXPR, cancer_type, f"{cancer_type}_SBS2_HIGH_group.pkl")
+    bot_path = os.path.join(DIR_03_DIFFEXPR, cancer_type, f"{cancer_type}_SBS2_LOW_group.pkl")
+    genes_path = os.path.join(DIR_03_DIFFEXPR, cancer_type, f"{cancer_type}_selected_genes_filtered.csv")
 
     for p in [top_path, bot_path, genes_path]:
         if not os.path.exists(p):
