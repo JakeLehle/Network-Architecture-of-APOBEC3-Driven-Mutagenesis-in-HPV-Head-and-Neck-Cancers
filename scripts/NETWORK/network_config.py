@@ -152,9 +152,13 @@ SBS2_LOW_PERCENTILE  = 0.25   # bottom 25% of SBS2 within high-A3 = SBS2-LOW gro
 # Statistical test: Wilcoxon rank-sum on log1p(FPKM-UQ)
 # (matches sc.tl.rank_genes_groups method='wilcoxon')
 
-# Selection thresholds (aligned with single-cell workflow)
-FDR_THRESHOLD  = 0.05         # Benjamini-Hochberg adjusted p-value
-LOGFC_THRESHOLD = 1.5         # |log2FC| must exceed this (both up and down)
+# Selection thresholds (using raw p-value — FDR too conservative for bulk TCGA)
+# NOTE: When adapting the single-cell pipeline, switch to the same raw p approach
+RAW_P_THRESHOLD = 0.05            # raw Wilcoxon p-value
+LOGFC_THRESHOLD = 0            # |log2FC| must exceed this (both up and down)
+
+# Legacy FDR threshold (kept for reference, not used in selection)
+FDR_THRESHOLD  = 0.05
 
 # Always retain A3 genes even if not significant
 FORCE_KEEP_A3 = True

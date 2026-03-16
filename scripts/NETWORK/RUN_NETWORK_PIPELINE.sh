@@ -41,6 +41,7 @@ echo "============================================================"
 source ~/anaconda3/bin/activate 2>/dev/null || conda activate NETWORK
 
 # ---- Navigate to script directory
+CONDA_ENV="NETWORK"
 SCRIPT_DIR="/master/jlehle/WORKING/2026_NMF_PAPER/scripts"
 cd "$SCRIPT_DIR"
 echo "Working directory: $(pwd)"
@@ -55,7 +56,7 @@ mkdir -p /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_2
 echo ""
 echo ">>> STEP 01: Load & Clean TCGA Expression"
 echo "    $(date)"
-python Step01_Load_Clean_TCGA.py
+conda run -n "$CONDA_ENV" python Step01_Load_Clean_TCGA.py
 echo "    STEP 01 DONE: $(date)"
 
 # =============================================================================
@@ -64,7 +65,7 @@ echo "    STEP 01 DONE: $(date)"
 echo ""
 echo ">>> STEP 02: Merge with SBS Signatures"
 echo "    $(date)"
-python Step02_Merge_SBS_Signatures.py
+conda run -n "$CONDA_ENV" python Step02_Merge_SBS_Signatures.py
 echo "    STEP 02 DONE: $(date)"
 
 # =============================================================================
@@ -73,7 +74,7 @@ echo "    STEP 02 DONE: $(date)"
 echo ""
 echo ">>> STEP 03: Gene Filtering + Groups + Differential Expression"
 echo "    $(date)"
-python Step03_Differential_Expression.py
+conda run -n "$CONDA_ENV" python Step03_Differential_Expression.py
 echo "    STEP 03 DONE: $(date)"
 
 # =============================================================================
@@ -82,7 +83,7 @@ echo "    STEP 03 DONE: $(date)"
 echo ""
 echo ">>> STEP 04: Correlation Networks"
 echo "    $(date)"
-python Step04_Correlation_Networks.py
+conda run -n "$CONDA_ENV" python Step04_Correlation_Networks.py
 echo "    STEP 04 DONE: $(date)"
 
 # =============================================================================
@@ -91,7 +92,7 @@ echo "    STEP 04 DONE: $(date)"
 echo ""
 echo ">>> STEP 05: Community Detection"
 echo "    $(date)"
-python Step05_Community_Detection.py
+conda run -n "$CONDA_ENV" python Step05_Community_Detection.py
 echo "    STEP 05 DONE: $(date)"
 
 # =============================================================================
@@ -100,7 +101,7 @@ echo "    STEP 05 DONE: $(date)"
 echo ""
 echo ">>> STEP 06: Centrality Metrics"
 echo "    $(date)"
-python Step06_Centrality_Metrics.py
+conda run -n "$CONDA_ENV" python Step06_Centrality_Metrics.py
 echo "    STEP 06 DONE: $(date)"
 
 # =============================================================================

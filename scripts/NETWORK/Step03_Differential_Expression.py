@@ -57,7 +57,7 @@ from network_config import (
     CANCER_TYPES, CLINICAL_COLS, A3_GENES, A3_ID_TO_ALIAS, BIOMARKERS,
     MIN_SAMPLES_DETECTED,
     A3_SUM_PERCENTILE, SBS2_HIGH_PERCENTILE, SBS2_LOW_PERCENTILE,
-    FDR_THRESHOLD, LOGFC_THRESHOLD,
+    FDR_THRESHOLD, RAW_P_THRESHOLD, LOGFC_THRESHOLD,
     FORCE_KEEP_A3,
     DIR_01_CLEANED, DIR_02_MERGED, DIR_03_DIFFEXPR,
     banner, log, ensure_dir
@@ -343,22 +343,25 @@ for cancer_type in CANCER_TYPES:
     stats_df = pd.DataFrame(results)
     log(f"[STEP 12.6] Genes tested: {n_tested}")
 
-    # ---- FDR correction
+    # ---- FDR correction (computed for reference, not used for selection)
     stats_df["p_adj"] = bh_fdr(stats_df["p_value"].values)
     stats_df = stats_df.sort_values("p_value").reset_index(drop=True)
 
+    # Report both raw and FDR counts for transparency
+    n_sig_raw = (stats_df["p_value"] < RAW_P_THRESHOLD).sum()
     n_sig_fdr = (stats_df["p_adj"] < FDR_THRESHOLD).sum()
-    n_sig_fc  = ((stats_df["p_adj"] < FDR_THRESHOLD) & (stats_df["logFC"].abs() > LOGFC_THRESHOLD)).sum()
-    n_up      = ((stats_df["p_adj"] < FDR_THRESHOLD) & (stats_df["logFC"] > LOGFC_THRESHOLD)).sum()
-    n_down    = ((stats_df["p_adj"] < FDR_THRESHOLD) & (stats_df["logFC"] < -LOGFC_THRESHOLD)).sum()
+    n_sig_sel = ((stats_df["p_value"] < RAW_P_THRESHOLD) & (stats_df["logFC"].abs() > LOGFC_THRESHOLD)).sum()
+    n_up      = ((stats_df["p_value"] < RAW_P_THRESHOLD) & (stats_df["logFC"] > LOGFC_THRESHOLD)).sum()
+    n_down    = ((stats_df["p_value"] < RAW_P_THRESHOLD) & (stats_df["logFC"] < -LOGFC_THRESHOLD)).sum()
 
-    log(f"[STEP 12.7] Significant (FDR < {FDR_THRESHOLD}): {n_sig_fdr}")
-    log(f"[STEP 12.7] Significant (FDR < {FDR_THRESHOLD} AND |logFC| > {LOGFC_THRESHOLD}): {n_sig_fc}")
+    log(f"[STEP 12.7] Significant (raw p < {RAW_P_THRESHOLD}): {n_sig_raw}")
+    log(f"[STEP 12.7] Significant (FDR < {FDR_THRESHOLD}): {n_sig_fdr} (reference only)")
+    log(f"[STEP 12.7] Selected (raw p < {RAW_P_THRESHOLD} AND |logFC| > {LOGFC_THRESHOLD}): {n_sig_sel}")
     log(f"[STEP 12.7] Upregulated in HIGH SBS2: {n_up}")
     log(f"[STEP 12.7] Downregulated in HIGH SBS2: {n_down}")
 
-    # ---- Select genes (FDR + logFC thresholds)
-    sig_mask = (stats_df["p_adj"] < FDR_THRESHOLD) & (stats_df["logFC"].abs() > LOGFC_THRESHOLD)
+    # ---- Select genes (raw p-value + logFC thresholds)
+    sig_mask = (stats_df["p_value"] < RAW_P_THRESHOLD) & (stats_df["logFC"].abs() > LOGFC_THRESHOLD)
     selected = stats_df.loc[sig_mask, "gene"].tolist()
 
     # Force-keep A3 genes
@@ -369,7 +372,7 @@ for cancer_type in CANCER_TYPES:
                 sym = ensg_to_symbol.get(g, g)
                 row = stats_df[stats_df["gene"] == g].iloc[0]
                 log(f"[STEP 12.8] Force-kept A3 gene: {sym} "
-                    f"(FDR={row['p_adj']:.4f}, logFC={row['logFC']:.3f})")
+                    f"(p={row['p_value']:.4f}, logFC={row['logFC']:.3f})")
 
     selected = list(dict.fromkeys(selected))  # deduplicate, preserve order
     log(f"[STEP 12.8] Total selected genes: {len(selected)}")
@@ -435,7 +438,7 @@ for cancer_type in CANCER_TYPES:
     banner(f"[STEP 12.9] Volcano plot ({cancer_type})")
 
     fig, ax = plt.subplots(figsize=(10, 7))
-    neg_log_p = -np.log10(stats_df["p_adj"].clip(lower=1e-300))
+    neg_log_p = -np.log10(stats_df["p_value"].clip(lower=1e-300))
 
     # Non-significant (gray)
     ns_mask = ~sig_mask
@@ -453,7 +456,7 @@ for cancer_type in CANCER_TYPES:
                c="steelblue", alpha=0.6, s=14, label=f"Down (n={down_mask.sum()})", zorder=2)
 
     # Threshold lines
-    ax.axhline(-np.log10(FDR_THRESHOLD), ls="--", c="black", lw=0.8, alpha=0.5)
+    ax.axhline(-np.log10(RAW_P_THRESHOLD), ls="--", c="black", lw=0.8, alpha=0.5)
     ax.axvline(LOGFC_THRESHOLD, ls="--", c="black", lw=0.8, alpha=0.5)
     ax.axvline(-LOGFC_THRESHOLD, ls="--", c="black", lw=0.8, alpha=0.5)
 
@@ -468,7 +471,7 @@ for cancer_type in CANCER_TYPES:
                         xytext=(5, 5), textcoords="offset points")
 
     ax.set_xlabel("log2 Fold Change (HIGH SBS2 / LOW SBS2)")
-    ax.set_ylabel("-log10(FDR-adjusted p-value)")
+    ax.set_ylabel("-log10(p-value)")
     ax.set_title(f"{cancer_type} | Volcano — Wilcoxon (A3-controlled groups)")
     ax.legend(fontsize=9, loc="upper right")
     plt.tight_layout()
@@ -483,14 +486,14 @@ for cancer_type in CANCER_TYPES:
     # =========================================================================
     banner(f"[STEP 12.10] Manhattan plot ({cancer_type})")
 
-    sorted_stats = stats_df.sort_values("p_adj").reset_index(drop=True)
-    y = -np.log10(sorted_stats["p_adj"].clip(lower=1e-300))
+    sorted_stats = stats_df.sort_values("p_value").reset_index(drop=True)
+    y = -np.log10(sorted_stats["p_value"].clip(lower=1e-300))
 
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.scatter(range(len(y)), y, s=4, c="steelblue", alpha=0.5)
-    ax.axhline(-np.log10(FDR_THRESHOLD), ls="--", c="red", lw=0.8)
-    ax.set_xlabel("Genes (sorted by adjusted p-value)")
-    ax.set_ylabel("-log10(FDR-adjusted p-value)")
+    ax.axhline(-np.log10(RAW_P_THRESHOLD), ls="--", c="red", lw=0.8)
+    ax.set_xlabel("Genes (sorted by p-value)")
+    ax.set_ylabel("-log10(p-value)")
     ax.set_title(f"{cancer_type} | Manhattan — Wilcoxon (A3-controlled groups)")
     plt.tight_layout()
 
@@ -573,7 +576,7 @@ for cancer_type in CANCER_TYPES:
     print(f"  Gene universe (protein-coding, expressed): {len(gene_universe)}")
     print(f"  SBS2-HIGH group: {len(group_high)} | SBS2-LOW group: {len(group_low)}")
     print(f"  Genes tested: {n_tested}")
-    print(f"  Significant (FDR + logFC): {n_sig_fc}")
+    print(f"  Significant (raw p + logFC): {n_sig_sel}")
     print(f"  Selected (incl. force-kept A3): {len(selected)}")
 
 banner("[STEP 03 COMPLETE — ALL CANCER TYPES]")
