@@ -84,6 +84,7 @@ echo ""
 echo ">>> STEP 04: Correlation Networks"
 echo "    $(date)"
 conda run -n "$CONDA_ENV" python Step04_Correlation_Networks.py
+conda run -n "$CONDA_ENV" python Step04.1_Sweep_DIFF_Threshold.py
 echo "    STEP 04 DONE: $(date)"
 
 # =============================================================================
@@ -103,6 +104,17 @@ echo ">>> STEP 06: Centrality Metrics"
 echo "    $(date)"
 conda run -n "$CONDA_ENV" python Step06_Centrality_Metrics.py
 echo "    STEP 06 DONE: $(date)"
+
+
+# =============================================================================
+# STEP 07 — Figure Plotting
+# =============================================================================
+echo ""
+echo ">>> STEP 07: Centrality Metrics"
+echo "    $(date)"
+conda run -n NETWORK python Step07_Generate_Figure2_Panels.py
+echo "    STEP 07 DONE: $(date)"
+
 
 # =============================================================================
 # DONE

@@ -239,16 +239,27 @@ for cancer_type in CANCER_TYPES:
         log("[SKIP] Too few high-A3 tumors (<20)")
         continue
 
-    # Within high-A3: rank by SBS2 and take top/bottom 25%
-    sbs2_high_thr = float(high_a3_df["SBS2"].quantile(SBS2_HIGH_PERCENTILE))
-    sbs2_low_thr  = float(high_a3_df["SBS2"].quantile(SBS2_LOW_PERCENTILE))
+    # Within high-A3: rank by SBS2, take bottom 25% first, then match from top
+    # This guarantees exactly equal group sizes
+    high_a3_ranked = high_a3_df.sort_values("SBS2", ascending=True).reset_index(drop=True)
+    n_high_a3 = len(high_a3_ranked)
+    n_per_group = int(np.floor(n_high_a3 * 0.25))
 
-    group_high = high_a3_df[high_a3_df["SBS2"] >= sbs2_high_thr].copy()
-    group_low  = high_a3_df[high_a3_df["SBS2"] <= sbs2_low_thr].copy()
+    # Bottom 25% (lowest SBS2) — take first n_per_group from ranked list
+    group_low = high_a3_ranked.iloc[:n_per_group].copy()
 
-    log(f"[STEP 12.5] SBS2 thresholds (within high-A3): low25={sbs2_low_thr:.6f}, high75={sbs2_high_thr:.6f}")
-    log(f"[STEP 12.5] SBS2-HIGH group: {len(group_high)} tumors")
-    log(f"[STEP 12.5] SBS2-LOW group:  {len(group_low)} tumors")
+    # Top 25% (highest SBS2) — take last n_per_group from ranked list
+    group_high = high_a3_ranked.iloc[-n_per_group:].copy()
+
+    sbs2_low_max  = float(group_low["SBS2"].max())    # upper boundary of LOW group
+    sbs2_high_min = float(group_high["SBS2"].min())    # lower boundary of HIGH group
+
+    log(f"[STEP 12.5] High-A3 tumors ranked by SBS2: {n_high_a3}")
+    log(f"[STEP 12.5] Tumors per group (25%): {n_per_group}")
+    log(f"[STEP 12.5] SBS2-LOW group:  n={len(group_low)}, SBS2 range: "
+        f"{group_low['SBS2'].min():.6f} — {sbs2_low_max:.6f}")
+    log(f"[STEP 12.5] SBS2-HIGH group: n={len(group_high)}, SBS2 range: "
+        f"{sbs2_high_min:.6f} — {group_high['SBS2'].max():.6f}")
 
     # Verify A3 expression is similar between groups
     a3_mean_high = group_high["A3_sum"].mean()
@@ -274,8 +285,9 @@ for cancer_type in CANCER_TYPES:
         f.write(f"Total tumors: {len(cancer_df)}\n")
         f.write(f"A3A + A3B sum median threshold: {a3_median:.4f}\n")
         f.write(f"High-A3 tumors (above median): {len(high_a3_df)}\n")
-        f.write(f"SBS2 high threshold (75th pctile within high-A3): {sbs2_high_thr:.6f}\n")
-        f.write(f"SBS2 low threshold (25th pctile within high-A3): {sbs2_low_thr:.6f}\n")
+        f.write(f"Tumors per group (25% of high-A3): {n_per_group}\n")
+        f.write(f"SBS2-LOW max: {sbs2_low_max:.6f}\n")
+        f.write(f"SBS2-HIGH min: {sbs2_high_min:.6f}\n")
         f.write(f"SBS2-HIGH group size: {len(group_high)}\n")
         f.write(f"SBS2-LOW group size: {len(group_low)}\n")
         f.write(f"Mean A3_sum HIGH: {a3_mean_high:.4f}\n")
@@ -517,8 +529,8 @@ for cancer_type in CANCER_TYPES:
     ax.axvline(a3_median, ls="--", c="black", lw=0.8, alpha=0.5, label="A3 median")
 
     # SBS2 thresholds
-    ax.axhline(sbs2_high_thr, ls=":", c="firebrick", lw=0.8, alpha=0.6)
-    ax.axhline(sbs2_low_thr, ls=":", c="steelblue", lw=0.8, alpha=0.6)
+    ax.axhline(sbs2_high_min, ls=":", c="firebrick", lw=0.8, alpha=0.6)
+    ax.axhline(sbs2_low_max, ls=":", c="steelblue", lw=0.8, alpha=0.6)
 
     # HIGH group (red)
     ax.scatter(group_high["A3_sum"], group_high["SBS2"],
