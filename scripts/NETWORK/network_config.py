@@ -152,9 +152,14 @@ SBS2_LOW_PERCENTILE  = 0.25   # bottom 25% of SBS2 within high-A3 = SBS2-LOW gro
 # Statistical test: Wilcoxon rank-sum on log1p(FPKM-UQ)
 # (matches sc.tl.rank_genes_groups method='wilcoxon')
 
-# Selection thresholds (aligned with single-cell workflow)
-FDR_THRESHOLD  = 0.05         # Benjamini-Hochberg adjusted p-value
-LOGFC_THRESHOLD = 1.5         # |log2FC| must exceed this (both up and down)
+# Selection thresholds (using raw p-value — FDR too conservative for bulk TCGA)
+# NOTE: When adapting the single-cell pipeline, switch to the same raw p approach
+RAW_P_THRESHOLD = 0.05            # raw Wilcoxon p-value
+LOGFC_THRESHOLD = 0               # No fold-change filter (bulk TCGA effect sizes too small)
+                                   # NOTE: Match this in the single-cell pipeline
+
+# Legacy FDR threshold (kept for reference, not used in selection)
+FDR_THRESHOLD  = 0.05
 
 # Always retain A3 genes even if not significant
 FORCE_KEEP_A3 = True
@@ -175,21 +180,23 @@ GROUP_SBS2_LOW_PERCENTILE  = 0.25
 MIN_GROUP_SIZE = 8
 
 # =============================================================================
-# STEP 05 — CORRELATION NETWORK PARAMETERS
+# STEP 04 — CORRELATION NETWORK PARAMETERS
 # =============================================================================
 CORRELATION_METHOD = "spearman"
 CORR_THRESHOLD     = 0.80    # |rho| threshold for TOP/BOTTOM network edges
-DIFF_THRESHOLD     = 0.40    # |diff| threshold for DIFF network edges
+DIFF_THRESHOLD     = 0.65    # |diff| threshold for DIFF network edges
+                              # Selected via sweep: 2195 nodes, 8364 edges,
+                              # avg degree 7.6, modularity 0.44 at res=1.0
 
 # =============================================================================
-# STEP 06 — COMMUNITY DETECTION PARAMETERS
+# STEP 05 — COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
-COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+COMMUNITY_RESOLUTIONS = [0.6, 0.8, 1.0, 1.2, 1.4]   # Single resolution (selected via sweep)
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
 USE_LARGEST_COMPONENT = True
-TARGET_BIG_COMMUNITIES = 8    # merge to top K + Other
+TARGET_BIG_COMMUNITIES = 14   # merge to top K + Other
 MIN_COMMUNITY_SIZE     = 10   # smaller communities get merged
 
 # =============================================================================
