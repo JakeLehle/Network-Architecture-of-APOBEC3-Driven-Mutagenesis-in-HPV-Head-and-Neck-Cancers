@@ -1,0 +1,32 @@
+name: scomatic
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.7
+  - anndata=0.12.6
+  - bedtools
+  - datamash
+  - h5py
+  - hdf5
+  - libxcrypt
+  - pandas=2.2.3
+  - pybedtools
+  - pysam
+  - pyyaml
+  - samtools
+  - scanpy=1.10.4
+  - tqdm
+  - numpy=1.26.4
+  - scipy
+  - matplotlib-base
+  - seaborn
+  - python-igraph
+  - leidenalg
+  - adjusttext
+  - psutil
+  # R dependencies for SComatic
+  - r-base>=3.6.1
+  - rpy2
+  # Additional for signature analysis
+  - scikit-learn

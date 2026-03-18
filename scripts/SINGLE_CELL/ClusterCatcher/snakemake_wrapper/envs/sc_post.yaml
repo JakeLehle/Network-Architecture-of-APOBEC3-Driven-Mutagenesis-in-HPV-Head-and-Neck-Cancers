@@ -1,0 +1,81 @@
+channels:
+  - bioconda
+  - conda-forge
+  - plotly
+dependencies:
+  # Core Python
+  - python=3.11
+  - cython
+  - numpy=1.26.4
+  - pandas=2.2.3
+  - scipy
+  - scikit-learn
+  - h5py
+  - setuptools<78 
+ 
+  # Scanpy ecosystem
+  - scanpy=1.10.4
+  - anndata=0.12.6
+  - scvi-tools=1.4.0.post1
+  - python-igraph
+  - umap-learn
+  - pynndescent
+  - fa2
+  
+  # CNV analysis
+  - bioconda::gffutils
+  
+  # Visualization
+  - matplotlib-base
+  - seaborn
+  - adjusttext
+  - plotly==6.0.0
+  - conda-forge::python-kaleido
+  - plotly-orca
+  - hvplot
+  - ipywidgets
+  
+  # Statistics
+  - conda-forge::dcor
+  - conda-forge::pingouin
+  
+  # Data handling
+  - pybiomart
+  - goatools
+  - geoparse
+  - conda-forge::dask
+  
+  # SRA tools (for compatibility)
+  - awscli
+  - parallel-fastq-dump
+  - pysradb
+  - python-wget
+  - sra-tools>=3.0.0
+  
+  # GSEA
+  - bioconda::gseapy
+  
+  # Utilities
+  - pyyaml
+  - conda-forge::pdf2image
+  
+  # Deep learning (optional)
+  - dca
+  - faiss
+  
+  # GUI tools
+  - pygraphviz
+  - pyqt
+  - qt
+  - firefox
+  - xorg-libx11
+  - xorg-libxext
+  - xorg-libxrender
+  - xorg-libxscrnsaver
+  - mesa-libgl-cos6-x86_64
+  
+  # pip dependencies
+  - pip
+  - pip:
+    - cytotrace2-py>=1.1.0.4
+    - infercnvpy>=0.6.1
