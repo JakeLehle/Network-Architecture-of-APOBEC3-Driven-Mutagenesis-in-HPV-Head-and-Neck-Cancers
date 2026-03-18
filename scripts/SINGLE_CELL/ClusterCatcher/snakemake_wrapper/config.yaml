@@ -1,0 +1,252 @@
+# =============================================================================
+# ClusterCatcher Pipeline Configuration
+# =============================================================================
+# Documentation: https://github.com/JakeLehle/ClusterCatcher
+# =============================================================================
+
+# =============================================================================
+# BASIC SETTINGS
+# =============================================================================
+
+output_dir: "/path/to/output"  # <REQUIRED> Set your output directory
+threads: 8
+memory_gb: 64
+
+# =============================================================================
+# SAMPLE INFORMATION
+# =============================================================================
+# Provide EITHER sample_info (pickle path) OR samples (inline dict)
+
+# Option 1: Path to sample information pickle (from SRAscraper or sample-information command)
+sample_info: null  # "/path/to/samples.pkl"
+
+# Option 2: Inline sample list (alternative to sample_info)
+# sample_ids:
+#   - "SAMPLE1"
+#   - "SAMPLE2"
+
+# Base directory for FASTQ files (auto-derived from sample_info if using SRAscraper)
+fastq_base_dir: null
+
+# =============================================================================
+# REFERENCE FILES
+# =============================================================================
+# Only cellranger reference is required. FASTA/GTF are auto-derived from standard layout.
+
+reference:
+  cellranger: "/path/to/refdata-gex-GRCh38-2020-A"  # <REQUIRED>
+  fasta: null      # Auto-derived as: {cellranger}/fasta/genome.fa
+  gtf: null        # Auto-derived as: {cellranger}/genes/genes.gtf
+  genome: "GRCh38"
+
+# =============================================================================
+# CELL RANGER SETTINGS
+# =============================================================================
+
+cellranger:
+  chemistry: "auto"
+  expect_cells: 10000
+  include_introns: false
+  localcores: 8
+  localmem: 64
+  create_bam: true
+
+# =============================================================================
+# QUALITY CONTROL SETTINGS
+# =============================================================================
+# ClusterCatcher supports two QC filtering modes:
+#
+# 1. "adaptive" (RECOMMENDED): MAD-based outlier detection
+#    - Automatically adapts thresholds to your dataset's distribution
+#    - Uses log1p-transformed metrics for robust outlier detection
+#    - Best for heterogeneous samples or when optimal thresholds are unknown
+#    - Based on best practices from Luecken & Theis (2019)
+#
+# 2. "fixed": Traditional threshold-based filtering
+#    - Uses hard min/max thresholds for genes, counts, mito%
+#    - Good for well-characterized datasets with known quality ranges
+#    - Set max_genes, min_counts, max_counts to non-null values
+
+qc:
+  # QC filtering mode: "adaptive" (MAD-based) or "fixed" (threshold-based)
+  qc_mode: "adaptive"
+  
+  # === Common parameters (used by both modes) ===
+  min_genes: 200           # Minimum genes per cell (always applied)
+  max_mito_pct: 20         # Maximum mitochondrial % (hard cap in adaptive mode)
+  min_cells: 20            # Minimum cells expressing a gene
+  
+  # === Adaptive mode parameters (MAD-based outlier detection) ===
+  # Number of MADs from median to flag as outlier
+  # Higher values = more permissive filtering
+  mad_n_counts: 5          # MADs for log1p(total_counts) outliers
+  mad_n_genes: 5           # MADs for log1p(n_genes_by_counts) outliers
+  mad_top_genes: 5         # MADs for pct_counts_in_top_20_genes outliers
+  mad_mito: 3              # MADs for pct_counts_mt outliers
+  
+  # === Fixed mode parameters (threshold-based filtering) ===
+  # Set these to non-null values when using qc_mode: "fixed"
+  # In adaptive mode, these are ignored (except max_mito_pct which serves as hard cap)
+  max_genes: null          # Maximum genes per cell (null = no limit in adaptive mode)
+  min_counts: null         # Minimum UMI counts (null = no limit in adaptive mode)
+  max_counts: null         # Maximum UMI counts (null = no limit in adaptive mode)
+  
+  # === Doublet detection (Scrublet) ===
+  doublet_removal: true
+  doublet_rate: 0.08
+
+# =============================================================================
+# PREPROCESSING SETTINGS
+# =============================================================================
+# These settings control POST-ANNOTATION processing (after popV runs)
+
+preprocessing:
+  # Normalization target sum (1e6 for CPM, 1e4 for standard)
+  target_sum: 1000000
+  
+  # Number of PCs for neighbor graph (null = use CPU count)
+  n_pcs: null
+  
+  # Number of neighbors for graph construction
+  n_neighbors: 15
+  
+  # Leiden clustering resolution
+  leiden_resolution: 1.0
+  
+  # BBKNN batch correction (optional)
+  run_bbknn: false
+  bbknn_batch_key: "sample_id"
+
+# =============================================================================
+# CELL ANNOTATION SETTINGS (popV)
+# =============================================================================
+# ClusterCatcher uses popV for automated cell type annotation.
+# popV runs on RAW COUNTS (before normalization).
+
+annotation:
+  # Hugging Face repository for popV model
+  # Available models:
+  #   - "popV/tabula_sapiens_All_Cells" (recommended, all cell types)
+  #   - "popV/tabula_sapiens_immune" (immune cells only)
+  #   - "popV/human_lung" (lung-specific)
+  #   - See https://huggingface.co/popV for more models
+  popv_huggingface_repo: "popV/tabula_sapiens_All_Cells"
+  
+  # Prediction mode:
+  #   - "inference": Full integration of reference and query (recommended)
+  #   - "fast": No integration, faster but less accurate
+  popv_prediction_mode: "inference"
+  
+  # Column in adata.var containing gene symbols
+  popv_gene_symbol_key: "feature_name"
+  
+  # Cache directory for downloaded models
+  popv_cache_dir: "tmp/popv_models"
+  
+  # Batch key for batch correction during annotation
+  batch_key: "sample_id"
+
+# =============================================================================
+# MODULE ENABLE/DISABLE FLAGS
+# =============================================================================
+
+modules:
+  cellranger: true
+  qc: true
+  annotation: true
+  viral: false
+  dysregulation: true
+  scomatic: false
+  signatures: false
+
+# =============================================================================
+# DYSREGULATION DETECTION SETTINGS (requires modules.dysregulation: true)
+# =============================================================================
+
+dysregulation:
+  cytotrace2:
+    enabled: true
+    species: "human"
+    max_cells_per_chunk: 200000
+  
+  infercnv:
+    enabled: true
+    window_size: 250
+  
+  infercnv_reference_groups: null
+  
+  agreement:
+    alpha: 0.5
+    min_correlation: 0.5
+
+# =============================================================================
+# VIRAL DETECTION SETTINGS (requires modules.viral: true)
+# =============================================================================
+
+viral:
+  kraken_db: null
+  viral_db: null
+  confidence: 0.1
+  include_organisms: null
+  exclude_organisms: null
+  organisms_of_interest: []
+
+# =============================================================================
+# SCOMATIC MUTATION CALLING SETTINGS (requires modules.scomatic: true)
+# =============================================================================
+
+scomatic:
+  scripts_dir: null
+  editing_sites: null
+  pon_file: null
+  bed_file: null
+  min_cov: 5
+  min_cells: 5
+  cell_types: null
+  min_base_quality: 30
+  min_map_quality: 30
+
+# =============================================================================
+# SIGNATURE ANALYSIS SETTINGS (requires modules.signatures: true)
+# =============================================================================
+
+signatures:
+  cosmic_file: null
+  core_signatures:
+    - "SBS2"
+    - "SBS13"
+    - "SBS5"
+  use_scree_plot: true
+  candidate_order: null
+  mutation_threshold: 0
+  max_signatures: 15
+  hnscc_only: false
+  hnscc_signatures:
+    - "SBS1"
+    - "SBS2"
+    - "SBS4"
+    - "SBS5"
+    - "SBS7a"
+    - "SBS7b"
+    - "SBS13"
+    - "SBS16"
+    - "SBS17a"
+    - "SBS17b"
+    - "SBS18"
+    - "SBS29"
+    - "SBS39"
+    - "SBS40"
+    - "SBS44"
+
+# =============================================================================
+# ADVANCED SETTINGS
+# =============================================================================
+
+random_seed: 42
+keep_intermediate: false
+
+reports:
+  generate_html: true
+  generate_pdf: false
+  figure_format: "png"
+  figure_dpi: 150
