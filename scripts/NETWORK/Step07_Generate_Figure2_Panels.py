@@ -104,6 +104,16 @@ for cancer_type in CANCER_TYPES:
         log("[SKIP] DIFF correlation matrix not found")
         continue
 
+    # Load TOP correlation matrix (for Panel B heatmap)
+    corr_top_path = os.path.join(DIR_04_NETWORKS, cancer_type, "corr_matrices",
+                                  f"{cancer_type}_corr_TOP.pkl")
+    if os.path.exists(corr_top_path):
+        corr_top = pd.read_pickle(corr_top_path)
+        log(f"TOP corr matrix: {corr_top.shape}")
+    else:
+        corr_top = None
+        log("[WARNING] TOP correlation matrix not found — Panel B will use DIFF")
+
     # ---- Load community assignments
     part_path = os.path.join(DIR_05_COMMUNITIES, cancer_type, f"{cancer_type}_best_partition.csv")
     if not os.path.exists(part_path):
@@ -136,10 +146,45 @@ for cancer_type in CANCER_TYPES:
     x_max_data = all_hnsc["A3_sum"].max()
     y_max_data = all_hnsc["SBS2"].max()
 
-    # Broken x-axis: main range and outlier range
-    x_break_start = 400
-    x_break_end   = 600
-    has_outliers = x_max_data > x_break_start
+    # ---- Data-driven x-axis break
+    # Scan from the highest A3 values downward to find the largest gap.
+    # The break goes in the biggest gap between consecutive ranked tumors.
+    a3_sorted = all_hnsc["A3_sum"].sort_values(ascending=False).values
+    log(f"[PANEL A] Top 5 A3_sum values: {a3_sorted[:5].round(2).tolist()}")
+
+    has_outliers = False
+    if len(a3_sorted) >= 3:
+        # Check gaps between consecutive top values (top1-top2, top2-top3, etc.)
+        # Find the largest ratio gap in the top 10 values
+        best_gap_ratio = 1.0
+        best_gap_idx = -1
+        n_check = min(10, len(a3_sorted) - 1)
+
+        for i in range(n_check):
+            higher = a3_sorted[i]
+            lower  = a3_sorted[i + 1]
+            ratio  = higher / lower if lower > 0 else 1.0
+            if ratio > best_gap_ratio:
+                best_gap_ratio = ratio
+                best_gap_idx = i
+
+        log(f"[PANEL A] Largest gap: position {best_gap_idx} -> {best_gap_idx+1}, "
+            f"values {a3_sorted[best_gap_idx]:.2f} vs {a3_sorted[best_gap_idx+1]:.2f}, "
+            f"ratio {best_gap_ratio:.2f}")
+
+        if best_gap_ratio > 1.5 and best_gap_idx >= 0:
+            outlier_min = a3_sorted[best_gap_idx]       # lowest outlier value
+            cluster_max = a3_sorted[best_gap_idx + 1]   # highest main-cluster value
+            x_break_start = cluster_max * 1.10   # 10% past main cluster
+            x_break_end   = outlier_min * 0.90   # 10% before outlier
+            has_outliers = True
+            n_outliers = best_gap_idx + 1
+            log(f"[PANEL A] {n_outliers} outlier(s) above gap")
+            log(f"[PANEL A] Breaking x-axis: {x_break_start:.1f} — {x_break_end:.1f}")
+        else:
+            log("[PANEL A] No substantial gap (ratio < 1.5) — no x-axis break")
+    else:
+        log("[PANEL A] Too few tumors for break analysis")
 
     if has_outliers:
         fig, (ax_main, ax_break) = plt.subplots(
@@ -157,12 +202,15 @@ for cancer_type in CANCER_TYPES:
         y_max = y_max_data + y_pad
 
         if ax == ax_main:
-            x_lo, x_hi = -2, min(x_break_start, x_max_data * 1.05)
+            if has_outliers:
+                x_lo, x_hi = -2, x_break_start
+            else:
+                x_lo, x_hi = -2, x_max_data * 1.05
         elif ax == ax_break:
             x_lo, x_hi = x_break_end, x_max_data * 1.05
 
-        # ---- Background regions
-        # Cream region: below SBS2 boundary, right of A3 median
+        # ---- Background regions (only right of A3 median — the analysis zone)
+        # Cream region: below SBS2 LOW boundary, right of A3 median
         cream_poly = MplPolygon(
             [(a3_median, 0), (a3_median, sbs2_low_max), (x_hi, sbs2_low_max), (x_hi, 0)],
             closed=True, facecolor=COLOR_CREAM, alpha=0.75, edgecolor="none", zorder=0
@@ -176,14 +224,7 @@ for cancer_type in CANCER_TYPES:
         )
         ax.add_patch(coral_poly)
 
-        # Teal region: left of A3 median (low A3 — not selected for analysis)
-        teal_poly = MplPolygon(
-            [(x_lo, 0), (x_lo, y_max), (a3_median, y_max), (a3_median, 0)],
-            closed=True, facecolor=COLOR_TEAL, alpha=0.55, edgecolor="none", zorder=0
-        )
-        ax.add_patch(teal_poly)
-
-        # Middle zone (between low_max and high_min) — lighter cream
+        # Middle zone (between LOW max and HIGH min) — lighter cream
         if sbs2_high_min > sbs2_low_max:
             mid_poly = MplPolygon(
                 [(a3_median, sbs2_low_max), (a3_median, sbs2_high_min),
@@ -193,9 +234,9 @@ for cancer_type in CANCER_TYPES:
             ax.add_patch(mid_poly)
 
         # ---- Boundary lines
-        ax.axvline(a3_median, ls="--", c="grey30", lw=0.8, zorder=1)
-        ax.axhline(sbs2_high_min, ls=":", c="grey30", lw=0.8, alpha=0.6, zorder=1)
-        ax.axhline(sbs2_low_max, ls=":", c="grey30", lw=0.8, alpha=0.6, zorder=1)
+        ax.axvline(a3_median, ls="--", c="#4D4D4D", lw=0.8, zorder=1)
+        ax.axhline(sbs2_high_min, ls=":", c="#4D4D4D", lw=0.8, alpha=0.6, zorder=1)
+        ax.axhline(sbs2_low_max, ls=":", c="#4D4D4D", lw=0.8, alpha=0.6, zorder=1)
 
         # ---- Data points
         # All tumors (gray)
@@ -225,12 +266,11 @@ for cancer_type in CANCER_TYPES:
     ax_main.set_ylabel("SBS2 Mutational Weight", fontsize=26, labelpad=12)
     ax_main.legend(fontsize=18, loc="upper left", framealpha=0.9)
 
-    # Region count labels
-    n_high_a3 = (all_hnsc["A3_sum"] >= a3_median).sum()
-    n_low_a3  = (all_hnsc["A3_sum"] < a3_median).sum()
-    ax_main.annotate(f"Low A3\nn = {n_low_a3}",
-                     xy=(a3_median * 0.25, y_max_data * 0.85),
-                     fontsize=18, fontweight="bold", color="grey30", ha="center")
+    # Region label — mark the analysis zone
+    ax_main.annotate("High A3\n(analysis zone)",
+                     xy=(a3_median * 1.3, y_max_data * 0.85),
+                     fontsize=16, fontweight="bold", color="#4D4D4D", ha="left",
+                     fontstyle="italic")
 
     # Total count
     ax_main.annotate(f"(n = {len(all_hnsc)})",
@@ -260,12 +300,22 @@ for cancer_type in CANCER_TYPES:
     log(f"[SAVE] Panel A -> {ct_fig_dir}")
 
     # =====================================================================
-    # PANEL B — Community-ordered correlation heatmap (DIFF matrix)
+    # PANEL B — Community-ordered correlation heatmap (TOP matrix)
     # =====================================================================
-    banner("[PANEL B] Community correlation heatmap")
+    # Shows the TOP (high-SBS2) Spearman correlation matrix ordered by
+    # the communities identified from the DIFF network. This validates
+    # that genes grouped by differential wiring actually co-express
+    # together in the high-mutagenesis condition.
+    # Within-community blocks should show strong positive correlation.
+    # =====================================================================
+    banner("[PANEL B] Community correlation heatmap (TOP matrix)")
 
-    # Get genes that are in both the DIFF matrix and the partition
-    comm_genes = [g for g in partition_df["gene"] if g in corr_diff.index]
+    # Select which matrix to plot
+    heatmap_matrix = corr_top if corr_top is not None else corr_diff
+    heatmap_label = "TOP (High SBS2)" if corr_top is not None else "DIFF"
+
+    # Get genes that are in both the matrix and the partition
+    comm_genes = [g for g in partition_df["gene"] if g in heatmap_matrix.index]
 
     # Order genes by community, then by degree within community
     comm_to_genes = {}
@@ -273,18 +323,15 @@ for cancer_type in CANCER_TYPES:
         c = gene_to_comm.get(g, -1)
         comm_to_genes.setdefault(c, []).append(g)
 
-    # Sort communities by size (descending), put "Other"/largest-ID last
+    # Sort communities by size (descending)
     comm_ids_sorted = sorted(comm_to_genes.keys(),
                              key=lambda c: len(comm_to_genes[c]), reverse=True)
 
     # Build ordered gene list
     ordered_genes = []
-    comm_boundaries = []  # (start_idx, end_idx, comm_id) for annotation bars
-    comm_labels = []
-
+    comm_boundaries = []
     for c in comm_ids_sorted:
         genes_in_comm = comm_to_genes[c]
-        # Sort by degree within community if we have the graph
         if G_comm is not None:
             genes_in_comm = sorted(genes_in_comm,
                                    key=lambda g: G_comm.degree(g) if g in G_comm else 0,
@@ -293,47 +340,46 @@ for cancer_type in CANCER_TYPES:
         ordered_genes.extend(genes_in_comm)
         end = len(ordered_genes)
         comm_boundaries.append((start, end, c))
-        comm_labels.append(f"C{c}\n({len(genes_in_comm)})")
 
-    # Subset and order the DIFF correlation matrix
-    ordered_genes_present = [g for g in ordered_genes if g in corr_diff.index]
-    heatmap_data = corr_diff.loc[ordered_genes_present, ordered_genes_present].values
+    # Subset and order the matrix
+    ordered_genes_present = [g for g in ordered_genes if g in heatmap_matrix.index]
+    heatmap_data = heatmap_matrix.loc[ordered_genes_present, ordered_genes_present].values
 
-    # Determine symmetric color scale
-    vmax = np.nanpercentile(np.abs(heatmap_data), 99)
-    if vmax == 0:
+    # Color scale: 0 to 99th percentile for TOP (correlations are mostly 0-1)
+    vmin = np.nanpercentile(heatmap_data, 1)
+    vmax = np.nanpercentile(heatmap_data, 99)
+    if vmax <= vmin:
         vmax = 1.0
 
     # Plot
     fig, ax = plt.subplots(figsize=(16, 14))
 
     im = ax.imshow(heatmap_data, aspect="auto", interpolation="nearest",
-                   cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+                   cmap="plasma", vmin=vmin, vmax=vmax)
 
-    # Community boundary lines
+    # Community boundary lines (white for visibility on dark colormap)
     for start, end, c in comm_boundaries:
         if start > 0:
-            ax.axhline(start - 0.5, color="black", lw=1.2, alpha=0.8)
-            ax.axvline(start - 0.5, color="black", lw=1.2, alpha=0.8)
+            ax.axhline(start - 0.5, color="white", lw=1.5, alpha=0.9)
+            ax.axvline(start - 0.5, color="white", lw=1.5, alpha=0.9)
 
-    # Community labels on the side
+    # Community labels on the right side
     for start, end, c in comm_boundaries:
         mid = (start + end) / 2
         n_genes = end - start
-        if n_genes >= 10:  # Only label substantial communities
+        if n_genes >= 10:
             ax.annotate(f"C{c} ({n_genes})", xy=(len(ordered_genes_present) + 5, mid),
-                        fontsize=11, fontweight="bold", va="center", ha="left",
+                        fontsize=12, fontweight="bold", va="center", ha="left",
                         annotation_clip=False)
 
     cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.12)
-    cbar.set_label("Differential Correlation (TOP − BOTTOM)", fontsize=20, labelpad=12)
+    cbar.set_label(f"Spearman Correlation ({heatmap_label})", fontsize=20, labelpad=12)
     cbar.ax.tick_params(labelsize=18)
 
     ax.set_xlabel("Genes (ordered by community)", fontsize=26, labelpad=12)
     ax.set_ylabel("Genes (ordered by community)", fontsize=26, labelpad=12)
-    ax.set_title(f"{cancer_type} | DIFF Correlation — Community Structure", fontsize=22, pad=15)
-
-    # Remove individual gene tick labels (too many)
+    ax.set_title(f"{cancer_type} | {heatmap_label} Correlation — Community Structure",
+                 fontsize=22, pad=15)
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -388,7 +434,7 @@ for cancer_type in CANCER_TYPES:
         if a3_in_graph:
             nx.draw_networkx_nodes(G_comm, pos, nodelist=a3_in_graph, ax=ax,
                                    node_size=200, node_color="gold",
-                                   edgecolors="black", linewidths=2.0, zorder=5)
+                                   edgecolors="black", linewidths=2.0)
             labels_a3 = {n: sym(n) for n in a3_in_graph}
             nx.draw_networkx_labels(G_comm, pos, labels=labels_a3, ax=ax,
                                     font_size=10, font_weight="bold", font_color="darkred")
@@ -484,7 +530,7 @@ for cancer_type in CANCER_TYPES:
             if a3_here:
                 nx.draw_networkx_nodes(G_sub, pos_sub, nodelist=a3_here, ax=ax,
                                        node_size=250, node_color="gold",
-                                       edgecolors="black", linewidths=2.0, zorder=5)
+                                       edgecolors="black", linewidths=2.0)
                 for g in a3_here:
                     labels[g] = sym(g)
 

@@ -315,6 +315,11 @@ for cancer_type in CANCER_TYPES:
             aris.append(adjusted_rand_score(labels_list[a], labels_list[b]))
             nmis.append(normalized_mutual_info_score(labels_list[a], labels_list[b]))
 
+        # Compute community sizes from merged partition for evenness
+        n_total_genes = len(cm_merged)
+        largest_comm_size = max(merged_sizes.values()) if merged_sizes else n_total_genes
+        n_real_comms = sum(1 for s in merged_sizes.values() if s >= MIN_COMMUNITY_SIZE)
+
         sweep_rows.append({
             "resolution": float(r),
             "n_runs": RUNS_PER_RESOLUTION,
@@ -327,49 +332,134 @@ for cancer_type in CANCER_TYPES:
             "ARI_std": float(np.std(aris)),
             "NMI_mean": float(np.mean(nmis)),
             "NMI_std": float(np.std(nmis)),
+            "n_total_genes": n_total_genes,
+            "largest_community": largest_comm_size,
+            "n_communities_merged": n_real_comms,
         })
 
     # ---- Save sweep table
     banner("[STEP 15.8] Save sweep summary")
 
-    sweep_df = pd.DataFrame(sweep_rows).sort_values("resolution")
+    sweep_df = pd.DataFrame(sweep_rows).sort_values("resolution").reset_index(drop=True)
     sweep_csv = os.path.join(cancer_dir, f"{cancer_type}_resolution_sweep.csv")
+
+    # =========================================================================
+    # Compute composite selection metrics
+    # =========================================================================
+    # Evenness: 1 - (largest_community / total_genes)
+    # Penalizes degenerate solutions where one community absorbs everything
+    sweep_df["evenness"] = 1.0 - (sweep_df["largest_community"] / sweep_df["n_total_genes"])
+
+    # Composite score: modularity × ARI × evenness
+    # - modularity rewards partition quality
+    # - ARI rewards reproducibility (but multiplied by modularity, so
+    #   stable trivial partitions score low since their modularity ≈ 0)
+    # - evenness penalizes one-giant-community solutions
+    sweep_df["composite_score"] = (
+        sweep_df["modularity_best"] *
+        sweep_df["ARI_mean"] *
+        sweep_df["evenness"]
+    )
+
+    # Delta-modularity: marginal gain at each resolution step
+    sweep_df["delta_modularity"] = sweep_df["modularity_best"].diff().fillna(0)
+
+    # Normalized delta: fraction of remaining possible gain captured at each step
+    max_mod = sweep_df["modularity_best"].max()
+    sweep_df["delta_normalized"] = sweep_df["delta_modularity"] / (max_mod + 1e-10)
+
     sweep_df.to_csv(sweep_csv, index=False)
     log(f"[SAVE] Sweep table -> {sweep_csv}")
 
-    # ---- Sweep plots (modularity, ARI, NMI vs resolution)
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # ---- Log the full sweep table
+    log("\n[STEP 15.8] Resolution sweep summary:")
+    log(f"{'Res':>5s} | {'Mod':>6s} | {'ARI':>5s} | {'Even':>5s} | {'Comp':>6s} | {'ΔMod':>6s} | {'Comms':>5s} | {'Largest':>7s}")
+    log("-" * 65)
+    for _, row in sweep_df.iterrows():
+        log(f"{row['resolution']:5.2f} | {row['modularity_best']:6.4f} | "
+            f"{row['ARI_mean']:5.3f} | {row['evenness']:5.3f} | "
+            f"{row['composite_score']:6.4f} | {row['delta_modularity']:+6.4f} | "
+            f"{row['ncomms_mean']:5.1f} | {row['largest_community']:7.0f}")
 
-    for ax, metric, label in [
-        (axes[0], "modularity_mean", "Modularity"),
-        (axes[1], "ARI_mean", "ARI (stability)"),
-        (axes[2], "NMI_mean", "NMI (stability)"),
-    ]:
-        std_col = metric.replace("_mean", "_std")
-        ax.errorbar(sweep_df["resolution"], sweep_df[metric],
-                     yerr=sweep_df.get(std_col, 0), marker="o", capsize=3)
-        ax.set_xlabel("Resolution")
-        ax.set_ylabel(label)
-        ax.set_title(f"{cancer_type} | {label}")
+    # =========================================================================
+    # Diagnostic sweep plots (5 panels)
+    # =========================================================================
+    fig, axes = plt.subplots(2, 3, figsize=(22, 12))
 
+    # Panel 1: Modularity vs resolution
+    ax = axes[0, 0]
+    ax.errorbar(sweep_df["resolution"], sweep_df["modularity_best"],
+                yerr=sweep_df["modularity_std"], marker="o", capsize=3, color="steelblue")
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Modularity", fontsize=12)
+    ax.set_title(f"{cancer_type} | Modularity", fontsize=13)
+
+    # Panel 2: ARI stability vs resolution
+    ax = axes[0, 1]
+    ax.errorbar(sweep_df["resolution"], sweep_df["ARI_mean"],
+                yerr=sweep_df["ARI_std"], marker="o", capsize=3, color="firebrick")
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("ARI (stability)", fontsize=12)
+    ax.set_title(f"{cancer_type} | Stability (ARI)", fontsize=13)
+
+    # Panel 3: Evenness vs resolution
+    ax = axes[0, 2]
+    ax.plot(sweep_df["resolution"], sweep_df["evenness"], "o-", color="forestgreen")
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Evenness", fontsize=12)
+    ax.set_title(f"{cancer_type} | Evenness (1 - largest/total)", fontsize=13)
+    ax.set_ylim(-0.05, 1.05)
+
+    # Panel 4: COMPOSITE SCORE vs resolution (★ the selection criterion)
+    ax = axes[1, 0]
+    ax.plot(sweep_df["resolution"], sweep_df["composite_score"], "o-",
+            color="darkorange", linewidth=2, markersize=8)
+    # Mark the best
+    best_idx = sweep_df["composite_score"].idxmax()
+    ax.scatter([sweep_df.loc[best_idx, "resolution"]],
+              [sweep_df.loc[best_idx, "composite_score"]],
+              s=200, c="red", zorder=5, edgecolors="black", linewidths=2)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Composite (Mod × ARI × Even)", fontsize=12)
+    ax.set_title(f"{cancer_type} | ★ Composite Score", fontsize=13, fontweight="bold")
+
+    # Panel 5: Delta-modularity (scree/elbow plot)
+    ax = axes[1, 1]
+    ax.bar(sweep_df["resolution"], sweep_df["delta_modularity"],
+           width=0.08, color="steelblue", edgecolor="black", linewidth=0.5)
+    ax.axhline(0, color="black", lw=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Δ Modularity", fontsize=12)
+    ax.set_title(f"{cancer_type} | Delta-Modularity (Elbow)", fontsize=13)
+
+    # Panel 6: Number of communities vs resolution
+    ax = axes[1, 2]
+    ax.errorbar(sweep_df["resolution"], sweep_df["ncomms_mean"],
+                yerr=sweep_df["ncomms_std"], marker="o", capsize=3, color="purple")
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("N Communities", fontsize=12)
+    ax.set_title(f"{cancer_type} | Community Count", fontsize=13)
+
+    plt.suptitle(f"{cancer_type} — Resolution Selection Diagnostics", fontsize=16, fontweight="bold")
     plt.tight_layout()
-    sweep_plot = os.path.join(cancer_dir, f"{cancer_type}_sweep_plots.png")
+    sweep_plot = os.path.join(cancer_dir, f"{cancer_type}_sweep_diagnostics.png")
     plt.savefig(sweep_plot, dpi=300)
     plt.close()
-    log(f"[SAVE] Sweep plots -> {sweep_plot}")
+    log(f"[SAVE] Sweep diagnostics -> {sweep_plot}")
 
-    # ---- Identify best resolution (highest modularity with ARI > 0.7)
-    stable = sweep_df[sweep_df["ARI_mean"] > 0.7]
-    if len(stable) > 0:
-        best_row = stable.loc[stable["modularity_best"].idxmax()]
-    else:
-        best_row = sweep_df.loc[sweep_df["modularity_best"].idxmax()]
-
+    # =========================================================================
+    # Select best resolution using composite score
+    # =========================================================================
+    best_row = sweep_df.loc[sweep_df["composite_score"].idxmax()]
     best_res = best_row["resolution"]
-    log(f"\n[STEP 15] Best resolution: {best_res:.2f} "
-        f"(modularity={best_row['modularity_best']:.4f}, "
-        f"ARI={best_row['ARI_mean']:.3f}, "
-        f"comms={best_row['ncomms_mean']:.1f})")
+
+    log(f"\n[STEP 15] ★ SELECTED RESOLUTION: {best_res:.2f}")
+    log(f"  Composite score: {best_row['composite_score']:.4f}")
+    log(f"  Modularity: {best_row['modularity_best']:.4f}")
+    log(f"  ARI: {best_row['ARI_mean']:.3f}")
+    log(f"  Evenness: {best_row['evenness']:.3f}")
+    log(f"  Communities: {best_row['ncomms_mean']:.1f}")
+    log(f"  Largest community: {best_row['largest_community']:.0f} genes")
 
     # Copy best partition as the "official" output
     best_res_tag = f"res{best_res:.2f}".replace(".", "p")

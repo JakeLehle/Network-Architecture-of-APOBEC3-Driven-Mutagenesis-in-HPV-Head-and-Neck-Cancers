@@ -184,7 +184,7 @@ MIN_GROUP_SIZE = 8
 # =============================================================================
 CORRELATION_METHOD = "spearman"
 CORR_THRESHOLD     = 0.80    # |rho| threshold for TOP/BOTTOM network edges
-DIFF_THRESHOLD     = 0.65    # |diff| threshold for DIFF network edges
+DIFF_THRESHOLD     = 0.70    # |diff| threshold for DIFF network edges
                               # Selected via sweep: 2195 nodes, 8364 edges,
                               # avg degree 7.6, modularity 0.44 at res=1.0
 
@@ -192,7 +192,7 @@ DIFF_THRESHOLD     = 0.65    # |diff| threshold for DIFF network edges
 # STEP 05 — COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
-COMMUNITY_RESOLUTIONS = [0.6, 0.8, 1.0, 1.2, 1.4]   # Single resolution (selected via sweep)
+COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]   # Single resolution (selected via sweep)
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
 USE_LARGEST_COMPONENT = True
