@@ -300,146 +300,327 @@ for cancer_type in CANCER_TYPES:
     log(f"[SAVE] Panel A -> {ct_fig_dir}")
 
     # =====================================================================
-    # PANEL B — Community-ordered correlation heatmap (TOP matrix)
+    # PANEL B — Dual heatmap: TOP + DIFF with hierarchical clustering
     # =====================================================================
-    # Shows the TOP (high-SBS2) Spearman correlation matrix ordered by
-    # the communities identified from the DIFF network. This validates
-    # that genes grouped by differential wiring actually co-express
-    # together in the high-mutagenesis condition.
-    # Within-community blocks should show strong positive correlation.
+    # Shows BOTH the TOP (high-SBS2) and DIFF (TOP-BOTTOM) correlation
+    # matrices, ordered by community with hierarchical clustering applied:
+    #   1. Within each community: genes are re-ordered by dendrogram
+    #   2. Between communities: communities are ordered by linkage
+    # This reveals co-expression structure within communities and
+    # similarity between communities.
     # =====================================================================
-    banner("[PANEL B] Community correlation heatmap (TOP matrix)")
 
-    # Select which matrix to plot
-    heatmap_matrix = corr_top if corr_top is not None else corr_diff
-    heatmap_label = "TOP (High SBS2)" if corr_top is not None else "DIFF"
-
-    # Get genes that are in both the matrix and the partition
-    comm_genes = [g for g in partition_df["gene"] if g in heatmap_matrix.index]
-
-    # Order genes by community, then by degree within community
-    comm_to_genes = {}
-    for g in comm_genes:
-        c = gene_to_comm.get(g, -1)
-        comm_to_genes.setdefault(c, []).append(g)
-
-    # Sort communities by size (descending)
-    comm_ids_sorted = sorted(comm_to_genes.keys(),
-                             key=lambda c: len(comm_to_genes[c]), reverse=True)
-
-    # Build ordered gene list
-    ordered_genes = []
-    comm_boundaries = []
-    for c in comm_ids_sorted:
-        genes_in_comm = comm_to_genes[c]
-        if G_comm is not None:
-            genes_in_comm = sorted(genes_in_comm,
-                                   key=lambda g: G_comm.degree(g) if g in G_comm else 0,
-                                   reverse=True)
-        start = len(ordered_genes)
-        ordered_genes.extend(genes_in_comm)
-        end = len(ordered_genes)
-        comm_boundaries.append((start, end, c))
-
-    # Subset and order the matrix
-    ordered_genes_present = [g for g in ordered_genes if g in heatmap_matrix.index]
-    heatmap_data = heatmap_matrix.loc[ordered_genes_present, ordered_genes_present].values
-
-    # Color scale: 0 to 99th percentile for TOP (correlations are mostly 0-1)
-    vmin = np.nanpercentile(heatmap_data, 1)
-    vmax = np.nanpercentile(heatmap_data, 99)
-    if vmax <= vmin:
-        vmax = 1.0
-
-    # Plot
-    fig, ax = plt.subplots(figsize=(16, 14))
-
-    im = ax.imshow(heatmap_data, aspect="auto", interpolation="nearest",
-                   cmap="plasma", vmin=vmin, vmax=vmax)
-
-    # Community boundary lines (white for visibility on dark colormap)
-    for start, end, c in comm_boundaries:
-        if start > 0:
-            ax.axhline(start - 0.5, color="white", lw=1.5, alpha=0.9)
-            ax.axvline(start - 0.5, color="white", lw=1.5, alpha=0.9)
-
-    # Community labels on the right side
-    for start, end, c in comm_boundaries:
-        mid = (start + end) / 2
-        n_genes = end - start
-        if n_genes >= 10:
-            ax.annotate(f"C{c} ({n_genes})", xy=(len(ordered_genes_present) + 5, mid),
-                        fontsize=12, fontweight="bold", va="center", ha="left",
-                        annotation_clip=False)
-
-    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.12)
-    cbar.set_label(f"Spearman Correlation ({heatmap_label})", fontsize=20, labelpad=12)
-    cbar.ax.tick_params(labelsize=18)
-
-    ax.set_xlabel("Genes (ordered by community)", fontsize=26, labelpad=12)
-    ax.set_ylabel("Genes (ordered by community)", fontsize=26, labelpad=12)
-    ax.set_title(f"{cancer_type} | {heatmap_label} Correlation — Community Structure",
-                 fontsize=22, pad=15)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_B_heatmap.png"), dpi=300, bbox_inches="tight")
-    plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_B_heatmap.pdf"), bbox_inches="tight")
-    plt.close()
-    log(f"[SAVE] Panel B -> {ct_fig_dir}")
-
+    banner("[PANEL B] Dual heatmap: TOP + DIFF with hierarchical clustering")
+ 
+    from scipy.cluster.hierarchy import linkage, leaves_list
+    from scipy.spatial.distance import squareform, pdist
+ 
+    # Select matrices to plot
+    matrices_to_plot = []
+    if corr_top is not None:
+        matrices_to_plot.append(("TOP (High SBS2)", corr_top, "plasma"))
+    if corr_diff is not None:
+        matrices_to_plot.append(("DIFF (TOP − BOTTOM)", corr_diff, "plasma"))
+    elif corr_top is None:
+        log("[SKIP] No correlation matrices available for Panel B")
+ 
+    if len(matrices_to_plot) > 0:
+ 
+        # ---- Build hierarchically-clustered gene order ----
+ 
+        # Get genes present in both the partition and the matrices
+        ref_matrix = matrices_to_plot[0][1]
+        comm_genes = [g for g in partition_df["gene"] if g in ref_matrix.index]
+ 
+        # Group genes by community
+        comm_to_genes = {}
+        for g in comm_genes:
+            c = gene_to_comm.get(g, -1)
+            comm_to_genes.setdefault(c, []).append(g)
+ 
+        # --- Step 1: Hierarchical clustering WITHIN each community ---
+        clustered_comm_to_genes = {}
+        for c, genes in comm_to_genes.items():
+            if len(genes) <= 2:
+                clustered_comm_to_genes[c] = genes
+                continue
+ 
+            # Use the TOP matrix (or DIFF if TOP unavailable) for clustering
+            sub_matrix = ref_matrix.loc[genes, genes].values
+            # Replace NaN with 0
+            sub_matrix = np.nan_to_num(sub_matrix, nan=0.0)
+ 
+            try:
+                # Convert correlation to distance: 1 - |corr|
+                dist_matrix = 1.0 - np.abs(sub_matrix)
+                np.fill_diagonal(dist_matrix, 0)
+                # Ensure symmetry
+                dist_matrix = (dist_matrix + dist_matrix.T) / 2.0
+                # Clip to avoid negative distances from floating point
+                dist_matrix = np.clip(dist_matrix, 0, 2)
+ 
+                condensed = squareform(dist_matrix, checks=False)
+                Z = linkage(condensed, method="average")
+                order = leaves_list(Z)
+                clustered_comm_to_genes[c] = [genes[i] for i in order]
+            except Exception as e:
+                log(f"  [WARNING] Clustering failed for community {c}: {e}")
+                clustered_comm_to_genes[c] = genes
+ 
+        # --- Step 2: Hierarchical clustering BETWEEN communities ---
+        comm_ids = list(clustered_comm_to_genes.keys())
+ 
+        if len(comm_ids) > 2:
+            # Compute community-level distance from mean inter-community correlation
+            n_comms = len(comm_ids)
+            comm_dist = np.zeros((n_comms, n_comms))
+ 
+            for i in range(n_comms):
+                for j in range(i + 1, n_comms):
+                    genes_i = clustered_comm_to_genes[comm_ids[i]]
+                    genes_j = clustered_comm_to_genes[comm_ids[j]]
+                    # Mean absolute correlation between communities
+                    block = ref_matrix.loc[genes_i, genes_j].values
+                    mean_corr = np.nanmean(np.abs(block))
+                    dist = 1.0 - mean_corr
+                    comm_dist[i, j] = dist
+                    comm_dist[j, i] = dist
+ 
+            condensed_comm = squareform(comm_dist, checks=False)
+            Z_comm = linkage(condensed_comm, method="average")
+            comm_order = leaves_list(Z_comm)
+            comm_ids_sorted = [comm_ids[i] for i in comm_order]
+        else:
+            # Sort by size (descending) if too few communities
+            comm_ids_sorted = sorted(comm_ids,
+                                     key=lambda c: len(clustered_comm_to_genes[c]),
+                                     reverse=True)
+ 
+        # --- Step 3: Build final ordered gene list ---
+        ordered_genes = []
+        comm_boundaries = []
+        for c in comm_ids_sorted:
+            genes_in_comm = clustered_comm_to_genes[c]
+            start = len(ordered_genes)
+            ordered_genes.extend(genes_in_comm)
+            end = len(ordered_genes)
+            comm_boundaries.append((start, end, c))
+ 
+        log(f"  Ordered {len(ordered_genes)} genes across {len(comm_ids_sorted)} communities")
+ 
+        # --- Step 4: Plot each matrix ---
+        n_panels = len(matrices_to_plot)
+        fig, axes = plt.subplots(1, n_panels, figsize=(16 * n_panels, 14))
+        if n_panels == 1:
+            axes = [axes]
+ 
+        for ax, (label, matrix, cmap_name) in zip(axes, matrices_to_plot):
+            # Subset and order
+            genes_present = [g for g in ordered_genes if g in matrix.index]
+            heatmap_data = matrix.loc[genes_present, genes_present].values
+ 
+            vmin = np.nanpercentile(heatmap_data, 1)
+            vmax = np.nanpercentile(heatmap_data, 99)
+            if vmax <= vmin:
+                vmax = 1.0
+ 
+            im = ax.imshow(heatmap_data, aspect="auto", interpolation="nearest",
+                           cmap=cmap_name, vmin=vmin, vmax=vmax)
+ 
+            # Community boundary lines
+            for start, end, c in comm_boundaries:
+                if start > 0:
+                    ax.axhline(start - 0.5, color="white", lw=2, alpha=0.8)
+                    ax.axvline(start - 0.5, color="white", lw=2, alpha=0.8)
+ 
+            # Community labels on the right side
+            for start, end, c in comm_boundaries:
+                mid = (start + end) / 2
+                n_genes = end - start
+                if n_genes >= 5:
+                    ax.annotate(f"C{c} ({n_genes})", xy=(len(genes_present) + 5, mid),
+                                fontsize=20, fontweight="bold", va="center", ha="left",
+                                annotation_clip=False)
+ 
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.12)
+            cbar.set_label(f"Spearman rho ({label})", fontsize=24, labelpad=12)
+            cbar.ax.tick_params(labelsize=22)
+ 
+            ax.set_xlabel("Genes (clustered within communities)", fontsize=28, labelpad=12)
+            ax.set_ylabel("Genes (clustered within communities)", fontsize=28, labelpad=12)
+            ax.set_title(f"{cancer_type} | {label}", fontsize=28, pad=15)
+            ax.set_xticks([])
+            ax.set_yticks([])
+ 
+        plt.tight_layout(w_pad=4)
+        plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_B_dual_heatmap.png"),
+                    dpi=300, bbox_inches="tight")
+        plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_B_dual_heatmap.pdf"),
+                    bbox_inches="tight")
+        plt.close()
+        log(f"[SAVE] Panel B (dual heatmap) -> {ct_fig_dir}")
+ 
     # =====================================================================
-    # PANEL C — Full community network plot
+    # PANEL C — Full community network plot (exploded layout)
     # =====================================================================
-    banner("[PANEL C] Community network plot")
-
+    banner("[PANEL C] Community network plot (exploded layout)")
+ 
     if G_comm is not None and G_comm.number_of_nodes() > 0:
-        # Community-aware layout
+ 
+        # ---- Group nodes by community ----
         comm_to_nodelist = {}
         for n in G_comm.nodes():
             c = gene_to_comm.get(n, -1)
             comm_to_nodelist.setdefault(c, []).append(n)
-
-        # Community color map
+ 
         unique_comms = sorted(comm_to_nodelist.keys())
         n_comms = len(unique_comms)
         cmap_comms = plt.cm.get_cmap("tab20", max(n_comms, 1))
         comm_color_map = {c: cmap_comms(i) for i, c in enumerate(unique_comms)}
-
-        # Spring layout with community seeding
-        pos = nx.spring_layout(G_comm, seed=COMMUNITY_BASE_SEED,
-                               weight="abs_weight",
-                               k=3.0 / np.sqrt(max(G_comm.number_of_nodes(), 1)),
-                               iterations=300)
-
-        # ---- Full network plot
-        fig, ax = plt.subplots(figsize=(18, 16))
-
-        # Draw edges (light)
-        nx.draw_networkx_edges(G_comm, pos, ax=ax, alpha=0.05, width=0.2,
-                               edge_color="gray")
-
+ 
+        # ---- Community-aware exploded layout ----
+        # Step 1: Build a super-graph where each community is a node.
+        #         Edge weight = sum of |edge weights| between communities.
+        # Step 2: Layout the super-graph with large spacing.
+        # Step 3: Layout nodes within each community (local spring).
+        # Step 4: Combine: pos[node] = inter_scale * center + intra_scale * local
+ 
+        INTER_SCALE = 6.0    # How far apart communities are placed
+        INTRA_SCALE = 1.0    # How spread out nodes are within a community
+        K_LOCAL = None        # spring k for within-community (auto)
+        ITERS_LOCAL = 200
+        ITERS_GLOBAL = 200
+ 
+        rng = np.random.default_rng(COMMUNITY_BASE_SEED)
+ 
+        # Build community super-graph
+        CG = nx.Graph()
+        for c in unique_comms:
+            CG.add_node(c)
+ 
+        for u, v, d in G_comm.edges(data=True):
+            cu = gene_to_comm.get(u, -1)
+            cv = gene_to_comm.get(v, -1)
+            if cu == cv:
+                continue
+            w = abs(float(d.get("abs_weight", d.get("weight", 1.0))))
+            if CG.has_edge(cu, cv):
+                CG[cu][cv]["weight"] += w
+            else:
+                CG.add_edge(cu, cv, weight=w)
+ 
+        # Layout super-graph
+        if CG.number_of_edges() > 0:
+            pos_comm = nx.spring_layout(CG, seed=COMMUNITY_BASE_SEED,
+                                        weight="weight",
+                                        k=2.0 / np.sqrt(max(CG.number_of_nodes(), 1)),
+                                        iterations=ITERS_GLOBAL)
+        else:
+            # No inter-community edges: arrange in a circle
+            pos_comm = nx.circular_layout(CG)
+ 
+        # Scale community centers
+        pos_comm = {c: INTER_SCALE * np.asarray(p, dtype=float)
+                    for c, p in pos_comm.items()}
+ 
+        # Layout nodes within each community
+        pos = {}
+        for c in unique_comms:
+            c_nodes = comm_to_nodelist[c]
+            sub = G_comm.subgraph(c_nodes).copy()
+ 
+            if len(c_nodes) == 1:
+                pos[c_nodes[0]] = pos_comm.get(c, np.zeros(2))
+                continue
+ 
+            if sub.number_of_edges() > 0:
+                k_val = K_LOCAL or (2.0 / np.sqrt(max(sub.number_of_nodes(), 1)))
+                pos_sub = nx.spring_layout(sub, seed=COMMUNITY_BASE_SEED,
+                                           weight="abs_weight",
+                                           k=k_val, iterations=ITERS_LOCAL)
+            else:
+                # No internal edges: small jitter cloud
+                pos_sub = {n: rng.normal(0, 0.05, size=2) for n in c_nodes}
+ 
+            # Center and scale local coordinates
+            coords = np.array([pos_sub[n] for n in c_nodes], dtype=float)
+            coords = coords - coords.mean(axis=0, keepdims=True)
+            coords = INTRA_SCALE * coords
+ 
+            center = pos_comm.get(c, np.zeros(2, dtype=float))
+            for i, n in enumerate(c_nodes):
+                pos[n] = center + coords[i]
+ 
+        log(f"  Exploded layout: INTER_SCALE={INTER_SCALE}, INTRA_SCALE={INTRA_SCALE}")
+        log(f"  {len(pos)} nodes positioned across {n_comms} communities")
+ 
+        # ---- Full network plot ----
+        fig, ax = plt.subplots(figsize=(22, 20))
+ 
+        # Draw edges — VISIBLE (increased alpha and width)
+        edges = list(G_comm.edges(data=True))
+        if edges:
+            # Separate intra-community and inter-community edges
+            intra_edges = []
+            inter_edges = []
+            for u, v, d in edges:
+                cu = gene_to_comm.get(u, -1)
+                cv = gene_to_comm.get(v, -1)
+                if cu == cv:
+                    intra_edges.append((u, v, d))
+                else:
+                    inter_edges.append((u, v, d))
+ 
+            # Intra-community edges: more visible
+            if intra_edges:
+                intra_colors = []
+                intra_widths = []
+                for u, v, d in intra_edges:
+                    w = d.get("weight", 0)
+                    intra_colors.append("firebrick" if w > 0 else "steelblue")
+                    intra_widths.append(0.3 + 1.5 * abs(w))
+ 
+                nx.draw_networkx_edges(G_comm, pos,
+                                       edgelist=[(u, v) for u, v, d in intra_edges],
+                                       ax=ax, alpha=0.25, width=intra_widths,
+                                       edge_color=intra_colors)
+ 
+            # Inter-community edges: lighter
+            if inter_edges:
+                nx.draw_networkx_edges(G_comm, pos,
+                                       edgelist=[(u, v) for u, v, d in inter_edges],
+                                       ax=ax, alpha=0.08, width=0.3,
+                                       edge_color="gray", style="dashed")
+ 
         # Draw nodes colored by community
         for c in unique_comms:
             c_nodes = comm_to_nodelist.get(c, [])
             if len(c_nodes) == 0:
                 continue
+ 
+            # Node sizing by degree
+            degrees = {n: G_comm.degree(n) for n in c_nodes}
+            max_deg = max(degrees.values()) if degrees else 1
+            node_sizes = [30 + 200 * (degrees[n] / max_deg) for n in c_nodes]
+ 
             nx.draw_networkx_nodes(G_comm, pos, nodelist=c_nodes, ax=ax,
-                                   node_size=25, node_color=[comm_color_map[c]],
-                                   alpha=0.75, linewidths=0.3, edgecolors="black",
+                                   node_size=node_sizes,
+                                   node_color=[comm_color_map[c]],
+                                   alpha=0.80, linewidths=0.4, edgecolors="black",
                                    label=f"C{c} (n={len(c_nodes)})")
-
+ 
         # Highlight A3 genes
         a3_in_graph = [g for g in A3_GENES if g in G_comm.nodes()]
         if a3_in_graph:
             nx.draw_networkx_nodes(G_comm, pos, nodelist=a3_in_graph, ax=ax,
-                                   node_size=200, node_color="gold",
-                                   edgecolors="black", linewidths=2.0)
+                                   node_size=300, node_color="gold",
+                                   edgecolors="black", linewidths=2.5)
             labels_a3 = {n: sym(n) for n in a3_in_graph}
             nx.draw_networkx_labels(G_comm, pos, labels=labels_a3, ax=ax,
-                                    font_size=10, font_weight="bold", font_color="darkred")
-
-        # Highlight top 3 hub genes per community (by degree)
+                                    font_size=20, font_weight="bold",
+                                    font_color="darkred")
+ 
+        # Highlight top 3 hub genes per community (by degree) — DOUBLED text size
         hub_labels = {}
         for c in unique_comms:
             c_nodes = comm_to_nodelist.get(c, [])
@@ -450,107 +631,105 @@ for cancer_type in CANCER_TYPES:
             for g, d in top3:
                 if g not in a3_in_graph:
                     hub_labels[g] = sym(g)
-
+ 
         if hub_labels:
             nx.draw_networkx_labels(G_comm, pos, labels=hub_labels, ax=ax,
-                                    font_size=7, font_weight="bold", font_color="black",
-                                    alpha=0.8)
-
-        ax.set_title(f"{cancer_type} | DIFF Network — Leiden Communities",
-                     fontsize=22, pad=15)
-        ax.legend(fontsize=9, loc="upper right", ncol=2, framealpha=0.9,
-                  markerscale=2)
+                                    font_size=14, font_weight="bold",
+                                    font_color="black", alpha=0.9)
+ 
+        ax.set_title(f"{cancer_type} | DIFF Network — Leiden Communities (Exploded Layout)",
+                     fontsize=26, pad=15)
+        ax.legend(fontsize=18, loc="upper right", ncol=2,
+                  framealpha=0.9, markerscale=2,
+                  title="Communities", title_fontsize=20)
         ax.axis("off")
         plt.tight_layout()
-
+ 
         plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_C_network_full.png"),
                     dpi=300, bbox_inches="tight")
         plt.savefig(os.path.join(ct_fig_dir, f"{cancer_type}_Panel_C_network_full.pdf"),
                     bbox_inches="tight")
         plt.close()
-        log(f"[SAVE] Panel C (full) -> {ct_fig_dir}")
-
-        # ---- Individual community zoomed subplots
+        log(f"[SAVE] Panel C (exploded layout) -> {ct_fig_dir}")
+ 
+        # ---- Individual community zoomed subplots (with updated text sizes) ----
         banner("[PANEL C] Per-community zoomed plots")
-
+ 
         zoom_dir = ensure_dir(os.path.join(ct_fig_dir, "community_zooms"))
-
+ 
         for c in unique_comms:
             c_nodes = comm_to_nodelist.get(c, [])
             if len(c_nodes) < 5:
                 continue
-
-            # Extract subgraph
+ 
             G_sub = G_comm.subgraph(c_nodes).copy()
             if G_sub.number_of_edges() == 0:
                 continue
-
-            # Layout for this community
+ 
             pos_sub = nx.spring_layout(G_sub, seed=COMMUNITY_BASE_SEED,
                                        weight="abs_weight",
                                        k=2.0 / np.sqrt(max(G_sub.number_of_nodes(), 1)),
                                        iterations=200)
-
-            fig, ax = plt.subplots(figsize=(12, 10))
-
-            # Edge coloring by weight sign
+ 
+            fig, ax = plt.subplots(figsize=(14, 12))
+ 
+            # Edges — visible
             edge_colors = []
             edge_widths = []
             for u, v, d in G_sub.edges(data=True):
                 w = d.get("weight", 0)
                 edge_colors.append("firebrick" if w > 0 else "steelblue")
                 edge_widths.append(0.5 + 2.0 * abs(w))
-
+ 
             nx.draw_networkx_edges(G_sub, pos_sub, ax=ax,
                                    edge_color=edge_colors, width=edge_widths,
-                                   alpha=0.4)
-
-            # Node sizing by degree
+                                   alpha=0.35)
+ 
+            # Nodes
             degrees = dict(G_sub.degree())
             max_deg = max(degrees.values()) if degrees else 1
-            node_sizes = [40 + 300 * (degrees[n] / max_deg) for n in G_sub.nodes()]
-
+            node_sizes = [60 + 400 * (degrees[n] / max_deg) for n in G_sub.nodes()]
+ 
             nx.draw_networkx_nodes(G_sub, pos_sub, ax=ax,
                                    node_size=node_sizes,
                                    node_color=[comm_color_map[c]],
                                    alpha=0.85, edgecolors="black", linewidths=0.8)
-
-            # Label all genes if small community, top genes if large
+ 
+            # Labels — doubled font sizes
             if len(c_nodes) <= 40:
                 labels = {n: sym(n) for n in G_sub.nodes()}
-                font_size = max(6, 10 - len(c_nodes) // 10)
+                font_size = max(10, 16 - len(c_nodes) // 8)
             else:
-                # Top 15 by degree
                 top_nodes = sorted(degrees.items(), key=lambda x: x[1], reverse=True)[:15]
                 labels = {n: sym(n) for n, d in top_nodes}
-                font_size = 8
-
-            # Highlight A3 genes in this community
+                font_size = 14
+ 
+            # A3 genes
             a3_here = [g for g in A3_GENES if g in G_sub.nodes()]
             if a3_here:
                 nx.draw_networkx_nodes(G_sub, pos_sub, nodelist=a3_here, ax=ax,
-                                       node_size=250, node_color="gold",
+                                       node_size=350, node_color="gold",
                                        edgecolors="black", linewidths=2.0)
                 for g in a3_here:
                     labels[g] = sym(g)
-
+ 
             nx.draw_networkx_labels(G_sub, pos_sub, labels=labels, ax=ax,
                                     font_size=font_size, font_weight="bold")
-
+ 
             ax.set_title(f"Community {c} — {len(c_nodes)} genes, "
                          f"{G_sub.number_of_edges()} edges",
-                         fontsize=18, pad=10)
+                         fontsize=22, pad=10)
             ax.axis("off")
             plt.tight_layout()
-
+ 
             zoom_path = os.path.join(zoom_dir, f"{cancer_type}_community_{c:02d}.png")
             plt.savefig(zoom_path, dpi=300, bbox_inches="tight")
             plt.close()
-
+ 
             log(f"  [SAVE] Community {c} ({len(c_nodes)} genes) -> {zoom_path}")
-
+ 
         log(f"[SAVE] All community zooms -> {zoom_dir}")
-
+ 
     else:
         log("[SKIP] No community graph available for Panel C")
 

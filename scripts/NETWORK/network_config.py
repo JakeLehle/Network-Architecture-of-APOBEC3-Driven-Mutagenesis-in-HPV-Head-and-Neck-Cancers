@@ -95,7 +95,7 @@ BIOMARKERS = [
     "ENSG00000168685",  # IL7R
     "ENSG00000198851",  # CD3E
     # B cell
-    "ENSG00000007314",  # CD79A
+    "ENSG00000105369",  # CD79A
     "ENSG00000156738",  # MS4A1 (CD20)
     # Fibroblast
     "ENSG00000011465",  # DCN
@@ -105,7 +105,7 @@ BIOMARKERS = [
     "ENSG00000271503",  # CCL5
     # Basal cell
     "ENSG00000186081",  # KRT5
-    "ENSG00000166886",  # TACSTD2
+    "ENSG00000184292",  # TACSTD2
     # Macrophage
     "ENSG00000129226",  # CD68
     "ENSG00000066336",  # SPI1
@@ -120,12 +120,12 @@ BIOMARKERS = [
     "ENSG00000163599",  # CTLA4
     # Mast cell
     "ENSG00000172236",  # TPSAB1
-    "ENSG00000163736",  # CPA3
+    "ENSG00000163751",  # CPA3
     # pDC
     "ENSG00000185291",  # IL3RA
-    "ENSG00000162692",  # LILRA4
+    "ENSG00000239961",  # LILRA4
     # mDC
-    "ENSG00000110395",  # LAMP3
+    "ENSG00000078081",  # LAMP3
     "ENSG00000126353",  # CCR7
 ]
 
@@ -192,7 +192,7 @@ DIFF_THRESHOLD     = 0.70    # |diff| threshold for DIFF network edges
 # STEP 05 — COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
-COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]   # Single resolution (selected via sweep)
+COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 0.1]   # Single resolution (selected via sweep)
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
 USE_LARGEST_COMPONENT = True
