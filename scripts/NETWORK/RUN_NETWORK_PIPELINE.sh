@@ -105,7 +105,6 @@ echo "    $(date)"
 conda run -n "$CONDA_ENV" python Step06_Centrality_Metrics.py
 echo "    STEP 06 DONE: $(date)"
 
-
 # =============================================================================
 # STEP 07 — Figure Plotting
 # =============================================================================
@@ -115,8 +114,15 @@ echo "    $(date)"
 conda run -n NETWORK python Step07_Generate_Figure2_Panels.py
 echo "    STEP 07 DONE: $(date)"
 
-
 # =============================================================================
+# STEP 07 — Figure Plotting
+# =============================================================================
+echo ""
+echo ">>> STEP 08: Summary Info"
+echo "    $(date)"
+conda run -n NETWORK python Step08_Pipeline_Summary.py
+echo "    STEP 08 DONE: $(date)"
+
 # DONE
 # =============================================================================
 echo ""
