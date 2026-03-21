@@ -17,4 +17,6 @@ dependencies:
   - conda-forge::pyarrow
   - conda-forge::leidenalg
   - bioconda::gseapy
+  - anndata=0.12.6
+  - scanpy>=1.9
 prefix: /master/jlehle/anaconda3/envs/NETWORK
