@@ -86,16 +86,17 @@ CORRELATION_METHOD = "spearman"
 
 CORR_THRESHOLD     = 0.80     # |rho| threshold for HIGH/LOW network edges
 
-# DIFF threshold: relaxed from 0.70 (TCGA bulk) to 0.45 for single-cell.
-# SC Spearman correlations are weaker due to dropout and sparsity.
-# Threshold sweep (Step 02.1) showed:
-#   0.70 → 111 nodes, 78 edges, LCC=5 (too fragmented)
-#   0.45 → 804 nodes, 1182 edges, LCC=700 (87%), ~23 communities
-#   0.40 → 1254 nodes, 2806 edges, LCC=1202 (96%), ~19 communities
-# 0.45 provides interpretable community structure with dominant LCC.
-DIFF_THRESHOLD     = 0.45
+# DIFF threshold: relaxed from 0.70 (TCGA bulk) to 0.40 for single-cell.
+# SC Spearman correlations are attenuated by dropout and sparsity.
+# Threshold sweep results (with 15-sig corrected weights, 546 cells/group):
+#   0.70 → ~100 nodes, fragmented, no A3 genes
+#   0.45 → ~1000 nodes, LCC ~89%, A3A just barely excluded (max 0.4493)
+#   0.40 → ~1600 nodes, LCC ~97%, A3A + A3H captured, avg deg ~4.4
+#   0.35 → ~2500 nodes, avg deg ~6.7, also captures A3D/A3G
+# 0.40 captures A3A/A3H with network density comparable to Figure 2 (avg deg 4.8).
+DIFF_THRESHOLD     = 0.40
 
-SWEEP_THRESHOLDS = [0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80, 0.90]
 
 # =============================================================================
 # STEP 03 — COMMUNITY DETECTION PARAMETERS
