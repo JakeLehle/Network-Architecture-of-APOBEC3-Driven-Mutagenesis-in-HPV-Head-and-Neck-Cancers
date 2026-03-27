@@ -208,6 +208,35 @@ def merge_small_communities(comm_map, G, min_size, target_big, weight="abs_weigh
     return merged
 
 
+def remove_intra_community_isolates(comm_map, G):
+    """
+    Remove nodes that have zero edges to other members of their own community.
+    These are 'orphan' nodes created by merging — they were assigned to a community
+    they have no connections to. Matches the TCGA pipeline's nx9_remove_degree0
+    behavior applied after community assignment.
+    """
+    cleaned = {}
+    n_removed = 0
+    for node, comm in comm_map.items():
+        if node not in G:
+            n_removed += 1
+            continue
+        # Check if node has at least one intra-community neighbor
+        has_intra = False
+        for neighbor in G.neighbors(node):
+            if comm_map.get(neighbor) == comm:
+                has_intra = True
+                break
+        if has_intra:
+            cleaned[node] = comm
+        else:
+            n_removed += 1
+
+    if n_removed > 0:
+        log(f"  Removed {n_removed} intra-community isolates (no edges within their community)")
+    return cleaned
+
+
 def renumber_communities(comm_map):
     """Renumber communities 0, 1, 2, ... by descending size."""
     comm_sizes = {}
@@ -390,7 +419,52 @@ def main():
     merged = merge_small_communities(
         best_partition, G_comm, MIN_COMMUNITY_SIZE, TARGET_BIG_COMMUNITIES
     )
-    final_partition = renumber_communities(merged)
+
+    # Remove nodes with zero intra-community edges (orphans from merging)
+    cleaned = remove_intra_community_isolates(merged, G_comm)
+
+    # Remove small disconnected islands within each community
+    # After merging, some communities contain multiple disconnected sub-components
+    # (e.g., 2-11 node islands not connected to the main body). Keep only the
+    # largest connected component within each community.
+    pruned = {}
+    n_island_removed = 0
+    for comm_id in sorted(set(cleaned.values())):
+        comm_nodes = [n for n, c in cleaned.items() if c == comm_id]
+        if len(comm_nodes) <= 1:
+            for n in comm_nodes:
+                pruned[n] = comm_id
+            continue
+        sub = G_comm.subgraph(comm_nodes)
+        components = list(nx.connected_components(sub))
+        if len(components) <= 1:
+            for n in comm_nodes:
+                pruned[n] = comm_id
+        else:
+            # Keep only the largest connected component
+            lcc = max(components, key=len)
+            island_nodes = set(comm_nodes) - lcc
+            n_island_removed += len(island_nodes)
+            if island_nodes:
+                sizes = sorted([len(c) for c in components], reverse=True)
+                log(f"  Community {comm_id}: {len(components)} components "
+                    f"(sizes: {sizes}), keeping LCC ({len(lcc)}), "
+                    f"dropping {len(island_nodes)} island nodes")
+            for n in lcc:
+                pruned[n] = comm_id
+
+    if n_island_removed > 0:
+        log(f"  Removed {n_island_removed} island nodes across all communities")
+
+    final_partition = renumber_communities(pruned)
+
+    # Update graph to match final partition (remove nodes not in partition)
+    nodes_in_partition = set(final_partition.keys())
+    nodes_to_remove = [n for n in G_comm.nodes() if n not in nodes_in_partition]
+    if nodes_to_remove:
+        G_comm = G_comm.copy()
+        G_comm.remove_nodes_from(nodes_to_remove)
+        log(f"  Removed {len(nodes_to_remove)} nodes from graph (not in final partition)")
 
     final_sizes = {}
     for c in final_partition.values():
