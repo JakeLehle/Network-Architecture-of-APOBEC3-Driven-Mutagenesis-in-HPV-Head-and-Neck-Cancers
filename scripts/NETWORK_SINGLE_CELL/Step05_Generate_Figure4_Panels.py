@@ -11,12 +11,12 @@ Panels:
   4c — Overlap matrix: SC vs TCGA bulk communities (hypergeometric)
   4d — Exploded community network (full) with gene highlighting
   4d_zooms — Per-community zoomed subplots
-  4e — Known A3-Interactor enrichment
+  4e — Harris A3B interactor enrichment
 
 Gene highlighting on network plots:
-  - A3 genes: full name (APOBEC3A), red circle (#ed6a5a), red text
-  - TCGA shared genes: orange circle (#f18f01), orange text
-  - Known A3-Interactors: yellow circle (#fed766), dark gold text
+  - A3 genes: full name (APOBEC3A), red circle (#ed6a5a)
+  - TCGA shared genes: orange circle (#f18f01)
+  - Harris interactors: yellow circle (#fed766)
 
 Usage:
   conda run -n NETWORK python Step05_Generate_Figure4_Panels.py
@@ -46,20 +46,11 @@ from network_config_SC import (
 )
 
 # Colors
-COLOR_A3          = "#ed6a5a"
-COLOR_TCGA        = "#f18f01"
-COLOR_HARRIS      = "#fed766"
-COLOR_A3_TEXT     = "#c0392b"   # darker red for readability
-COLOR_TCGA_TEXT   = "#d35400"   # darker orange for readability
-COLOR_HARRIS_TEXT = "#b8860b"   # dark goldenrod for readability on white
+COLOR_A3     = "#ed6a5a"
+COLOR_TCGA   = "#f18f01"
+COLOR_HARRIS = "#fed766"
 INTER_SCALE  = 6.0
 INTRA_SCALE  = 1.0
-
-# Node size multipliers (base sizes scaled up to match increased font/edge)
-NODE_BASE_GLOBAL = 120      # was 60
-NODE_SCALE_GLOBAL = 800     # was 400
-NODE_BASE_ZOOM = 160        # was 80
-NODE_SCALE_ZOOM = 1000      # was 500
 
 def bh_fdr(pvals):
     pvals = np.asarray(pvals, dtype=float); n = len(pvals)
@@ -69,109 +60,6 @@ def bh_fdr(pvals):
     adj = pvals * n / ranked
     adj = np.minimum.accumulate(adj[np.argsort(ranked)[::-1]])[::-1]
     return np.clip(adj, 0, 1)
-
-
-# =============================================================================
-# LABEL REPULSION — prevent overlapping gene names
-# =============================================================================
-
-def draw_labels_with_repulsion(G, pos, labels, ax, font_size=14, font_weight="bold",
-                               color_map=None, default_color="black",
-                               iterations=50, repel_force=0.02):
-    """
-    Draw gene labels with simple iterative repulsion to reduce overlap.
-
-    color_map: dict mapping node -> text color (for class-colored labels)
-    """
-    if not labels:
-        return
-
-    # Get label positions (start at node positions)
-    label_nodes = list(labels.keys())
-    label_pos = {n: np.array(pos[n], dtype=float) for n in label_nodes if n in pos}
-
-    if len(label_pos) < 2:
-        # No repulsion needed for 0-1 labels
-        for n in label_pos:
-            col = color_map.get(n, default_color) if color_map else default_color
-            ax.annotate(labels[n], label_pos[n], fontsize=font_size, fontweight=font_weight,
-                        color=col, ha="center", va="center",
-                        bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7))
-        return
-
-    # Estimate label extents for repulsion (rough bbox in data coords)
-    # Get the data range to scale font size to data units
-    all_x = [pos[n][0] for n in G.nodes() if n in pos]
-    all_y = [pos[n][1] for n in G.nodes() if n in pos]
-    if not all_x:
-        return
-    data_range = max(max(all_x) - min(all_x), max(all_y) - min(all_y), 1e-6)
-    char_width = data_range * 0.008 * (font_size / 12.0)
-
-    # Offset labels slightly above node
-    for n in label_pos:
-        label_pos[n] = label_pos[n] + np.array([0, char_width * 1.5])
-
-    # Iterative repulsion
-    nodes_list = list(label_pos.keys())
-    for _ in range(iterations):
-        for i, n1 in enumerate(nodes_list):
-            for j, n2 in enumerate(nodes_list):
-                if i >= j:
-                    continue
-                p1 = label_pos[n1]
-                p2 = label_pos[n2]
-                diff = p1 - p2
-                dist = np.linalg.norm(diff)
-
-                # Estimate overlap threshold based on label lengths
-                min_dist = char_width * max(len(labels[n1]), len(labels[n2])) * 0.5
-                if dist < min_dist and dist > 1e-8:
-                    push = repel_force * (min_dist - dist) * diff / dist
-                    label_pos[n1] = label_pos[n1] + push
-                    label_pos[n2] = label_pos[n2] - push
-
-    # Draw labels with leader lines
-    for n in label_nodes:
-        if n not in label_pos or n not in pos:
-            continue
-        col = color_map.get(n, default_color) if color_map else default_color
-        node_xy = pos[n]
-        label_xy = label_pos[n]
-
-        # Draw thin leader line if label moved away from node
-        offset_dist = np.linalg.norm(label_xy - node_xy)
-        if offset_dist > char_width * 2:
-            ax.annotate(
-                labels[n], xy=node_xy, xytext=label_xy,
-                fontsize=font_size, fontweight=font_weight, color=col,
-                ha="center", va="center",
-                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7),
-                arrowprops=dict(arrowstyle="-", color="gray", lw=0.5, alpha=0.5)
-            )
-        else:
-            ax.annotate(
-                labels[n], xy=label_xy,
-                fontsize=font_size, fontweight=font_weight, color=col,
-                ha="center", va="center",
-                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7)
-            )
-
-
-def build_color_map(labels, a3_nodes, tcga_nodes, harris_nodes):
-    """Build a dict mapping labeled nodes to their class text color."""
-    cmap = {}
-    for n in labels:
-        if n in a3_nodes:
-            cmap[n] = COLOR_A3_TEXT
-        elif n in tcga_nodes:
-            cmap[n] = COLOR_TCGA_TEXT
-        elif n in harris_nodes:
-            cmap[n] = COLOR_HARRIS_TEXT
-        else:
-            cmap[n] = "black"
-    return cmap
-
 
 # ---- Loaders ----
 def load_sc_communities():
@@ -223,6 +111,7 @@ def plot_dual_heatmap(save_dir):
     c2g = {}
     for g in comm_genes_list: c2g.setdefault(g2c.get(g,-1),[]).append(g)
 
+    # Within-community clustering
     clustered = {}
     for c, genes in c2g.items():
         if len(genes) <= 2: clustered[c] = genes; continue
@@ -234,6 +123,7 @@ def plot_dual_heatmap(save_dir):
             clustered[c] = [genes[i] for i in leaves_list(Z)]
         except: clustered[c] = genes
 
+    # Between-community ordering
     cids = sorted(clustered.keys())
     if len(cids) > 2:
         mc = np.zeros((len(cids),len(cids)))
@@ -265,12 +155,12 @@ def plot_dual_heatmap(save_dir):
         for s,e,c in boundaries:
             if s > 0: ax.axhline(s-0.5, color="white", lw=2, alpha=0.8); ax.axvline(s-0.5, color="white", lw=2, alpha=0.8)
         for s,e,c in boundaries:
-            if e-s >= 5: ax.annotate(f"C{c} ({e-s})", xy=(len(gp)+5, (s+e)/2), fontsize=26, fontweight="bold", va="center", ha="left", annotation_clip=False)
+            if e-s >= 5: ax.annotate(f"C{c} ({e-s})", xy=(len(gp)+5, (s+e)/2), fontsize=20, fontweight="bold", va="center", ha="left", annotation_clip=False)
         cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.12)
-        cbar.set_label(f"Spearman rho ({label})", fontsize=30, labelpad=12); cbar.ax.tick_params(labelsize=22)
-        ax.set_xlabel("Genes (clustered within communities)", fontsize=34, labelpad=12)
-        ax.set_ylabel("Genes (clustered within communities)", fontsize=34, labelpad=12)
-        ax.set_title(f"SC Basal | {label}", fontsize=34, pad=15); ax.set_xticks([]); ax.set_yticks([])
+        cbar.set_label(f"Spearman rho ({label})", fontsize=24, labelpad=12); cbar.ax.tick_params(labelsize=22)
+        ax.set_xlabel("Genes (clustered within communities)", fontsize=28, labelpad=12)
+        ax.set_ylabel("Genes (clustered within communities)", fontsize=28, labelpad=12)
+        ax.set_title(f"SC Basal | {label}", fontsize=28, pad=15); ax.set_xticks([]); ax.set_yticks([])
     plt.tight_layout(w_pad=4)
     for ext in ["pdf","png"]:
         plt.savefig(os.path.join(save_dir, f"Panel_4b_dual_heatmap.{ext}"), dpi=300, bbox_inches="tight")
@@ -318,35 +208,33 @@ def plot_network(G, g2c, tcga_shared, harris_genes, save_dir):
     if intra:
         ec = ["firebrick" if d.get("weight",0)>0 else "steelblue" for u,v,d in intra]
         ew = [0.3+1.5*abs(d.get("weight",0)) for u,v,d in intra]
-        nx.draw_networkx_edges(G, pos, edgelist=[(u,v) for u,v,d in intra], ax=ax, alpha=0.3, width=ew, edge_color=ec)
+        nx.draw_networkx_edges(G, pos, edgelist=[(u,v) for u,v,d in intra], ax=ax, alpha=0.25, width=ew, edge_color=ec)
     if inter:
-        nx.draw_networkx_edges(G, pos, edgelist=[(u,v) for u,v,d in inter], ax=ax, alpha=0.1, width=0.4, edge_color="gray", style="dashed")
+        nx.draw_networkx_edges(G, pos, edgelist=[(u,v) for u,v,d in inter], ax=ax, alpha=0.08, width=0.3, edge_color="gray", style="dashed")
 
-    # Base nodes (scaled up)
+    # Base nodes
     deg = dict(G.degree()); md = max(deg.values()) if deg else 1
     nodes = list(G.nodes())
-    ns = [NODE_BASE_GLOBAL + NODE_SCALE_GLOBAL*(deg[n]/md) for n in nodes]
+    ns = [60+400*(deg[n]/md) for n in nodes]
     nc_list = [ccmap.get(g2c.get(n,-1),"gray") for n in nodes]
     nx.draw_networkx_nodes(G, pos, nodelist=nodes, ax=ax, node_size=ns, node_color=nc_list, alpha=0.85, edgecolors="black", linewidths=0.5)
 
     # Highlight rings
     rs = 2.5
-    a3_set = set(A3_GENES)
     harris_nn = [n for n in nodes if n in harris_genes]
-    tcga_nn = [n for n in nodes if n in tcga_shared and n not in a3_set]
-    a3_nn = [n for n in nodes if n in a3_set]
-
     if harris_nn:
-        nx.draw_networkx_nodes(G, pos, nodelist=harris_nn, ax=ax, node_size=[rs*(NODE_BASE_GLOBAL+NODE_SCALE_GLOBAL*(deg[n]/md)) for n in harris_nn], node_color="none", edgecolors=COLOR_HARRIS, linewidths=5.0, alpha=0.9)
-        log(f"  Known A3-Interactors in network: {len(harris_nn)} — {sorted(harris_nn)}")
+        nx.draw_networkx_nodes(G, pos, nodelist=harris_nn, ax=ax, node_size=[rs*(60+400*(deg[n]/md)) for n in harris_nn], node_color="none", edgecolors=COLOR_HARRIS, linewidths=4.0, alpha=0.9)
+        log(f"  Harris in network: {len(harris_nn)} — {sorted(harris_nn)}")
+    tcga_nn = [n for n in nodes if n in tcga_shared and n not in A3_GENES]
     if tcga_nn:
-        nx.draw_networkx_nodes(G, pos, nodelist=tcga_nn, ax=ax, node_size=[rs*(NODE_BASE_GLOBAL+NODE_SCALE_GLOBAL*(deg[n]/md)) for n in tcga_nn], node_color="none", edgecolors=COLOR_TCGA, linewidths=5.0, alpha=0.9)
+        nx.draw_networkx_nodes(G, pos, nodelist=tcga_nn, ax=ax, node_size=[rs*(60+400*(deg[n]/md)) for n in tcga_nn], node_color="none", edgecolors=COLOR_TCGA, linewidths=4.0, alpha=0.9)
         log(f"  TCGA shared in network: {len(tcga_nn)} — {sorted(tcga_nn)}")
+    a3_nn = [n for n in nodes if n in A3_GENES]
     if a3_nn:
-        nx.draw_networkx_nodes(G, pos, nodelist=a3_nn, ax=ax, node_size=[rs*(NODE_BASE_GLOBAL+NODE_SCALE_GLOBAL*(deg[n]/md)) for n in a3_nn], node_color="none", edgecolors=COLOR_A3, linewidths=5.0, alpha=1.0)
+        nx.draw_networkx_nodes(G, pos, nodelist=a3_nn, ax=ax, node_size=[rs*(60+400*(deg[n]/md)) for n in a3_nn], node_color="none", edgecolors=COLOR_A3, linewidths=5.0, alpha=1.0)
         log(f"  A3 in network: {[f'{n} (C{g2c.get(n)})' for n in a3_nn]}")
 
-    # Build labels
+    # Labels
     labels = {}
     for n in a3_nn: labels[n] = n
     for n in tcga_nn: labels[n] = n
@@ -354,17 +242,13 @@ def plot_network(G, g2c, tcga_shared, harris_genes, save_dir):
     for c, cn in c2n.items():
         for n in sorted(cn, key=lambda x: deg.get(x,0), reverse=True)[:3]:
             if n not in labels: labels[n] = n
-
-    # Class-colored text with repulsion
-    color_map = build_color_map(labels, set(a3_nn), set(tcga_nn), set(harris_nn))
-    draw_labels_with_repulsion(G, pos, labels, ax, font_size=32, font_weight="bold",
-                               color_map=color_map, iterations=80, repel_force=0.025)
+    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=14, font_weight="bold")
 
     # Legend
     le = [Patch(facecolor=ccmap[c], edgecolor="black", lw=0.5, label=f"C{c} ({len(c2n.get(c,[]))})") for c in ucomms[:14]]
     le += [Patch(fc="none", ec=COLOR_A3, lw=3, label="APOBEC3"),
            Patch(fc="none", ec=COLOR_TCGA, lw=3, label="TCGA shared"),
-           Patch(fc="none", ec=COLOR_HARRIS, lw=3, label="Known A3-Interactor")]
+           Patch(fc="none", ec=COLOR_HARRIS, lw=3, label="Harris interactor")]
     ax.legend(handles=le, loc="upper left", fontsize=16, ncol=2, framealpha=0.9, title="Communities", title_fontsize=18)
     ax.set_title(f"SC Basal DIFF Network — 14 Communities (|Δρ| ≥ {DIFF_THRESHOLD})", fontsize=26, pad=15)
     ax.axis("off"); plt.tight_layout()
@@ -378,10 +262,8 @@ def plot_zooms(G, g2c, ccmap, ucomms, tcga_shared, harris_genes, save_dir):
     zdir = ensure_dir(os.path.join(save_dir, "community_zooms"))
     c2n = {}
     for n in G.nodes(): c2n.setdefault(g2c.get(n,-1),[]).append(n)
-    a3_set = set(A3_GENES)
-
     for c in ucomms:
-        cn = c2n.get(c,[])
+        cn = c2n.get(c,[]); 
         if len(cn) < 3: continue
         Gs = G.subgraph(cn).copy()
         if Gs.number_of_edges()==0: continue
@@ -390,38 +272,30 @@ def plot_zooms(G, g2c, ccmap, ucomms, tcga_shared, harris_genes, save_dir):
         ec = ["firebrick" if d.get("weight",0)>0 else "steelblue" for u,v,d in Gs.edges(data=True)]
         ew = [0.5+2.5*abs(d.get("weight",0)) for u,v,d in Gs.edges(data=True)]
         nx.draw_networkx_edges(Gs, ps, ax=ax, edge_color=ec, width=ew, alpha=0.35)
-
         deg = dict(Gs.degree()); md = max(deg.values()) if deg else 1
-        ns = [NODE_BASE_ZOOM + NODE_SCALE_ZOOM*(deg[n]/md) for n in cn]
+        ns = [80+500*(deg[n]/md) for n in cn]
         nx.draw_networkx_nodes(Gs, ps, ax=ax, node_size=ns, node_color=[ccmap.get(c,"gray")]*len(cn), alpha=0.85, edgecolors="black", linewidths=0.8)
-
         rs = 2.5; sn = list(Gs.nodes())
         hh = [n for n in sn if n in harris_genes]
-        if hh: nx.draw_networkx_nodes(Gs, ps, nodelist=hh, ax=ax, node_size=[rs*(NODE_BASE_ZOOM+NODE_SCALE_ZOOM*(deg[n]/md)) for n in hh], node_color="none", edgecolors=COLOR_HARRIS, linewidths=4.0)
-        tt = [n for n in sn if n in tcga_shared and n not in a3_set]
-        if tt: nx.draw_networkx_nodes(Gs, ps, nodelist=tt, ax=ax, node_size=[rs*(NODE_BASE_ZOOM+NODE_SCALE_ZOOM*(deg[n]/md)) for n in tt], node_color="none", edgecolors=COLOR_TCGA, linewidths=4.0)
-        aa = [n for n in sn if n in a3_set]
-        if aa: nx.draw_networkx_nodes(Gs, ps, nodelist=aa, ax=ax, node_size=[rs*(NODE_BASE_ZOOM+NODE_SCALE_ZOOM*(deg[n]/md)) for n in aa], node_color="none", edgecolors=COLOR_A3, linewidths=5.0)
-
-        if len(cn) <= 50:
-            labels = {n:n for n in sn}; fs = max(8, 14-len(cn)//10)
+        if hh: nx.draw_networkx_nodes(Gs, ps, nodelist=hh, ax=ax, node_size=[rs*(80+500*(deg[n]/md)) for n in hh], node_color="none", edgecolors=COLOR_HARRIS, linewidths=4.0)
+        tt = [n for n in sn if n in tcga_shared and n not in A3_GENES]
+        if tt: nx.draw_networkx_nodes(Gs, ps, nodelist=tt, ax=ax, node_size=[rs*(80+500*(deg[n]/md)) for n in tt], node_color="none", edgecolors=COLOR_TCGA, linewidths=4.0)
+        aa = [n for n in sn if n in A3_GENES]
+        if aa: nx.draw_networkx_nodes(Gs, ps, nodelist=aa, ax=ax, node_size=[rs*(80+500*(deg[n]/md)) for n in aa], node_color="none", edgecolors=COLOR_A3, linewidths=5.0)
+        if len(cn) <= 50: labels = {n:n for n in sn}; fs = max(8, 14-len(cn)//10)
         else:
             top = sorted(deg.items(), key=lambda x:x[1], reverse=True)[:20]
             labels = {n:n for n,d in top}
             for n in aa+tt+hh: labels[n] = n
-            fs = 30
-
-        color_map = build_color_map(labels, set(aa), set(tt), set(hh))
-        draw_labels_with_repulsion(Gs, ps, labels, ax, font_size=fs, font_weight="bold",
-                                   color_map=color_map, iterations=60, repel_force=0.03)
-
+            fs = 12
+        nx.draw_networkx_labels(Gs, ps, labels=labels, ax=ax, font_size=fs, font_weight="bold")
         spec = [A3_SYMBOL_TO_ALIAS.get(n,n) for n in aa]
         extra = f" — {', '.join(spec)}" if spec else ""
         ax.set_title(f"Community {c} — {len(cn)} genes, {Gs.number_of_edges()} edges{extra}", fontsize=22, pad=10)
         ax.axis("off"); plt.tight_layout()
         for ext in ["png","pdf"]: plt.savefig(os.path.join(zdir, f"SC_community_{c:02d}.{ext}"), dpi=300, bbox_inches="tight")
         plt.close(); log(f"  [SAVE] Community {c}")
-    log(f"  [SAVE] All zooms -> {zdir}")
+    log(f"  [SAVE] All zooms → {zdir}")
 
 # ---- Overlap ----
 def compute_overlap(sc_c, tc_c, univ):
@@ -458,9 +332,9 @@ def plot_overlap(oc, ap, jc, sd):
     for ext in ["pdf","png"]: plt.savefig(os.path.join(sd, f"Panel_4c_Community_Overlap.{ext}"), dpi=300, bbox_inches="tight")
     plt.close()
 
-# ---- Known A3-Interactor Enrichment ----
+# ---- Harris ----
 def harris_enrich(sc_c, hs, label, sd, od):
-    banner(f"[Known A3-Interactor Enrichment] {label}")
+    banner(f"[Harris] {label}")
     all_sc = set(); [all_sc.update(v) for v in sc_c.values()]
     hid = hs & all_sc; nh = len(hid); univ = len(all_sc)
     log(f"  {label}: {nh}/{len(hs)} in network")
@@ -468,19 +342,19 @@ def harris_enrich(sc_c, hs, label, sd, od):
     for c in sorted(sc_c.keys()):
         o = sc_c[c] & hid; k = len(o)
         pv = hypergeom.sf(k-1, univ, nh, len(sc_c[c])) if k>0 and nh>0 else 1.
-        rows.append({"community":c,"size":len(sc_c[c]),"known_interactors":k,"p_value":pv,"genes":";".join(sorted(o)) if o else ""})
+        rows.append({"community":c,"size":len(sc_c[c]),"harris":k,"p_value":pv,"genes":";".join(sorted(o)) if o else ""})
     df = pd.DataFrame(rows)
     if len(df): df["fdr"] = bh_fdr(df["p_value"].values)
-    df.to_csv(os.path.join(od, f"known_A3_interactor_enrichment_{label}.csv"), index=False)
+    df.to_csv(os.path.join(od, f"harris_enrichment_{label}.csv"), index=False)
     for _, r in df.iterrows():
-        if r["known_interactors"]>0: log(f"    C{int(r['community'])}: {int(r['known_interactors'])} p={r['p_value']:.4f} FDR={r['fdr']:.4f} {r['genes']}")
+        if r["harris"]>0: log(f"    C{int(r['community'])}: {int(r['harris'])} p={r['p_value']:.4f} FDR={r['fdr']:.4f} {r['genes']}")
     if label == "A3B_only":
         fig, ax = plt.subplots(figsize=(max(8,len(df)*0.7),5))
-        ax.bar(range(len(df)), df["known_interactors"], color=["firebrick" if p<0.05 else "steelblue" for p in df["fdr"]], edgecolor="black", lw=0.5)
+        ax.bar(range(len(df)), df["harris"], color=["firebrick" if p<0.05 else "steelblue" for p in df["fdr"]], edgecolor="black", lw=0.5)
         ax.set_xticks(range(len(df))); ax.set_xticklabels([f"C{c}" for c in df["community"]], fontsize=12)
-        ax.set_xlabel("SC Community", fontsize=14); ax.set_ylabel("Known A3-Interactors", fontsize=14)
-        ax.set_title("Known A3-Interactor Enrichment (red=FDR<0.05)", fontsize=16); plt.tight_layout()
-        for ext in ["pdf","png"]: plt.savefig(os.path.join(sd, f"Panel_4e_A3_Interactor_Enrichment.{ext}"), dpi=300, bbox_inches="tight")
+        ax.set_xlabel("SC Community", fontsize=14); ax.set_ylabel("A3B Interactors", fontsize=14)
+        ax.set_title("A3B Interactor Enrichment (red=FDR<0.05)", fontsize=16); plt.tight_layout()
+        for ext in ["pdf","png"]: plt.savefig(os.path.join(sd, f"Panel_4e_Harris_Enrichment.{ext}"), dpi=300, bbox_inches="tight")
         plt.close()
 
 # ---- Main ----
@@ -493,7 +367,7 @@ def main():
     harris = load_harris(); all_harris = harris["all"] | harris["A3B_only"]
     tcga_sh = get_tcga_shared(sc_c, tc_c)
     log(f"  SC: {len(sc_c)} comms, {sum(len(v) for v in sc_c.values())} genes")
-    log(f"  TCGA: {len(tc_c)} comms | Shared: {len(tcga_sh)} | Known A3-Interactors: {len(harris['all'])}")
+    log(f"  TCGA: {len(tc_c)} comms | Shared: {len(tcga_sh)} | Harris ALL: {len(harris['all'])}")
 
     plot_dual_heatmap(FIGURE_4_PANELS)
 
