@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=FIG6-7_HIV
-#SBATCH --output=/master/jlehle/WORKING/LOGS/FIG6-7_HIV_%j.out
-#SBATCH --error=/master/jlehle/WORKING/LOGS/FIG6-7_HIV_%j.err
+#SBATCH --job-name=FIG6-7_HPV
+#SBATCH --output=/master/jlehle/WORKING/LOGS/FIG6-7_HPV_%j.out
+#SBATCH --error=/master/jlehle/WORKING/LOGS/FIG6-7_HPV_%j.err
 #SBATCH --time=7-00:00:00
 #SBATCH --mem=500G
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=80
 #SBATCH --partition=normal
 
 echo "=============================================="
@@ -44,7 +44,17 @@ python -c "from mhcflurry import Class1PresentationPredictor; print('  MHCflurry
 python -c "import pysam; print(f'  pysam: {pysam.__version__}')" 2>&1
 echo ""
 
-conda run -n NEOANTIGEN python scripts/HPV_ANALYSIS/Phase5B_Neoantigen_Pipeline.py
+#conda run -n NEOANTIGEN python scripts/HPV_ANALYSIS/Phase5B_Neoantigen_Pipeline.py
+
+snpEff -version 2>&1 | head -1
+python -c "from mhcflurry import Class1PresentationPredictor; print('MHCflurry: OK')" 2>&1
+
+conda run -n NEOANTIGEN python scripts/HPV_ANALYSIS/Phase5B_v2_SnpEff_Neoantigen.py
+
+# Check STAR
+which STAR && STAR --version 2>&1 || echo "STAR not found — install: conda install -c bioconda star"
+
+conda run -n NEOANTIGEN python scripts/HPV_ANALYSIS/Phase5B_STAR_Chimeric_Pipeline.py
 
 echo ""
 echo "=============================================="
