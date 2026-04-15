@@ -24,8 +24,12 @@ R --slave -e 'Cstack_info()'
 
 # Run the R scripts
 
-Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Prep_mutation_analysis_files.R
-Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R
-Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/Patient_Level_HNSCC_TCGA_3D_A3s.R
+#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Prep_mutation_analysis_files.R
+#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R
+#Rscript $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Patient_Level_HNSCC_TCGA_3D_A3s.R
+
+conda activate NETWORK
+
+conda run -n NETWORK python $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Step05_Revised_HNSC_A3_vs_SBS2.py
 
 exit
