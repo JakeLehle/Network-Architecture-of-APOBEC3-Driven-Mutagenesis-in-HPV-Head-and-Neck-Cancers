@@ -86,7 +86,7 @@ def clean_spines(ax):
     for s in ax.spines.values(): s.set_visible(False)
 
 # =============================================================================
-# STEPS 1-5: DATA LOADING AND MATCHING (unchanged)
+# STEPS 1-5: DATA LOADING AND MATCHING
 # =============================================================================
 banner("STEP 1: Load expression matrix")
 raw = pd.read_csv(EXPRESSION_PATH, sep='\t', header=None, low_memory=False)
@@ -156,16 +156,13 @@ final['A3A']=final['APOBEC3A']; final['A3B']=final['APOBEC3B']
 final['A3A_plus_A3B']=final['A3A']+final['A3B']
 median_sbs2 = final['SBS2'].median()
 final['outlier_low_A3_high_SBS2'] = (final['SBS2']>median_sbs2)&(final['A3A_plus_A3B']<1.0)
-log(f"  Final: {len(final)} tumors, median SBS2={median_sbs2:.0f}")
 
-# Quadrant assignment for Panel 1c
 med_a3a = final['A3A'].median(); med_a3b = final['A3B'].median()
 final['A3A_status'] = np.where(final['A3A']>=med_a3a,'HIGH','LOW')
 final['A3B_status'] = np.where(final['A3B']>=med_a3b,'HIGH','LOW')
 final['quadrant'] = final['A3B_status']+'_A3B_'+final['A3A_status']+'_A3A'
-log(f"  Median A3A={med_a3a:.2f}, A3B={med_a3b:.2f}")
+log(f"  Final: {len(final)} tumors, median SBS2={median_sbs2:.0f}")
 
-# Region assignment for Panel 1a
 x_all = final['A3A_plus_A3B'].values; y_all = final['SBS2'].values
 lm = (x_all<=10)&(x_all>0)
 safe_slope = np.max(y_all[lm]/x_all[lm])*1.05 if lm.sum()>0 else np.max(y_all)/10
@@ -178,7 +175,6 @@ for xi,yi in zip(x_all,y_all):
 final['region'] = regions
 n_teal=regions.count('teal'); n_coral=regions.count('coral'); n_cream=regions.count('cream')
 log(f"  Regions: teal={n_teal}, coral={n_coral}, cream={n_cream}")
-
 final.to_csv(os.path.join(OUTPUT_DIR, "HNSC_A3_SBS2_matched_v2.tsv"), sep='\t', index=False)
 
 # =============================================================================
@@ -191,11 +187,10 @@ pcols = [rcol[r] for r in regions]
 x_max=x_all.max()*1.05; y_max=y_all.max()*1.05
 
 # =============================================================================
-# PANEL 1a: A3A+A3B vs SBS2
+# PANEL 1a
 # =============================================================================
 banner("Panel 1a")
 bs,be,hb = find_axis_break(x_all)
-
 def draw_1a(ax, xl, xh, is_main=True):
     ax.fill([0,0,X_THR,X_THR],[0,y_max,y_max,y_thr],color=COLOR_NORMAL,alpha=0.5,zorder=0)
     ax.fill([X_THR,X_THR,x_max*2,x_max*2],[y_thr,y_max,y_max,y_thr],color=COLOR_SBS2_HIGH,alpha=0.5,zorder=0)
@@ -228,18 +223,16 @@ else:
     plt.tight_layout(); save_fig(fig,"Panel_1a_A3sum_vs_SBS2")
 
 # =============================================================================
-# PANEL 1b: A3A vs A3B colored by SBS2
+# PANEL 1b
 # =============================================================================
 banner("Panel 1b")
 pdf = final.sort_values('SBS2',ascending=True).copy()
 x2=pdf['A3A'].values; y2=pdf['A3B'].values; c2=pdf['SBS2'].values; c2l=np.log1p(c2)
 y2m=y2.max()*1.05; bs2,be2,hb2 = find_axis_break(x2); x2m=x2.max()*1.05
-
 def draw_1b(ax,xl,xh,is_main=True):
     add_inner_axes(ax,xl,xh,0,y2m,y_color=COLOR_BLACK,lw=3,zorder=0)
     sc = ax.scatter(x2,y2,c=c2l,cmap='magma',s=50,alpha=0.7,edgecolors=COLOR_BLACK,linewidths=0.3,rasterized=True,zorder=2)
     ax.set_xlim(xl,xh); ax.set_ylim(-y2m*0.02,y2m); return sc
-
 if hb2:
     fig,(axM,axB) = plt.subplots(1,2,sharey=True,figsize=(16,10),gridspec_kw={'width_ratios':[3,1],'wspace':0.04})
     draw_1b(axM,-x2m*0.02,bs2,True); sc=draw_1b(axB,be2,x2m,False)
@@ -262,17 +255,16 @@ else:
     plt.tight_layout(); save_fig(fig,"Panel_1b_A3A_vs_A3B_SBS2")
 
 # =============================================================================
-# PANEL 1c: Box-and-whisker + 2x2 heatmap
+# PANEL 1c: Box-and-whisker + 2x2 heatmap (UPDATED)
 # =============================================================================
 banner("Panel 1c: Boxplot + Heatmap")
 
-# Order: LOW/LOW -> HIGH_A3B/LOW_A3A -> LOW_A3B/HIGH_A3A -> HIGH/HIGH
 quad_order = ['LOW_A3B_LOW_A3A','HIGH_A3B_LOW_A3A','LOW_A3B_HIGH_A3A','HIGH_A3B_HIGH_A3A']
 quad_labels = ['A3B$^{-}$ A3A$^{-}$','A3B$^{+}$ A3A$^{-}$','A3B$^{-}$ A3A$^{+}$','A3B$^{+}$ A3A$^{+}$']
-quad_colors = [COLOR_CREAM, '#e8c87a', '#e8a87a', COLOR_SBS2_HIGH]  # gradient cream -> coral
+quad_colors = [COLOR_CREAM, '#e8c87a', '#e8a87a', COLOR_SBS2_HIGH]
 
-fig = plt.figure(figsize=(18, 10))
-gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1.2], wspace=0.3)
+fig = plt.figure(figsize=(20, 10))
+gs = gridspec.GridSpec(1, 2, width_ratios=[2.5, 1.5], wspace=0.35)
 ax_box = fig.add_subplot(gs[0])
 ax_heat = fig.add_subplot(gs[1])
 
@@ -285,28 +277,29 @@ bp = ax_box.boxplot(box_data, patch_artist=True, widths=0.6, showfliers=True,
                      flierprops=dict(marker='o', markersize=4, alpha=0.3,
                                      markerfacecolor=COLOR_DARK_GRAY, markeredgecolor=COLOR_DARK_GRAY))
 for patch, color in zip(bp['boxes'], quad_colors):
-    patch.set_facecolor(color); patch.set_alpha(0.75); patch.set_edgecolor(COLOR_BLACK); patch.set_linewidth(1.2)
+    patch.set_facecolor(color); patch.set_alpha(0.75)
+    patch.set_edgecolor(COLOR_BLACK); patch.set_linewidth(1.2)
 for element in ['whiskers','caps']:
     for line in bp[element]: line.set_color(COLOR_DARK_GRAY); line.set_linewidth(1.2)
 for line in bp['medians']:
     line.set_color(COLOR_BLACK); line.set_linewidth(2)
 
-# Trend line connecting medians
+# Trend line connecting medians (diamonds)
 ax_box.plot(range(1,5), medians, 'D-', color=COLOR_DARK_GRAY, markersize=10,
             markerfacecolor='white', markeredgecolor=COLOR_DARK_GRAY, markeredgewidth=2,
             linewidth=2, zorder=5)
 
-# Labels
+# MEDIAN LABELS — positioned at ~50% of the y-axis range, above the box area
+y_mid = y_all.max() * 0.50
+for i, med in enumerate(medians):
+    ax_box.text(i+1, y_mid, f'median = {med:.0f}',
+                ha='center', fontsize=FONT_SIZE-8, fontweight='bold', color=COLOR_DARK_GRAY)
+
 ax_box.set_xticklabels(quad_labels, fontsize=FONT_SIZE-6)
 ax_box.set_ylabel('SBS2 Weight (mutation count)', fontsize=FONT_SIZE)
 ax_box.tick_params(labelsize=FONT_SIZE-6)
 
-# Annotate n per group
-for i, (med, n) in enumerate(zip(medians, ns)):
-    ax_box.text(i+1, -y_all.max()*0.06, f'n={n}', ha='center', fontsize=FONT_SIZE-8, color=COLOR_DARK_GRAY)
-
-# Significance brackets — both-high vs neither
-# Simple annotation at the top
+# Significance bracket
 p_both_vs_neither = mannwhitneyu(box_data[0], box_data[3], alternative='two-sided').pvalue
 y_sig = max(np.percentile(box_data[3],99), np.percentile(box_data[0],99)) * 1.1
 ax_box.plot([1, 1, 4, 4], [y_sig, y_sig*1.03, y_sig*1.03, y_sig],
@@ -316,34 +309,34 @@ ax_box.text(2.5, y_sig*1.05, sig_text, ha='center', fontsize=FONT_SIZE-8, color=
 
 ax_box.spines['top'].set_visible(False); ax_box.spines['right'].set_visible(False)
 
-# --- 2x2 Heatmap ---
-# Arrange as: rows = A3B (HIGH top, LOW bottom), cols = A3A (LOW left, HIGH right)
+# --- 2x2 Heatmap (wider, all black text) ---
+# Rows = A3B (HIGH top, LOW bottom), Cols = A3A (LOW left, HIGH right)
 heat_matrix = np.array([
-    [medians[1], medians[3]],   # HIGH A3B: [LOW A3A, HIGH A3A]
-    [medians[0], medians[2]],   # LOW A3B:  [LOW A3A, HIGH A3A]
+    [medians[1], medians[3]],   # HIGH A3B row
+    [medians[0], medians[2]],   # LOW A3B row
 ])
 heat_n = np.array([
     [ns[1], ns[3]],
     [ns[0], ns[2]],
 ])
 
-im = ax_heat.imshow(heat_matrix, cmap='YlOrRd', aspect='auto', vmin=0, vmax=max(medians)*1.1)
+im = ax_heat.imshow(heat_matrix, cmap='YlOrRd', aspect='equal',
+                     vmin=0, vmax=max(medians)*1.1)
 
-# Annotate cells
+# All text in BLACK
 for i in range(2):
     for j in range(2):
         val = heat_matrix[i,j]
         n = heat_n[i,j]
-        text_color = '#FFFFFF' if val > max(medians)*0.6 else COLOR_BLACK
         ax_heat.text(j, i, f'{val:.0f}\n(n={n})', ha='center', va='center',
-                     fontsize=FONT_SIZE-4, fontweight='bold', color=text_color)
+                     fontsize=FONT_SIZE-4, fontweight='bold', color=COLOR_BLACK)
 
-ax_heat.set_xticks([0,1]); ax_heat.set_xticklabels(['LOW','HIGH'], fontsize=FONT_SIZE-6)
-ax_heat.set_yticks([0,1]); ax_heat.set_yticklabels(['HIGH','LOW'], fontsize=FONT_SIZE-6)
+ax_heat.set_xticks([0,1]); ax_heat.set_xticklabels(['LOW','HIGH'], fontsize=FONT_SIZE-4)
+ax_heat.set_yticks([0,1]); ax_heat.set_yticklabels(['HIGH','LOW'], fontsize=FONT_SIZE-4)
 ax_heat.set_xlabel('A3A Expression', fontsize=FONT_SIZE-2)
 ax_heat.set_ylabel('A3B Expression', fontsize=FONT_SIZE-2)
 
-cb2 = plt.colorbar(im, ax=ax_heat, shrink=0.6, pad=0.05)
+cb2 = plt.colorbar(im, ax=ax_heat, shrink=0.6, pad=0.08)
 cb2.set_label('Median SBS2', fontsize=FONT_SIZE-6)
 cb2.ax.tick_params(labelsize=FONT_SIZE-8)
 
@@ -351,7 +344,7 @@ plt.tight_layout()
 save_fig(fig, "Panel_1c_Boxplot_Heatmap")
 
 # =============================================================================
-# SUPPLEMENTAL: Low-A3 zoom
+# SUPPLEMENTAL
 # =============================================================================
 banner("Supplemental: Low-A3 zoom")
 hs = final[final['SBS2']>median_sbs2]; lo4 = hs.nsmallest(4,'A3A_plus_A3B')
@@ -384,7 +377,7 @@ if len(lo4)>0:
     plt.tight_layout(); save_fig(fig,"Supplemental_Low_A3_High_SBS2_Zoom")
 
 # =============================================================================
-# DIAGNOSTIC OUTPUT (for text writing)
+# DIAGNOSTIC
 # =============================================================================
 banner("DIAGNOSTIC NUMBERS FOR TEXT")
 log(f"  n tumors = {len(final)}")
@@ -414,7 +407,6 @@ log(f"\n  Spearman correlations:")
 for g in ['A3A','A3B','A3A_plus_A3B']:
     rho,p = spearmanr(final[g],final['SBS2'])
     log(f"    {g} vs SBS2: rho={rho:.4f}, p={p:.2e}")
-
 rp = os.path.join(TROUBLE_DIR,"figure1_final_pipeline_report.txt")
 with open(rp,'w') as f: f.write('\n'.join(report_lines))
 log(f"\n  Report: {rp}")

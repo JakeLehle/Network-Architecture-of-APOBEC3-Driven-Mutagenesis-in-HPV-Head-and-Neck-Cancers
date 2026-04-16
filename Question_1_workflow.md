@@ -1,368 +1,255 @@
+# Question 1 Workflow
+
 ## Question 1: What is the fundamental relationship between A3 expression and observed A3-induced mutations in HNSCC?
 
 ### Rationale
 
-APOBEC3 (A3) cytidine deaminases with access to the nuclear compartment (A3A, A3B, A3C, A3H) are capable of editing genomic DNA, producing characteristic C>T and C>G mutations captured by the COSMIC SBS2 mutational signature. However, the presence of A3 enzyme expression alone does not guarantee that A3-driven mutagenesis will occur in a given tumor. This question establishes the foundational observation of the paper: **A3 expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC**, implying the existence of unknown cofactors that regulate A3 enzymatic activity on genomic DNA. Additionally, this question dissects the individual contributions of each A3 family member, establishing that A3B provides a baseline mutagenic state that A3A amplifies, while A3C and A3H are bystanders reflecting immune cell infiltration rather than independent mutagenic activity.
+APOBEC3 (A3) cytidine deaminases with access to the nuclear compartment (A3A, A3B, A3C, A3H) are capable of editing genomic DNA, producing characteristic C>T and C>G mutations captured by the COSMIC SBS2 mutational signature. However, the presence of A3 enzyme expression alone does not guarantee that A3-driven mutagenesis will occur in a given tumor. This question establishes the foundational observation of the paper: **A3A and A3B expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC**, implying the existence of unknown cofactors that regulate A3 enzymatic activity on genomic DNA. Additionally, this question dissects the individual and combinatorial contributions of A3A and A3B, establishing that A3B provides a baseline mutagenic state that A3A amplifies.
+
+### Key Results (Revised, April 2026)
+
+| Metric | Value |
+|--------|-------|
+| HNSC tumors matched (RNA-seq + WES) | 502 |
+| SBS2 range | 0 – 728 mutations |
+| SBS2 median | 16 |
+| Tumors with SBS2 > 0 | 326 (64.9%) |
+| Coral region (A3 + SBS2 HIGH) | 251 |
+| Cream region (A3 + SBS2 LOW) | 251 |
+| Teal region (no A3 + high SBS2) | 0 |
+| Low-A3 outliers (A3A+A3B < 1.0, SBS2 > median) | 3 (0.6%) |
+| Median-split quadrant medians | 10 → 15.5 → 18.5 → 22.0 |
+| Both-high vs neither p-value | 1.54 × 10⁻⁴ (Wilcoxon) |
+| SBS signature source | SigProfilerAssignment, COSMIC v3.4, exome mode |
 
 ### Data Sources
 
 | Source | Description |
 |--------|-------------|
-| [GDC Data Portal](https://portal.gdc.cancer.gov/) | TCGA RNA-seq gene expression (STAR - Counts workflow) across 33 cancer types |
-| [COSMIC SBS Signatures](https://cancer.sanger.ac.uk/signatures/) | SBS mutational signature weights derived from TCGA whole-exome sequencing, provided as `Mutation_Table_Tumors_TCGA.tsv` |
+| [GDC Data Portal](https://portal.gdc.cancer.gov/) | TCGA RNA-seq gene expression (STAR - Counts, FPKM-UQ) across 33 cancer types |
+| [GDC Data Portal](https://portal.gdc.cancer.gov/) | TCGA MuTect2 Annotated Somatic Mutation MAFs across 33 cancer types (controlled access) |
+| SigProfilerAssignment | COSMIC v3.4 SBS signature weights computed from PASS-filtered somatic SNVs |
 
 ### Directory Structure
 
 ```
 scripts/TCGA/
-├── DOWNLOAD_TCGA_COUNT_DATA.sh              # SLURM Job 1: Data acquisition
+├── DOWNLOAD_TCGA_COUNT_DATA.sh              # SLURM Job 1: RNA-seq data acquisition
 ├── Download_RNA-seq_Counts_TCGA.R           #   Step 1 — Download from GDC
 ├── Organize_RNA-seq_Counts_TCGA.R           #   Step 2 — Organize & build manifest
 ├── Master_TCGA_RNA-seq_Counts_Table.R       #   Step 3 — Build master expression tables
 │
-├── ANALYZE_TCGA_COUNT_DATA.sh               # SLURM Job 2: Analysis & visualization
+├── ANALYZE_TCGA_COUNT_DATA.sh               # SLURM Job 2: Original analysis (Steps 4-8)
 ├── Prep_mutation_analysis_files.R           #   Step 4 — Match A3 expression ↔ SBS signatures
-├── Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R  #   Step 5 — HNSC patient-level scatter (Fig 1a)
-├── Diagnostic_A3C_A3H_bystander.R           #   Step 6 — ROC/AUC & bystander analysis (Fig 1b)
-├── Patient_Level_HNSCC_TCGA_3D_A3s.R       #   Step 7 — 3D A3A×A3B×A3C scatter (Fig 1c)
-├── A3A_A3B_additive_SBS2.R                  #   Step 8 — A3B saturation & additive model (Fig 1d,e,f)
+├── Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R  #   Step 5 (ORIGINAL) — 6-panel Fig 1a
+├── Diagnostic_A3C_A3H_bystander.R          #   Step 6 (ORIGINAL) — ROC/AUC (Fig 1b)
+├── Patient_Level_HNSCC_TCGA_3D_A3s.R       #   Step 7 (ORIGINAL) — 3D scatter (Fig 1c)
+├── A3A_A3B_additive_SBS2.R                 #   Step 8 (ORIGINAL) — Additive model (Fig 1d-f)
 │
-└── TROUBLESHOOTING/                         # Supplementary/diagnostic scripts
-    ├── A3_Contribution_to_SBS2.R
+├── Step05_Revised_HNSC_A3_vs_SBS2.py       #   Step 5 (REVISED) — 3-panel Fig 1 + supplemental
+│                                            #     Uses new SigProfiler v3.4 SBS2 counts
+│                                            #     Replaces Steps 5-8 R scripts for figure gen
+│
+├── VCF/                                     # Branch A: Somatic mutation & SBS signature pipeline
+│   ├── Diagnostic_TCGA_SNV_Availability.R   #   Step 0 — Check GDC data availability
+│   ├── Download_MuTect2_VCFs_TCGA.R         #   Step 1 — Download MuTect2 MAFs (10,939 samples)
+│   ├── Download_Pindel_VCFs_TCGA.R          #   Step 2 — Download Pindel MAFs
+│   ├── Organize_SNV_VCFs_TCGA.R             #   Step 3 — Build unified manifest
+│   ├── Consolidate_MAFs_TCGA.R              #   Step 4 — Consolidate to pan-cancer master MAF
+│   ├── Run_SigProfiler.py                   #   Step 5 — Build SBS96 matrix + COSMIC assignment
+│   └── SIG_PROFILER_SCRIPT.sh               #   SLURM batch script for Steps 4-5
+│
+└── TROUBLESHOOTING/
+    ├── Diagnostic_Check_SBS2_Weight_Normalization.py   # Verified original SBS2 weights are
+    │                                                    # absolute counts (CV=4.22), not ratios
+    ├── Diagnostic_Compare_SBS_Weight_Sources.py        # Compared original vs new SigProfiler
+    │                                                    # outputs (Spearman rho=0.90 for HNSC)
+    ├── Diagnostic_Verify_Barcode_Matching.py           # Audited all 504 RNA-seq↔WES barcode
+    │                                                    # pairs; verified 3 low-A3 outliers
+    ├── Diagnostic_Figure1_Text_Numbers.py              # Extracted all text-ready numbers
+    ├── TCGA_troubleshooting.R
     ├── Compare_A3_Expression_Sources.R
-    ├── Diagnose_nonlinear_A3_Relationships.R
     ├── FILTER_MASTER_TCGA_TSV.R
     ├── Global_TCGA_A3s_vs_SBS2.R
     ├── Patient_Level_HNSCC_TCGA_Network_Analysis.R
-    └── TCGA_troubleshooting.R
+    ├── A3_Contribution_to_SBS2.R
+    └── Diagnose_nonlinear_A3_Relationships.R
 ```
 
 ### Pipeline Overview
 
-The analysis is executed as two sequential SLURM batch jobs on an HPC cluster:
+The analysis has two branches that converge in the revised Step 5:
 
 ```
- SLURM Job 1: DOWNLOAD_TCGA_COUNT_DATA.sh
- ─────────────────────────────────────────
-   Step 1: Download from GDC
+ BRANCH A: RNA-seq Expression (SLURM Jobs 1-2)
+ ──────────────────────────────────────────────
+   Step 1-3: Download & build TCGA_master_FPKM_UQ.tsv
+   Step 4: Extract A3 expression, match to mutation data
+       │
+       └──→ TCGA_master_FPKM_UQ.tsv (11,505 samples)
+            TCGA_sample_metadata_final.tsv (Project_ID)
+            Mutation_Table_Tumors_TCGA.tsv (barcode crosswalk)
+
+
+ BRANCH B: Somatic Mutation SBS Signatures (scripts/TCGA/VCF/)
+ ──────────────────────────────────────────────────────────────
+   Step 0: Diagnostic — check GDC availability
+   Step 1: Download MuTect2 MAFs (10,939 samples, 33 cancer types)
+   Step 2: Download Pindel MAFs (for XRCC4 analysis, not used here)
+   Step 3: Organize & verify files, build unified manifest
+   Step 4: Consolidate per-sample MAFs → pan-cancer master MAF
+   Step 5: Build SBS96 matrix from CONTEXT column → SigProfilerAssignment
+       │
+       └──→ TCGA_SBS_signature_counts.tsv (absolute mutation counts per sig)
+            TCGA_SBS_signature_weights.tsv (normalized fractions)
+            TCGA_MuTect2_master_manifest.tsv (Entity_ID → Cancer_Type)
+
+
+ CONVERGENCE: Revised Step 5 (Step05_Revised_HNSC_A3_vs_SBS2.py)
+ ────────────────────────────────────────────────────────────────
+   Inputs from both branches:
+     TCGA_master_FPKM_UQ.tsv ← Branch A
+     TCGA_SBS_signature_counts.tsv ← Branch B
+     TCGA_sample_metadata_final.tsv ← Branch A (cancer type)
+     Mutation_Table_Tumors_TCGA.tsv ← Branch A (barcode crosswalk)
+     TCGA_MuTect2_master_manifest.tsv ← Branch B (HNSC WES IDs)
        │
        ▼
-   Step 2: Organize files & build manifest
+   1. Load full expression matrix, extract A3 genes
+   2. Filter to HNSC primary tumors (522 RNA-seq samples)
+   3. Load & transpose SigProfiler counts (512 HNSC WES samples)
+   4. Layered barcode matching:
+       a. Direct WES crosswalk (426 matches)
+       b. Case_ID with sample-type constraint (76 matches)
+       c. Patient-level deduplication → 502 final matches
+   5. Build matched table with A3A, A3B, SBS2
+   6. Generate Figure 1 panels:
+       │
+       ├── Panel 1a: A3A+A3B vs SBS2 scatter
+       │     Polygon background regions (teal/coral/cream)
+       │     Mint y-axis line, broken x-axis
+       │
+       ├── Panel 1b: A3A vs A3B colored by SBS2
+       │     Depth-sorted, broken x-axis, magma colormap
+       │
+       ├── Panel 1c: Boxplot + 2×2 heatmap
+       │     4 quadrants by median A3A/A3B
+       │     Medians: 10 → 15.5 → 18.5 → 22.0
+       │
+       └── Supplemental: Low-A3 zoom
+             4 lowest-A3 tumors in high-SBS2 group labeled
        │
        ▼
-   Step 3: Build pan-cancer master expression tables
-                    │
-                    ▼
-          TCGA_master_FPKM_UQ.tsv
-
-
- SLURM Job 2: ANALYZE_TCGA_COUNT_DATA.sh
- ─────────────────────────────────────────
-          TCGA_master_FPKM_UQ.tsv
-          Mutation_Table_Tumors_TCGA.tsv  ← external input
-                    │
-                    ▼
-   Step 4: Match A3 expression ↔ SBS mutation signatures
-                    │
-                    ▼
-          A3_Expression_FPKM_UQ_Matched.tsv
-          Mutation_Signatures_Matched.tsv
-                    │
-       ┌────────────┼────────────┬────────────┐
-       ▼            ▼            ▼            ▼
-   Step 5:      Step 6:      Step 7:      Step 8:
-   A3 vs SBS2   ROC/AUC      3D A3s       A3B/A3A
-   scatter       bystander    scatter      additive
-   (Fig 1a)     (Fig 1b)     (Fig 1c)     (Fig 1d,e,f)
-       │            │            │            │
-       └────────────┴────────────┴────────────┘
-                         │
-                      FIGURE 1
+   FIGURE 1
 ```
 
-### Environment
+### Environments
 
-All scripts are executed using the `RNA-seq_NovoGene` conda environment (see `environments/RNA-seq_NovoGene.yml`).
+| Environment | Scripts | Purpose |
+|-------------|---------|---------|
+| `RNA-seq_NovoGene` | Steps 1-4 (R), VCF Steps 0-4 (R) | TCGA data download, processing |
+| `SComatic` | VCF Step 5 (Python) | SigProfilerAssignment |
+| `NETWORK` | Revised Step 5 (Python) | Figure generation, diagnostics |
 
 ---
 
-### SLURM Job 1: Data Acquisition
+### Revised Step 5: Figure 1 Generation (CURRENT)
 
-**Batch script:** `DOWNLOAD_TCGA_COUNT_DATA.sh`
+**Script:** `Step05_Revised_HNSC_A3_vs_SBS2.py`
 
-Submits Steps 1–3 as a serial pipeline. Downloads all TCGA RNA-seq data, organizes the files, and builds the pan-cancer master expression tables. This is a long-running job (up to 7 days walltime) due to GDC download speeds.
+The primary Figure 1 generation script. Replaces the original R scripts (Steps 5-8) with a single Python script that loads new SigProfiler v3.4 data and generates the simplified 3-panel figure.
 
+**Dependencies:** `pandas`, `numpy`, `matplotlib`, `scipy`
+
+**Input:**
+- `TCGA_master_FPKM_UQ.tsv` — full pan-cancer expression matrix (from Step 3)
+- `TCGA_sample_metadata_final.tsv` — Project_ID for cancer type filtering
+- `Mutation_Table_Tumors_TCGA.tsv` — barcode crosswalk (RNA-seq ↔ WES)
+- `TCGA_SBS_signature_counts.tsv` — SigProfiler v3.4 absolute SBS counts (from VCF Step 5)
+- `TCGA_MuTect2_master_manifest.tsv` — HNSC WES Entity_IDs
+
+**Output (→ `data/FIG_1/`):**
+- `HNSC_A3_SBS2_matched_v2.tsv` — 502 matched tumors with all A3 expression + SBS2 + region + quadrant
+- `FIGURE_1_PANELS/Panel_1a_A3sum_vs_SBS2.pdf/.png`
+- `FIGURE_1_PANELS/Panel_1b_A3A_vs_A3B_SBS2.pdf/.png`
+- `FIGURE_1_PANELS/Panel_1c_Boxplot_Heatmap.pdf/.png`
+- `FIGURE_1_PANELS/Supplemental_Low_A3_High_SBS2_Zoom.pdf/.png`
+- `TROUBLESHOOTING/figure1_final_pipeline_report.txt`
+
+**Barcode matching strategy:**
+1. **Direct crosswalk** (primary): Uses the `Mutation_Signature__File_Orginal_Entity_ID` column in the original mutation file to map RNA-seq barcodes to WES barcodes
+2. **Case_ID matching** (fallback): 12-character patient ID match, constrained to same sample type code (both primary tumor = 01, both metastatic = 06) to prevent cross-matching
+3. **Patient deduplication**: If a patient has both a direct and Case_ID match, only the direct match is kept
+
+**Barcode verification (Diagnostic_Verify_Barcode_Matching.py):**
+- 502/502 patient IDs match
+- 502/502 both tumor samples
+- 502/502 correct analyte types (RNA vs DNA)
+- 3 sample-type mismatches (Primary ↔ Metastatic) excluded by the type constraint
+- 3 low-A3/high-SBS2 outliers verified as correctly matched
+
+**Usage:**
 ```bash
-Rscript Download_RNA-seq_Counts_TCGA.R
-Rscript Organize_RNA-seq_Counts_TCGA.R
-Rscript Master_TCGA_RNA-seq_Counts_Table.R
+conda run -n NETWORK python scripts/TCGA/Step05_Revised_HNSC_A3_vs_SBS2.py
 ```
 
-**Environment:** `RNA-seq_NovoGene` conda environment, `ulimit -s unlimited`
+---
+
+### VCF Pipeline (scripts/TCGA/VCF/)
+
+Independent pipeline that downloads all TCGA somatic mutation data and recomputes COSMIC SBS signature weights. This replaced a pre-processed signature file of unknown provenance.
+
+**Scale:** 10,939 samples across 33 cancer types, 87.6 million total mutations, 6.58 million PASS-filtered somatic SNVs.
+
+**Key output:** `TCGA_SBS_signature_counts.tsv` — absolute mutation count attributions per COSMIC v3.4 signature per sample. Used as input to the revised Step 5.
+
+**Comparison with original file (Diagnostic_Compare_SBS_Weight_Sources.py):**
+- Original: 8,465 samples, 65 signatures (older COSMIC version), integer counts
+- New: 10,936 samples, 86 signatures (COSMIC v3.4), integer counts
+- HNSC-specific Spearman rho = 0.90 (strong rank agreement despite different decompositions)
+- Decision: Use new counts for documented provenance and current COSMIC version
+
+For full VCF pipeline documentation, see the `TCGA_Analysis` reference document.
 
 ---
 
-#### Step 1: Download TCGA RNA-seq Data
-
-**Script:** `Download_RNA-seq_Counts_TCGA.R`
-
-Downloads STAR-Counts RNA-seq gene expression quantification files from the GDC for all 33 TCGA cancer types using the `TCGAbiolinks` R package. The script includes retry logic for failed downloads and skips cancer types that have already been successfully downloaded.
-
-**Dependencies:** `TCGAbiolinks`, `SummarizedExperiment`
-
-**Input:**
-- GDC API (internet connection required)
-
-**Output:**
-- `GDCdata/TCGA-{CANCER_TYPE}/Transcriptome_Profiling/Gene_Expression_Quantification/` — raw per-sample `.tsv` files organized by cancer type
-
-**Key details:**
-- Downloads all 33 TCGA projects (BRCA, LUAD, LUSC, ..., HNSC, ..., UCEC)
-- Each sample file contains raw counts, TPM, FPKM, and FPKM-UQ quantifications
-- Files are identified by GDC UUID
-
----
-
-#### Step 2: Organize Files and Build Master Manifest
-
-**Script:** `Organize_RNA-seq_Counts_TCGA.R`
-
-Queries GDC metadata to build a master manifest that maps each file's UUID to the full 28-character TCGA aliquot barcode (Entity_ID), Case_ID, cancer type, and tissue status (Tumor vs. Normal). Reorganizes the raw downloaded files into a structured directory.
-
-**Dependencies:** `TCGAbiolinks`, `dplyr`, `tidyr`
-
-**Input:**
-- `GDCdata/` directory from Step 1
-
-**Output:**
-- `TCGA_RNAseq_master_manifest.tsv` — manifest mapping UUID → Entity_ID → Case_ID → cancer type → tissue status
-- `organized_counts/TCGA-{CANCER_TYPE}/{Tumor|Normal}/` — reorganized expression files with informative filenames (`{Case_ID}_{UUID}.rna_seq.augmented_star_gene_counts.tsv`)
-
-**Key details:**
-- Entity_ID is the full 28-character TCGA aliquot barcode (e.g., `TCGA-BH-A18H-01A-11R-A12D-07`), which serves as the unique sample identifier throughout the pipeline
-- The `cases` column from TCGAbiolinks metadata is used as the source for Entity_IDs
-- Tissue status is determined from the sample type code embedded in the barcode (positions 14–15): `01`–`09` = Tumor, `10`–`19` = Normal
-
----
-
-#### Step 3: Build Pan-Cancer Master Expression Tables
-
-**Script:** `Master_TCGA_RNA-seq_Counts_Table.R`
-
-Reads all organized per-sample expression files and assembles three pan-cancer master expression matrices (TPM, FPKM, FPKM-UQ), each containing all genes across all samples from all 33 cancer types.
-
-**Dependencies:** `data.table`
-
-**Input:**
-- `organized_counts/` directory from Step 2
-- `TCGA_RNAseq_master_manifest.tsv` from Step 2
-
-**Output:**
-- `TCGA_master_TPM.tsv`
-- `TCGA_master_FPKM.tsv`
-- `TCGA_master_FPKM_UQ.tsv` ← **primary expression matrix used in all downstream analyses**
-
-**File structure (all three files share this format):**
-```
-Row 1:  Column headers — Project_ID, Tissue_Type, Case_ID, File_ID, Entity_ID, ENSG00000000003.15, ...
-Row 2:  Gene symbols   — NA, NA, NA, NA, NA, TSPAN6, ...
-Row 3:  Gene biotypes  — NA, NA, NA, NA, NA, protein_coding, ...
-Row 4+: Sample data    — TCGA-BRCA, Tumor, TCGA-BH-A18H, UUID, Entity_ID, 1234.56, ...
-```
-
-**Key details:**
-- FPKM-UQ (upper quartile normalized FPKM) is used as the primary normalization for all downstream analyses because it is robust to highly expressed outlier genes
-- Metadata columns (1–5) are embedded alongside the expression matrix for self-contained sample tracking
-- Gene identifiers are versioned ENSG IDs (e.g., `ENSG00000000003.15`)
-
----
-
-### SLURM Job 2: Analysis & Visualization
-
-**Batch script:** `ANALYZE_TCGA_COUNT_DATA.sh`
-
-Submits Steps 4–8 as a serial pipeline. Matches A3 expression to mutation signatures and generates all Figure 1 panels. Requires 48 GB memory.
-
-```bash
-Rscript Prep_mutation_analysis_files.R
-Rscript Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R
-Rscript Diagnostic_A3C_A3H_bystander.R
-Rscript Patient_Level_HNSCC_TCGA_3D_A3s.R
-Rscript A3A_A3B_additive_SBS2.R
-```
-
-**Environment:** `RNA-seq_NovoGene` conda environment, `ulimit -s unlimited`, `--mem=48G`
-
----
-
-#### Step 4: Match A3 Expression with SBS Mutation Signatures
-
-**Script:** `Prep_mutation_analysis_files.R`
-
-Extracts expression values for the four nuclear A3 family members (A3A, A3B, A3C, A3H) from the pan-cancer FPKM-UQ master table and matches them to COSMIC SBS mutational signature weights by Entity_ID. Produces two paired output files containing only samples present in both datasets.
-
-**Dependencies:** `data.table`, `dplyr`
-
-**Input:**
-- `TCGA_master_FPKM_UQ.tsv` from Step 3
-- `Mutation_Table_Tumors_TCGA.tsv` — COSMIC SBS signature weights per TCGA sample (external input)
-
-**Output:**
-- `A3_Expression_FPKM_UQ_Matched.tsv` — columns: `Project_ID`, `Tissue_Type`, `Entity_ID`, `APOBEC3A`, `APOBEC3B`, `APOBEC3C`, `APOBEC3H`
-- `Mutation_Signatures_Matched.tsv` — all COSMIC SBS signature columns, matched to the same sample set
-
-**Key details:**
-- A3 genes are identified by gene symbol from Row 2 of the master file
-- Matching is performed on Entity_ID (expression file) ↔ `TCGA_Gene_Expression_Entity_ID` (mutation file)
-- Only samples present in **both** files are retained, ensuring a clean one-to-one mapping
-- These two matched files serve as the shared input for all subsequent steps (5–8), as well as for the network analysis in Question 2
-
----
-
-#### Step 5: HNSC Patient-Level Nuclear A3s vs. SBS2 → Figure 1a
-
-**Script:** `Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R`
-
-Generates a patient-level scatter plot for HNSC tumors showing summed nuclear A3 expression (A3A + A3B + A3C + A3H) vs. SBS2 weight, with three data-driven colored background regions highlighting the key biological populations.
-
-**Dependencies:** `data.table`, `dplyr`, `ggplot2`, `ggbreak`
-
-**Input:**
-- `A3_Expression_FPKM_UQ_Matched.tsv` from Step 4
-- `Mutation_Signatures_Matched.tsv` from Step 4
-
-**Output:**
-- `Figure_HNSC_Patient_Level_A3_vs_SBS2.pdf` / `.png`
-- `HNSC_Patient_Level_A3_SBS2_Data.tsv` — patient-level data with region assignments
-
-**Key details:**
-- Filters for TCGA-HNSC primary tumors only
-- Three colored regions delineated by a data-driven diagonal (slope computed from the steepest SBS2/A3 ratio in the left zone with 5% buffer) and a horizontal line at the median SBS2:
-  - **Coral (#ed6a5a):** A3 present + SBS2 above median — tumors with active A3-driven mutagenesis
-  - **Cream (#f4f1bb):** A3 present + SBS2 below median — tumors where A3s are expressed but mutagenesis is suppressed
-  - **Teal (#9bc1bc):** No A3 expression — contains zero tumors with elevated SBS2 (A3 is necessary)
-- Points colored to match their region; legend above the plot with per-region sample counts
-- X-axis broken at 350–600 FPKM-UQ to accommodate outlier without compressing the main data cloud
-- **Conclusion:** A3 expression is necessary but not sufficient for SBS2 mutagenesis
-
----
-
-#### Step 6: A3C/A3H Bystander Analysis — ROC/AUC → Figure 1b
-
-**Script:** `Diagnostic_A3C_A3H_bystander.R`
-
-Evaluates the independent predictive capacity of each A3 family member for SBS2 status using three complementary approaches: (A) fraction of high-SBS2 tumors with elevated expression, (B) ROC/AUC classification, and (C) expression shift between SBS2 groups. Also includes a co-expression heatmap. The ROC curve panel is used as Figure 1b.
-
-**Dependencies:** `data.table`, `dplyr`, `ggplot2`, `patchwork`, `viridis`, `pROC`
-
-**Input:**
-- `A3_Expression_FPKM_UQ_Matched.tsv` from Step 4
-- `Mutation_Signatures_Matched.tsv` from Step 4
-
-**Output:**
-- `Diag_Bridge_A3C_A3H_Bystander_Main.pdf` / `.png` — composite of all three approaches
-- `Diag_Bridge_A3C_A3H_Bystander_Supp.pdf` / `.png` — supplementary panels (AUC bar, effect size, co-expression)
-- Individual panel PDFs (Approaches A, B, C, bonus heatmap)
-- `Diag_ApproachA_Scene_Presence.tsv`, `Diag_ApproachB_AUC_Results.tsv`, `Diag_ApproachC_Expression_Shift.tsv`
-
-**Key details:**
-- Tumors split at median SBS2 into SBS2-High and SBS2-Low groups
-- ROC curves (Figure 1b) show A3A (AUC = 0.599) and A3B (AUC = 0.579) modestly above chance, A3C (AUC = 0.578) marginal, and A3H (AUC = 0.519) at chance level
-- DeLong tests compare each A3's AUC to A3B
-- Co-expression heatmap reveals A3C/A3H clustering (shared immune cell source) distinct from A3A/A3B
-- **Conclusion:** A3H can be excluded; A3A, A3B, and A3C require further investigation via 3D visualization. The overall low AUC values for all family members reinforce that non-A3 cofactors drive SBS2 status.
-
----
-
-#### Step 7: HNSC 3D Individual A3 Expression vs. SBS2 → Figure 1c
-
-**Script:** `Patient_Level_HNSCC_TCGA_3D_A3s.R`
-
-Generates a 3D scatter plot of individual A3 family member expression (A3A × A3B × A3C) for each HNSC tumor, with points colored by SBS2 weight. A3H is excluded based on Step 6. A3C is retained because its AUC could not exclude it, though its expression is expected to reflect immune infiltration rather than intrinsic mutagenic activity.
-
-**Dependencies:** `data.table`, `dplyr`, `plotly`, `htmlwidgets`, `viridis`, `scatterplot3d`
-
-**Input:**
-- `A3_Expression_FPKM_UQ_Matched.tsv` from Step 4
-- `Mutation_Signatures_Matched.tsv` from Step 4
-
-**Output:**
-- `Figure_HNSC_3D_Individual_A3_vs_SBS2.html` — interactive 3D plot (plotly)
-- `Figure_HNSC_3D_Individual_A3_vs_SBS2_static.pdf` / `.png` — static 3D plots
-- `HNSC_Patient_Level_Individual_A3_SBS2_Data.tsv` — patient-level data table
-- `HNSC_Individual_A3_SBS2_Correlations.tsv` — per-A3 Spearman correlations with SBS2
-
-**Key details:**
-- X = A3A, Y = A3B, Z = A3C (all FPKM-UQ); Color = SBS2 weight (viridis)
-- The plot is rotated to reveal that along the A3B axis, tumors show a consistent moderate SBS2 burden (blue to dark green), while tumors with concurrent high A3A expression exhibit extreme SBS2 accumulation (bright yellow)
-- **Conclusion:** A3B establishes a baseline mutagenic state; A3A amplifies it. A3C does not independently influence SBS2 and likely reflects tumor-infiltrating lymphocytes. This motivates the focused A3B/A3A analysis in Step 8.
-
----
-
-#### Step 8: A3B Saturation and A3A/A3B Additive Model → Figure 1d, 1e, 1f
-
-**Script:** `A3A_A3B_additive_SBS2.R`
-
-Formally characterizes the non-linear A3B–SBS2 relationship and quantifies the additive contributions of A3A and A3B through a threshold sweep and 2×2 stratification model. Produces the final three panels of Figure 1.
-
-**Dependencies:** `data.table`, `dplyr`, `ggplot2`, `patchwork`, `viridis`
-
-**Input:**
-- `A3_Expression_FPKM_UQ_Matched.tsv` from Step 4
-- `Mutation_Signatures_Matched.tsv` from Step 4
-
-**Output:**
-- `Figure_A3B_A3A_Additive_SBS2.pdf` / `.png` — composite of all three panels
-- `Panel_Threshold_Sweep.pdf` — Figure 1d
-- `Panel_Ordered_Boxplot.pdf` — Figure 1e
-- `Panel_2x2_Heatmap.pdf` — Figure 1f
-- `A3B_Threshold_Sweep_Correlations.tsv`, `A3B_A3A_Quadrant_Stats.tsv`
-
-**Key details:**
-
-- **Panel 1d — Threshold sweep:** Spearman correlation between A3B and SBS2 computed separately for tumors below and above successive A3B quantile thresholds (20th–80th percentile in 5% steps). Both lines hold steady at rho = 0.1–0.2 until the 80th percentile, where the above-threshold correlation collapses to negative values, demonstrating A3B saturation.
-
-- **Panel 1e — Ordered boxplot:** Tumors stratified into four groups by median A3B and A3A expression, ordered left-to-right by ascending median SBS2. Diamond markers connected by a trend line trace the additive progression: A3B-/A3A- (median SBS2 ≈ 4.5) → A3B+/A3A- (≈ 11) → A3B-/A3A+ (≈ 15) → A3B+/A3A+ (≈ 17). Pairwise Wilcoxon tests with BH correction.
-
-- **Panel 1f — 2×2 heatmap:** Median SBS2 weight per A3B×A3A quadrant with viridis color scale and sample sizes.
-
-- **Conclusion:** A3B drives a baseline accumulation of SBS2 mutations that saturates at high expression. A3A amplifies SBS2 beyond this ceiling. The highest mutagenic burden requires both enzymes — alongside as-yet-unidentified cofactors that license A3 access to genomic DNA.
-
----
-
-### Figure 1 Summary
-
-**Title:** Nuclear APOBEC3 expression defines the mutational landscape of HNSCC but does not fully explain SBS2 accumulation.
-
-| Panel | Content | Script | Step |
-|-------|---------|--------|------|
-| a | HNSC patient-level summed A3s vs. SBS2 scatter with colored regions | `Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R` | 5 |
-| b | ROC curves: per-A3 predictive capacity for SBS2 status | `Diagnostic_A3C_A3H_bystander.R` | 6 |
-| c | 3D scatter: A3A × A3B × A3C colored by SBS2 | `Patient_Level_HNSCC_TCGA_3D_A3s.R` | 7 |
-| d | A3B threshold sweep: saturation of A3B–SBS2 correlation | `A3A_A3B_additive_SBS2.R` | 8 |
-| e | Ordered boxplot: SBS2 across A3B×A3A quadrants | `A3A_A3B_additive_SBS2.R` | 8 |
-| f | 2×2 heatmap: median SBS2 per A3B×A3A quadrant | `A3A_A3B_additive_SBS2.R` | 8 |
-
-**Narrative arc:**
-1. A3 expression is necessary but not sufficient for SBS2 (panel a)
-2. No single A3 strongly predicts SBS2; A3H excluded, A3C marginal (panel b)
-3. A3B provides steady-state SBS2; A3A drives extreme values; A3C is a bystander (panel c)
-4. A3B's contribution saturates at high expression (panel d)
-5. A3A and A3B work additively — the highest SBS2 requires both (panels e, f)
-6. Unknown cofactors must regulate A3 activity → **motivates Question 2 (network analysis)**
+### Original R Scripts (Steps 5-8, SUPERSEDED)
+
+These R scripts produced the original 6-panel Figure 1. They are retained in the repository for reference but are superseded by `Step05_Revised_HNSC_A3_vs_SBS2.py` for the current manuscript.
+
+| Script | Original Panel | Status |
+|--------|---------------|--------|
+| `Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R` | Fig 1a (scatter) | Superseded by Step05 Panel 1a |
+| `Diagnostic_A3C_A3H_bystander.R` | Fig 1b (ROC) | Dropped per PI directive (4/2) |
+| `Patient_Level_HNSCC_TCGA_3D_A3s.R` | Fig 1c (3D) | Dropped per PI directive (4/2) |
+| `A3A_A3B_additive_SBS2.R` | Fig 1d-f (additive) | Superseded by Step05 Panels 1b-c |
 
 ---
 
 ### Troubleshooting Scripts
 
-The following scripts in `scripts/TCGA/TROUBLESHOOTING/` are not part of the main pipeline but were used during development for diagnostics and validation:
+| Script | Purpose | Key Finding |
+|--------|---------|-------------|
+| `Diagnostic_Check_SBS2_Weight_Normalization.py` | Check if original SBS2 weights are ratio-based | CV=4.22, absolute counts confirmed |
+| `Diagnostic_Compare_SBS_Weight_Sources.py` | Compare original vs new SigProfiler outputs | HNSC rho=0.90, different COSMIC versions |
+| `Diagnostic_Verify_Barcode_Matching.py` | Audit all RNA-seq↔WES barcode pairs | 502/502 pass, 3 outliers verified |
+| `Diagnostic_Figure1_Text_Numbers.py` | Extract text-ready numbers for results section | All quadrant medians, p-values, region counts |
 
-| Script | Purpose |
-|--------|---------|
-| `TCGA_troubleshooting.R` | Verifies TCGAbiolinks metadata column structure and confirms Entity_ID barcode format |
-| `Compare_A3_Expression_Sources.R` | Compares A3 expression values across TPM, FPKM, and FPKM-UQ normalizations to confirm data provenance |
-| `FILTER_MASTER_TCGA_TSV.R` | Filters pan-cancer master table to HNSC only; superseded by direct filtering in Step 5 |
-| `Global_TCGA_A3s_vs_SBS2.R` | Pan-cancer scatter of average A3 expression vs. average SBS2 per cancer type; exploratory analysis |
-| `Patient_Level_HNSCC_TCGA_Network_Analysis.R` | Early prototype of differential network analysis in R; superseded by the dedicated network pipeline (Question 2) |
-| `A3_Contribution_to_SBS2.R` | Initial exploration of individual A3 family member contributions to SBS2 (partial correlations, regression, conditional analysis); findings refined into Steps 6 and 8 |
-| `Diagnose_nonlinear_A3_Relationships.R` | Diagnostic testing four approaches (threshold, log-transform, sequential ANOVA, gate/driver model) to characterize non-linear A3B–SBS2 relationship; best approaches incorporated into Step 8 |
+---
+
+### Figure 1 Summary (Revised)
+
+**Title:** A3A and A3B expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC.
+
+| Panel | Content | Script |
+|-------|---------|--------|
+| a | HNSC summed A3A+A3B vs SBS2 scatter with colored regions | `Step05_Revised_HNSC_A3_vs_SBS2.py` |
+| b | A3A vs A3B per tumor, colored by SBS2 (depth-sorted) | `Step05_Revised_HNSC_A3_vs_SBS2.py` |
+| c | Box-and-whisker + 2×2 heatmap of median-split quadrants | `Step05_Revised_HNSC_A3_vs_SBS2.py` |
+| Supp | Zoomed view of low-A3/high-SBS2 boundary (4 tumors labeled) | `Step05_Revised_HNSC_A3_vs_SBS2.py` |
+
+**Narrative arc:**
+1. A3A+A3B expression is necessary but not sufficient for SBS2 (Panel a)
+2. Both A3A and A3B contribute, with SBS2 signal concentrated where both are high (Panel b)
+3. A3B provides a baseline that A3A amplifies, with the highest burden requiring both (Panel c)
+4. Unknown cofactors must regulate A3 activity → **motivates Question 2 (network analysis)**
