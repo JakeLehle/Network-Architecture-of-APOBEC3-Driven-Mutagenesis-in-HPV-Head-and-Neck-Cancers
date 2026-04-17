@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step05_Revised_HNSC_A3_vs_SBS2.py
+Step05_Revised_HNSC_A3_vs_SBS2_v3.py
 ====================================
 Figure 1: three panels + supplemental.
 
@@ -8,6 +8,13 @@ Panel 1a: A3A+A3B vs SBS2 scatter (necessary but not sufficient)
 Panel 1b: A3A vs A3B colored by SBS2 (visual gradient, depth-sorted)
 Panel 1c: Box-and-whisker of SBS2 across 4 A3A/A3B quadrants + 2x2 heatmap
 Supplemental: Zoomed view of low-A3 / high-SBS2 boundary region
+
+CHANGE FROM v2:
+  After barcode matching, CASE_ID (12-char) matches are dropped.
+  Only DIRECT crosswalk matches are retained (426 tumors).
+  Rationale: Diagnostic_barcode_ambiguity_and_group_overlap.py showed
+  all 76 CASE_ID matches have ambiguous WES manifest entries and were
+  absent from the original analysis crosswalk file.
 
 Author: Jake Lehle / Claude (2026 NMF Paper)
 """
@@ -144,6 +151,17 @@ for _,r in um.iterrows():
     if len(cd)>=1: cm.append({'RNA_Barcode':rb,'WES_Barcode':cd.iloc[0]['WES_Barcode'],'match_source':'CASE_ID'})
 cdf = pd.DataFrame(cm); log(f"  Case_ID: {len(cdf)}")
 amdf = pd.concat([ddf,cdf],ignore_index=True)
+
+# =========================================================================
+# v3 CHANGE: Drop CASE_ID matches, keep only DIRECT crosswalk matches.
+# Rationale: All 76 CASE_ID matches have ambiguous WES manifest entries
+# (duplicate rows) and were absent from the original analysis crosswalk.
+# The 426 DIRECT matches have verified RNA-to-WES barcode provenance.
+# =========================================================================
+n_before = len(amdf)
+amdf = amdf[amdf['match_source'] == 'DIRECT'].copy()
+log(f"  v3 DIRECT-only filter: {n_before} -> {len(amdf)} (dropped {n_before - len(amdf)} CASE_ID matches)")
+
 amdf['patient']=amdf['RNA_Barcode'].str[:12]
 amdf['pri']=amdf['match_source'].map({'DIRECT':0,'CASE_ID':1}).fillna(99)
 amdf = amdf.sort_values('pri').drop_duplicates(subset='patient',keep='first').drop(columns=['pri','patient'])
@@ -175,7 +193,7 @@ for xi,yi in zip(x_all,y_all):
 final['region'] = regions
 n_teal=regions.count('teal'); n_coral=regions.count('coral'); n_cream=regions.count('cream')
 log(f"  Regions: teal={n_teal}, coral={n_coral}, cream={n_cream}")
-final.to_csv(os.path.join(OUTPUT_DIR, "HNSC_A3_SBS2_matched_v2.tsv"), sep='\t', index=False)
+final.to_csv(os.path.join(OUTPUT_DIR, "HNSC_A3_SBS2_matched_v3.tsv"), sep='\t', index=False)
 
 # =============================================================================
 # FIGURE SETUP
@@ -260,7 +278,7 @@ else:
 banner("Panel 1c: Boxplot + Heatmap")
 
 quad_order = ['LOW_A3B_LOW_A3A','HIGH_A3B_LOW_A3A','LOW_A3B_HIGH_A3A','HIGH_A3B_HIGH_A3A']
-quad_labels = ['A3B$^{-}$ A3A$^{-}$','A3B$^{+}$ A3A$^{-}$','A3B$^{-}$ A3A$^{+}$','A3B$^{+}$ A3A$^{+}$']
+quad_labels = ['A3B LOW\nA3A LOW','A3B HIGH\nA3A LOW','A3B LOW\nA3A HIGH','A3B HIGH\nA3A HIGH']
 quad_colors = [COLOR_CREAM, '#e8c87a', '#e8a87a', COLOR_SBS2_HIGH]
 
 fig = plt.figure(figsize=(20, 10))
@@ -289,11 +307,11 @@ ax_box.plot(range(1,5), medians, 'D-', color=COLOR_DARK_GRAY, markersize=10,
             markerfacecolor='white', markeredgecolor=COLOR_DARK_GRAY, markeredgewidth=2,
             linewidth=2, zorder=5)
 
-# MEDIAN LABELS — positioned at ~50% of the y-axis range, above the box area
+# MEDIAN LABELS (just the value, no prefix text)
 y_mid = y_all.max() * 0.50
 for i, med in enumerate(medians):
-    ax_box.text(i+1, y_mid, f'median = {med:.0f}',
-                ha='center', fontsize=FONT_SIZE-8, fontweight='bold', color=COLOR_DARK_GRAY)
+    ax_box.text(i+1, y_mid, f'{med:.0f}',
+                ha='center', fontsize=FONT_SIZE-6, fontweight='bold', color=COLOR_DARK_GRAY)
 
 ax_box.set_xticklabels(quad_labels, fontsize=FONT_SIZE-6)
 ax_box.set_ylabel('SBS2 Weight (mutation count)', fontsize=FONT_SIZE)
@@ -309,7 +327,19 @@ ax_box.text(2.5, y_sig*1.05, sig_text, ha='center', fontsize=FONT_SIZE-8, color=
 
 ax_box.spines['top'].set_visible(False); ax_box.spines['right'].set_visible(False)
 
-# --- 2x2 Heatmap (wider, all black text) ---
+# Second bracket: groups 3 vs 4 (plateau effect, expected ns)
+p_plateau = mannwhitneyu(box_data[2], box_data[3], alternative='two-sided').pvalue
+y_sig2 = y_sig * 1.15  # position above the first bracket
+ax_box.plot([3, 3, 4, 4], [y_sig2, y_sig2*1.03, y_sig2*1.03, y_sig2],
+            color=COLOR_DARK_GRAY, linewidth=1.5)
+if p_plateau >= 0.05:
+    ax_box.text(3.5, y_sig2*1.05, 'ns', ha='center', fontsize=FONT_SIZE-6,
+                fontstyle='italic', color=COLOR_DARK_GRAY)
+else:
+    sig_text2 = f'p = {p_plateau:.2e}' if p_plateau < 0.001 else f'p = {p_plateau:.4f}'
+    ax_box.text(3.5, y_sig2*1.05, sig_text2, ha='center', fontsize=FONT_SIZE-8, color=COLOR_DARK_GRAY)
+
+# --- 2x2 Heatmap ---
 # Rows = A3B (HIGH top, LOW bottom), Cols = A3A (LOW left, HIGH right)
 heat_matrix = np.array([
     [medians[1], medians[3]],   # HIGH A3B row
@@ -323,7 +353,6 @@ heat_n = np.array([
 im = ax_heat.imshow(heat_matrix, cmap='YlOrRd', aspect='equal',
                      vmin=0, vmax=max(medians)*1.1)
 
-# All text in BLACK
 for i in range(2):
     for j in range(2):
         val = heat_matrix[i,j]
@@ -394,6 +423,7 @@ log(f"\n  Wilcoxon p-values:")
 pairs = [('LOW_A3B_LOW_A3A','HIGH_A3B_LOW_A3A','A3B effect alone'),
          ('LOW_A3B_LOW_A3A','LOW_A3B_HIGH_A3A','A3A effect alone'),
          ('HIGH_A3B_LOW_A3A','HIGH_A3B_HIGH_A3A','Adding A3A to A3B'),
+         ('LOW_A3B_HIGH_A3A','HIGH_A3B_HIGH_A3A','A3A HIGH vs BOTH HIGH (plateau)'),
          ('LOW_A3B_LOW_A3A','HIGH_A3B_HIGH_A3A','Both vs neither')]
 for q1,q2,lab in pairs:
     g1=final[final['quadrant']==q1]['SBS2']; g2=final[final['quadrant']==q2]['SBS2']
@@ -407,7 +437,7 @@ log(f"\n  Spearman correlations:")
 for g in ['A3A','A3B','A3A_plus_A3B']:
     rho,p = spearmanr(final[g],final['SBS2'])
     log(f"    {g} vs SBS2: rho={rho:.4f}, p={p:.2e}")
-rp = os.path.join(TROUBLE_DIR,"figure1_final_pipeline_report.txt")
+rp = os.path.join(TROUBLE_DIR,"figure1_v3_pipeline_report.txt")
 with open(rp,'w') as f: f.write('\n'.join(report_lines))
 log(f"\n  Report: {rp}")
-banner("FIGURE 1 PIPELINE COMPLETE")
+banner("FIGURE 1 PIPELINE COMPLETE (v3 - DIRECT ONLY)")
