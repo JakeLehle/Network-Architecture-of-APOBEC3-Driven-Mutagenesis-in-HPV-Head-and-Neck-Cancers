@@ -4,14 +4,23 @@ Step05_Panel_1d_Saturation.py
 =============================
 Panel 1d: A3B saturation effect on SBS2.
 
-Three sub-panels:
-  Left:   A3B vs SBS2 scatter with decile-binned median + 90th pctl overlay
-          Shows SBS2 rises with A3B then plateaus (ceiling effect)
-  Middle: A3A vs SBS2 scatter with decile-binned median + 90th pctl overlay
-          Shows SBS2 continues to rise sporadically with A3A (no ceiling)
-  Right:  Spearman rho threshold sweep for A3B (above vs below each quantile)
-          Formal statistical evidence that A3B-SBS2 correlation collapses
-          at high A3B expression while it persists at low A3B expression
+Four sub-panels (2 rows x 3 cols, bottom row spans all 3):
+  Top-left:   A3B vs SBS2 scatter with decile-binned percentile fan
+              Shows SBS2 rises with A3B then plateaus (ceiling effect)
+  Top-middle: A3A vs SBS2 scatter with decile-binned percentile fan
+              Shows SBS2 continues to rise sporadically with A3A (no ceiling)
+  Top-right:  Quantile-based threshold sweep for A3B (rho_below vs rho_above
+              at Q20, Q40, Q60, Q80). 20% step matches the bottom panel's
+              tick spacing exactly.
+  Bottom:     The SAME rho values from the top-right panel sweep, relabeled
+              onto a median-centered x-axis:
+                Below side: x = -(100 - Q), y = rho_below at Q
+                Above side: x = +Q,         y = rho_above at Q
+              8 points total, landing exactly on -80, -60, -40, -20 and
+              +20, +40, +60, +80. There is a 40% gap across the median;
+              the line is drawn as two separate connected segments
+              (below-median and above-median) with a shared linear trend
+              fit across all 8 points.
 
 Reads: data/FIG_1/HNSC_A3_SBS2_matched_v3.tsv
 Saves: FIGURE_1_PANELS/Panel_1d_A3B_Saturation.pdf/.png
@@ -23,7 +32,7 @@ import os, sys, numpy as np, pandas as pd
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, linregress
 
 # =============================================================================
 # CONFIGURATION (matches Step05)
@@ -93,7 +102,6 @@ def compute_binned_stats(df, expr_col, sbs_col='SBS2', n_bins=N_BINS):
     df_sorted['bin'] = pd.qcut(df_sorted[expr_col], n_bins, labels=False, duplicates='drop')
     actual_bins = sorted(df_sorted['bin'].unique())
 
-    # Fan percentiles: from low to high
     fan_pctls = [30, 50, 70, 90]
 
     stats = []
@@ -137,19 +145,19 @@ for _, row in a3a_bins.iterrows():
     log(line)
 
 # =============================================================================
-# THRESHOLD SWEEP (Spearman rho above vs below)
+# QUANTILE-BASED THRESHOLD SWEEP at 20% STEPS (Q20, Q40, Q60, Q80)
 # =============================================================================
-banner("THRESHOLD SWEEP")
+banner("QUANTILE-BASED THRESHOLD SWEEP (Q20, Q40, Q60, Q80)")
 
-def threshold_sweep(df, expr_col, sbs_col='SBS2',
-                    quantiles=None):
+def threshold_sweep(df, expr_col, sbs_col='SBS2', quantiles=None):
     """
-    For each quantile threshold of expr_col, compute Spearman rho(expr, SBS2)
+    For each QUANTILE-based threshold of expr_col, compute Spearman rho(expr, SBS2)
     separately for tumors BELOW and ABOVE the threshold.
+
+    Sweep at Q20, Q40, Q60, Q80 to match the bottom panel's 20% tick spacing.
     """
     if quantiles is None:
-        # Clean integer percentiles, evenly spaced by 5%
-        quantiles = [q / 100.0 for q in range(20, 85, 5)]
+        quantiles = [0.20, 0.40, 0.60, 0.80]
 
     results = []
     for q in quantiles:
@@ -180,7 +188,7 @@ def threshold_sweep(df, expr_col, sbs_col='SBS2',
 
 a3b_sweep = threshold_sweep(df, 'A3B')
 
-log(f"\n  A3B threshold sweep:")
+log(f"\n  A3B quantile-based threshold sweep:")
 log(f"  {'Pctl':>5s} {'Thresh':>7s} {'n_below':>8s} {'n_above':>8s} "
     f"{'rho_below':>10s} {'rho_above':>10s}")
 for _, row in a3b_sweep.iterrows():
@@ -189,43 +197,112 @@ for _, row in a3b_sweep.iterrows():
         f"{row['rho_below']:>10.3f} {row['rho_above']:>10.3f}")
 
 # =============================================================================
-# GENERATE FIGURE: 3-panel
+# REMAP PANEL C SWEEP ONTO MEDIAN-CENTERED % AXIS (bottom panel)
 # =============================================================================
-banner("GENERATE PANEL 1d (3 sub-panels)")
+banner("REMAP PANEL C SWEEP -> MEDIAN-CENTERED AXIS (bottom panel)")
 
-fig = plt.figure(figsize=(35, 10))
-gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 1], wspace=0.30)
-ax_a3b = fig.add_subplot(gs[0])
-ax_a3a = fig.add_subplot(gs[1])
-ax_sweep = fig.add_subplot(gs[2])
+def remap_sweep_to_median_centered(sweep_df):
+    """
+    Direct lookup of panel c's rho values onto a median-centered % axis.
 
-# Shared y-axis limit for left and middle panels
-# Cap at 300 so the binned trend lines (medians ~5-30, P90 ~40-220) are visible.
-# Extreme outliers above 300 are clipped but still in the scatter.
+    For each quantile threshold Q in sweep_df:
+      Below-median side: x = -(100 - Q), y = rho_below at Q
+        Q20 -> x = -80   Q40 -> x = -60   Q60 -> x = -40   Q80 -> x = -20
+      Above-median side: x = +Q, y = rho_above at Q
+        Q20 -> x = +20   Q40 -> x = +40   Q60 -> x = +60   Q80 -> x = +80
+
+    8 points total, landing exactly on -80, -60, -40, -20, +20, +40, +60, +80.
+    A 40% gap exists across the median. No rho values are recomputed.
+    """
+    rows = []
+    for _, r in sweep_df.iterrows():
+        q = int(r['pct_label'])
+
+        # BELOW-median point: x = -(100 - q), y = rho_below
+        x_below = -(100 - q)
+        if not pd.isna(r['rho_below']):
+            rows.append({
+                'pct_from_median': x_below,
+                'side': 'below',
+                'source_quantile': q,
+                'threshold': r['threshold'],
+                'n_subset': int(r['n_below']),
+                'rho': r['rho_below'],
+                'p_value': r['p_below'],
+            })
+
+        # ABOVE-median point: x = +q, y = rho_above
+        x_above = +q
+        if not pd.isna(r['rho_above']):
+            rows.append({
+                'pct_from_median': x_above,
+                'side': 'above',
+                'source_quantile': q,
+                'threshold': r['threshold'],
+                'n_subset': int(r['n_above']),
+                'rho': r['rho_above'],
+                'p_value': r['p_above'],
+            })
+
+    return pd.DataFrame(rows).sort_values('pct_from_median').reset_index(drop=True)
+
+a3b_centered = remap_sweep_to_median_centered(a3b_sweep)
+
+log(f"\n  Median-centered remap of panel c values:")
+log(f"  {'x_pct':>6s} {'side':>6s} {'from_Q':>7s} {'thresh':>8s} "
+    f"{'n':>6s} {'rho':>8s} {'p':>11s}")
+for _, r in a3b_centered.iterrows():
+    log(f"  {int(r['pct_from_median']):>+6d} {r['side']:>6s} "
+        f"Q{int(r['source_quantile']):>2d}     {r['threshold']:>8.2f} "
+        f"{int(r['n_subset']):>6d} {r['rho']:>+8.3f} "
+        f"{r['p_value']:>11.3e}")
+
+# Linear trend across all 8 remapped points
+slope, intercept, r_val, p_val_trend, std_err = linregress(
+    a3b_centered['pct_from_median'], a3b_centered['rho']
+)
+log(f"\n  Linear trend fit (rho vs % from median):")
+log(f"    slope     = {slope:+.5f} (rho per % deviation)")
+log(f"    intercept = {intercept:+.4f}")
+log(f"    R^2       = {r_val**2:.4f}")
+log(f"    trend p   = {p_val_trend:.4e}")
+log(f"    Direction : {'negative (diminishing returns)' if slope < 0 else 'positive'}")
+
+# =============================================================================
+# GENERATE FIGURE: 2 x 3 grid (bottom row spans all 3 columns)
+# =============================================================================
+banner("GENERATE PANEL 1d (4 sub-panels)")
+
+fig = plt.figure(figsize=(35, 18))
+gs = gridspec.GridSpec(2, 3,
+                        width_ratios=[1, 1, 1],
+                        height_ratios=[1, 0.80],
+                        wspace=0.30, hspace=0.38)
+ax_a3b      = fig.add_subplot(gs[0, 0])
+ax_a3a      = fig.add_subplot(gs[0, 1])
+ax_sweep    = fig.add_subplot(gs[0, 2])
+ax_centered = fig.add_subplot(gs[1, :])     # bottom row spans all 3 cols
+
 Y_CAP = 300
 sbs2_max_plot = Y_CAP
 n_clipped = (df['SBS2'] > Y_CAP).sum()
 log(f"  Y-axis capped at {Y_CAP} ({n_clipped} points above cap will be clipped)")
 
-# Empirical x-axis caps: use the 95th percentile of expression so extreme
-# outliers don't stretch the axis and compress the bulk of the data
 a3b_x_cap = np.percentile(df['A3B'], 95) * 1.15
 a3a_x_cap = np.percentile(df['A3A'], 95) * 1.15
 log(f"  A3B x-axis cap: {a3b_x_cap:.1f} (95th pctl * 1.15)")
 log(f"  A3A x-axis cap: {a3a_x_cap:.1f} (95th pctl * 1.15)")
 
 # =========================================================================
-# LEFT: A3B vs SBS2 scatter + percentile fan
+# TOP-LEFT: A3B vs SBS2 scatter + percentile fan
 # =========================================================================
-# Scatter: all points, light background
 ax_a3b.scatter(df['A3B'], df['SBS2'], s=30, alpha=0.20, c=COLOR_A3B,
                edgecolors='none', rasterized=True, zorder=1)
 
-# Percentile fan: progressively bolder lines from P30 to P90
-fan_alphas = [0.4, 0.55, 0.75, 1.0]
-fan_lws = [1.5, 2.0, 2.5, 3.0]
+fan_alphas  = [0.4, 0.55, 0.75, 1.0]
+fan_lws     = [1.5, 2.0, 2.5, 3.0]
 fan_markers = ['v', 'o', 'D', 's']
-fan_msizes = [5, 6, 7, 8]
+fan_msizes  = [5, 6, 7, 8]
 
 for pctl, alpha, lw, marker, ms in zip(FAN_PCTLS, fan_alphas, fan_lws, fan_markers, fan_msizes):
     col_name = f'sbs2_p{pctl}'
@@ -246,12 +323,11 @@ ax_a3b.set_title('A3B: Saturation', fontsize=FONT_SIZE, fontweight='bold',
                   color=COLOR_A3B)
 
 # =========================================================================
-# MIDDLE: A3A vs SBS2 scatter + percentile fan
+# TOP-MIDDLE: A3A vs SBS2 scatter + percentile fan
 # =========================================================================
 ax_a3a.scatter(df['A3A'], df['SBS2'], s=30, alpha=0.20, c=COLOR_A3A,
                edgecolors='none', rasterized=True, zorder=1)
 
-# Same percentile fan
 for pctl, alpha, lw, marker, ms in zip(FAN_PCTLS, fan_alphas, fan_lws, fan_markers, fan_msizes):
     col_name = f'sbs2_p{pctl}'
     ax_a3a.plot(a3a_bins['bin_center'], a3a_bins[col_name],
@@ -271,30 +347,25 @@ ax_a3a.set_title('A3A: No Saturation', fontsize=FONT_SIZE, fontweight='bold',
                   color=COLOR_A3A)
 
 # =========================================================================
-# RIGHT: Threshold sweep (A3B, rho above vs below)
+# TOP-RIGHT: Quantile-based threshold sweep (rho above vs below)
 # =========================================================================
-# Ribbon between the two lines
 ax_sweep.fill_between(a3b_sweep['pct_label'],
                        np.minimum(a3b_sweep['rho_below'], a3b_sweep['rho_above']),
                        np.maximum(a3b_sweep['rho_below'], a3b_sweep['rho_above']),
                        alpha=0.1, color=COLOR_DARK_GRAY, zorder=0)
 
-# Below-threshold line (rising phase, maintains correlation)
 ax_sweep.plot(a3b_sweep['pct_label'], a3b_sweep['rho_below'], 'o-',
-              color=COLOR_A3B, markersize=8, linewidth=2.5,
+              color=COLOR_A3B, markersize=10, linewidth=2.5,
               markeredgecolor=COLOR_BLACK, markeredgewidth=1,
               label='Below threshold', zorder=3)
 
-# Above-threshold line (plateau phase, correlation collapses)
 ax_sweep.plot(a3b_sweep['pct_label'], a3b_sweep['rho_above'], 's-',
-              color=COLOR_SBS2_HIGH, markersize=8, linewidth=2.5,
+              color=COLOR_SBS2_HIGH, markersize=10, linewidth=2.5,
               markeredgecolor=COLOR_BLACK, markeredgewidth=1,
               label='Above threshold', zorder=3)
 
-# Zero line
 ax_sweep.axhline(0, color=COLOR_DARK_GRAY, ls='--', lw=1, alpha=0.5, zorder=0)
 
-# X-axis: clean ticks at every 20th percentile
 sweep_xticks = [20, 40, 60, 80]
 ax_sweep.set_xticks(sweep_xticks)
 ax_sweep.set_xticklabels([f'{x}th' for x in sweep_xticks])
@@ -308,6 +379,76 @@ ax_sweep.spines['right'].set_visible(False)
 ax_sweep.set_title('A3B Correlation Sweep', fontsize=FONT_SIZE, fontweight='bold',
                     color=COLOR_DARK_GRAY)
 
+# =========================================================================
+# BOTTOM (spans 3 cols): Panel c rho values remapped to % from median
+# =========================================================================
+X_LO, X_HI = -80, 80
+
+rho_vals = a3b_centered['rho'].values
+rho_pad  = 0.05
+y_top    = max(rho_vals.max() + rho_pad,  0.10)
+y_bot    = min(rho_vals.min() - rho_pad, -0.10)
+
+# Background shading: positive-correlation zone (light red) above y=0,
+#                     negative-correlation zone (light tan) below y=0
+ax_centered.axhspan(0,            y_top * 1.25, color=COLOR_SBS2_HIGH, alpha=0.12, zorder=0)
+ax_centered.axhspan(y_bot * 1.25, 0,            color=COLOR_CREAM,     alpha=0.40, zorder=0)
+
+# Zero guides
+ax_centered.axhline(0, color=COLOR_DARK_GRAY, ls='-',  lw=1.2, alpha=0.6, zorder=1)
+ax_centered.axvline(0, color=COLOR_DARK_GRAY, ls='--', lw=1.5, alpha=0.6, zorder=1)
+
+# Linear trend line across full fixed x-range
+x_fit = np.linspace(X_LO, X_HI, 200)
+y_fit = slope * x_fit + intercept
+ax_centered.plot(x_fit, y_fit, ls='--', color=COLOR_BLACK,
+                  linewidth=3.0, alpha=0.55, zorder=2,
+                  label=f'Linear trend (slope = {slope:+.4f}, p = {p_val_trend:.2e})')
+
+# Draw below-median and above-median as two separate connected segments
+# so the line does not bridge the 40% gap across the median
+below_pts = a3b_centered[a3b_centered['side'] == 'below']
+above_pts = a3b_centered[a3b_centered['side'] == 'above']
+
+ax_centered.plot(below_pts['pct_from_median'], below_pts['rho'],
+                  marker='o', linestyle='-', color=COLOR_A3B,
+                  markersize=16, linewidth=3.0,
+                  markeredgecolor=COLOR_BLACK, markeredgewidth=1.5,
+                  zorder=4, label='rho_below (below-median subset)')
+
+ax_centered.plot(above_pts['pct_from_median'], above_pts['rho'],
+                  marker='s', linestyle='-', color=COLOR_A3B,
+                  markersize=16, linewidth=3.0,
+                  markeredgecolor=COLOR_BLACK, markeredgewidth=1.5,
+                  zorder=4, label='rho_above (above-median subset)')
+
+# Fixed x-axis ticks at 20% intervals from -80 to +80
+xticks = list(range(X_LO, X_HI + 1, 20))
+ax_centered.set_xticks(xticks)
+ax_centered.set_xticklabels(
+    [(f'{t:+d}%' if t != 0 else '0%\n(median)') for t in xticks]
+)
+
+# Symmetric, fixed limits
+ax_centered.set_xlim(X_LO - 5, X_HI + 5)
+ax_centered.set_ylim(y_bot * 1.25, y_top * 1.25)
+
+# Zone labels centered on each half
+ax_centered.text(-40, y_top * 1.13, 'Below median',
+                  fontsize=FONT_SIZE - 4, ha='center', va='top',
+                  color=COLOR_DARK_GRAY, fontweight='bold', alpha=0.80)
+ax_centered.text(+40, y_top * 1.13, 'Above median',
+                  fontsize=FONT_SIZE - 4, ha='center', va='top',
+                  color=COLOR_DARK_GRAY, fontweight='bold', alpha=0.80)
+
+ax_centered.set_xlabel('A3B Expression (% from cohort median)', fontsize=FONT_SIZE)
+ax_centered.set_ylabel('Spearman rho (A3B vs SBS2)', fontsize=FONT_SIZE)
+ax_centered.legend(loc='lower left', framealpha=0.9, fontsize=FONT_SIZE - 8)
+ax_centered.spines['top'].set_visible(False)
+ax_centered.spines['right'].set_visible(False)
+ax_centered.set_title('A3B Saturation: Correlation Decay from Median',
+                       fontsize=FONT_SIZE, fontweight='bold', color=COLOR_A3B)
+
 plt.tight_layout()
 save_fig(fig, "Panel_1d_A3B_Saturation")
 
@@ -316,9 +457,6 @@ save_fig(fig, "Panel_1d_A3B_Saturation")
 # =============================================================================
 banner("DIAGNOSTIC SUMMARY FOR TEXT")
 
-# =========================================================================
-# 1. FULL DECILE TABLE FOR BOTH GENES (all fan percentiles)
-# =========================================================================
 log(f"  FULL DECILE TABLE (A3B):")
 header = f"  {'Decile':>7s} {'Expr_med':>9s} {'n':>5s}"
 for p in FAN_PCTLS:
@@ -339,9 +477,9 @@ for _, row in a3a_bins.iterrows():
     log(line)
 
 # =========================================================================
-# 2. PANEL 1d LEFT: A3B fan numbers
+# 2. PANEL 1d TOP-LEFT: A3B fan numbers
 # =========================================================================
-banner("PANEL 1d LEFT: A3B Saturation Fan")
+banner("PANEL 1d TOP-LEFT: A3B Saturation Fan")
 
 log(f"  Percentile behavior across A3B expression deciles:")
 for p in FAN_PCTLS:
@@ -353,7 +491,6 @@ for p in FAN_PCTLS:
     log(f"    P{p}: decile 1 = {d1:.0f}, peak = {peak:.0f} (decile {peak_dec}), "
         f"decile 10 = {d10:.0f}, fold change = {fold:.1f}x")
 
-# Identify where A3B P90 peaks and what happens after
 a3b_p90_vals = a3b_bins['sbs2_p90'].values
 a3b_p90_peak_idx = np.argmax(a3b_p90_vals)
 a3b_p90_peak_val = a3b_p90_vals[a3b_p90_peak_idx]
@@ -372,9 +509,9 @@ log(f"    by decile {a3b_p90_peak_dec} and does not increase further, indicating
 log(f"    mutagenic ceiling for A3B-driven SBS2 accumulation.")
 
 # =========================================================================
-# 3. PANEL 1d MIDDLE: A3A fan numbers
+# 3. PANEL 1d TOP-MIDDLE: A3A fan numbers
 # =========================================================================
-banner("PANEL 1d MIDDLE: A3A No Saturation Fan")
+banner("PANEL 1d TOP-MIDDLE: A3A No Saturation Fan")
 
 log(f"  Percentile behavior across A3A expression deciles:")
 for p in FAN_PCTLS:
@@ -401,18 +538,15 @@ log(f"    SBS2 accumulation in a subset of tumors, consistent with")
 log(f"    patient-specific modulation of A3A enzymatic activity.")
 
 # =========================================================================
-# 4. PANEL 1d RIGHT: Threshold sweep numbers
+# 4. PANEL 1d TOP-RIGHT: Quantile-based threshold sweep
 # =========================================================================
-banner("PANEL 1d RIGHT: Threshold Sweep")
+banner("PANEL 1d TOP-RIGHT: Quantile-Based Threshold Sweep")
 
 rho_below_low = a3b_sweep[a3b_sweep['quantile'] <= 0.40]['rho_below'].mean()
-rho_below_mid = a3b_sweep[(a3b_sweep['quantile'] > 0.40) & (a3b_sweep['quantile'] <= 0.60)]['rho_below'].mean()
-rho_above_low = a3b_sweep[a3b_sweep['quantile'] <= 0.40]['rho_above'].mean()
 rho_above_high = a3b_sweep[a3b_sweep['quantile'] >= 0.60]['rho_above'].mean()
 collapse_q = a3b_sweep[a3b_sweep['rho_above'] <= 0]
 collapse_pctl = int(collapse_q['pct_label'].iloc[0]) if len(collapse_q) > 0 else 'N/A'
 
-# Rho at specific thresholds for text
 rho_at = {}
 for target_q in [20, 40, 60, 80]:
     match = a3b_sweep[a3b_sweep['pct_label'] == target_q]
@@ -423,7 +557,7 @@ for target_q in [20, 40, 60, 80]:
             'n_above': int(match.iloc[0]['n_above']),
         }
 
-log(f"  Spearman rho at key thresholds:")
+log(f"  Spearman rho at each threshold:")
 for q, vals in rho_at.items():
     log(f"    {q}th percentile: below = {vals['below']:.3f}, above = {vals['above']:.3f} (n_above = {vals['n_above']})")
 
@@ -439,7 +573,48 @@ log(f"  the {collapse_pctl}th percentile of A3B expression show no further")
 log(f"  A3B-SBS2 association, consistent with enzymatic saturation.")
 
 # =========================================================================
-# 5. COMBINED NARRATIVE FOR RESULTS SECTION
+# 5. PANEL 1d BOTTOM: Remapped panel c values on median-centered axis
+# =========================================================================
+banner("PANEL 1d BOTTOM: Remapped Panel C (median-centered)")
+
+log(f"  NOTE: Each y-value is a rho taken directly from the panel c sweep.")
+log(f"        Below-median side uses rho_below at each quantile Q, mapped")
+log(f"        to x = -(100 - Q). Above-median side uses rho_above at each")
+log(f"        quantile Q, mapped to x = +Q. Sweep is at Q20/Q40/Q60/Q80 so")
+log(f"        points land exactly on -80, -60, -40, -20, +20, +40, +60, +80.")
+log(f"        There is a 40% gap across the median; the line is drawn as")
+log(f"        two separate segments (below and above) with the linear trend")
+log(f"        fit across all 8 points.")
+log(f"")
+log(f"  Remapped points:")
+for _, r in a3b_centered.iterrows():
+    log(f"    x = {int(r['pct_from_median']):>+4d}%  "
+        f"(from Q{int(r['source_quantile']):>2d}, {r['side']:>6s}-subset, "
+        f"n = {int(r['n_subset']):>3d}, threshold = {r['threshold']:>6.2f}): "
+        f"rho = {r['rho']:+.3f}")
+
+below_mean = a3b_centered.loc[a3b_centered['pct_from_median'] < 0, 'rho'].mean()
+above_mean = a3b_centered.loc[a3b_centered['pct_from_median'] > 0, 'rho'].mean()
+log(f"\n  Mean rho (below-median side): {below_mean:+.3f}")
+log(f"  Mean rho (above-median side): {above_mean:+.3f}")
+log(f"  Below - Above delta: {below_mean - above_mean:+.3f}")
+log(f"\n  Linear trend: slope = {slope:+.5f} per % "
+    f"(p = {p_val_trend:.2e}), R^2 = {r_val**2:.3f}")
+log(f"  Interpretation: The A3B-SBS2 correlation "
+    f"{'decays' if slope < 0 else 'rises'} as the expression threshold moves from")
+log(f"  below to above the cohort median. Rescaling panel c's rho values onto")
+log(f"  a symmetric % from median axis makes the saturation pattern visually")
+log(f"  intuitive: diminishing returns as A3B rises past the median, with the")
+log(f"  correlation decaying toward zero or negative at the far-right points.")
+
+a3b_centered.to_csv(
+    os.path.join(TROUBLE_DIR, "panel1d_a3b_centered_sweep.tsv"),
+    sep='\t', index=False
+)
+log(f"  Saved: panel1d_a3b_centered_sweep.tsv")
+
+# =========================================================================
+# 6. COMBINED NARRATIVE FOR RESULTS SECTION
 # =========================================================================
 banner("COMBINED NARRATIVE: Panel 1c + 1d")
 
@@ -453,22 +628,28 @@ log(f"""
     burden; instead, their median SBS2 is comparable to or lower than
     the A3A-high/A3B-low group (ns, Panel 1c).
 
-  PANEL 1d NARRATIVE (fan + sweep):
+  PANEL 1d NARRATIVE (fan + sweep + median-centered remap):
     This plateau is explained by A3B enzymatic saturation. When SBS2
     distributions are examined across expression deciles (Panel 1d,
-    left), all percentile lines for A3B (30th through 90th) converge
+    top-left), all percentile lines for A3B (30th through 90th) converge
     at high expression. The 90th percentile of SBS2 reaches
     {a3b_p90_peak_val:.0f} mutations by decile {a3b_p90_peak_dec} and
     does not increase further, establishing a mutagenic ceiling. By
-    contrast, A3A shows no such saturation (Panel 1d, middle): its
+    contrast, A3A shows no such saturation (Panel 1d, top-middle): its
     90th percentile SBS2 rises {a3a_p90_fold:.1f}-fold from decile 1
     ({a3a_p90_d1:.0f}) to decile 10 ({a3a_p90_d10:.0f}), indicating
     that high A3A expression enables substantially greater SBS2
     accumulation in a subset of tumors. A threshold sweep of the
-    A3B-SBS2 Spearman correlation (Panel 1d, right) confirms this
+    A3B-SBS2 Spearman correlation (Panel 1d, top-right) confirms this
     pattern: the correlation is maintained among tumors below each
     expression threshold (rho ~ {rho_below_low:.2f}) but collapses
-    to near-zero above the {collapse_pctl}th percentile.
+    to near-zero above the {collapse_pctl}th percentile. Plotting the
+    same rho values on a median-centered axis (Panel 1d, bottom)
+    reveals a negative linear trend of {slope:+.4f} rho per percent
+    deviation (p = {p_val_trend:.2e}), capturing the diminishing
+    returns of A3B expression with the correlation decaying from
+    positive on the below-median side to near-zero or negative at A3B
+    levels well above the cohort median.
 
   TRANSITION TO NEXT SECTION:
     The sporadic nature of A3A's effect on SBS2 (visible as scattered
@@ -482,7 +663,6 @@ log(f"""
     SNP enrichment is the focus of the following sections.
 """)
 
-# Save diagnostic tables
 a3b_bins.to_csv(os.path.join(TROUBLE_DIR, "panel1d_a3b_decile_stats.tsv"), sep='\t', index=False)
 a3a_bins.to_csv(os.path.join(TROUBLE_DIR, "panel1d_a3a_decile_stats.tsv"), sep='\t', index=False)
 a3b_sweep.to_csv(os.path.join(TROUBLE_DIR, "panel1d_a3b_threshold_sweep.tsv"), sep='\t', index=False)
