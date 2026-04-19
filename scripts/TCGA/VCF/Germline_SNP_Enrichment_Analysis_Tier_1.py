@@ -9,26 +9,18 @@ activity, explaining why some tumors with similar A3 expression accumulate
 high SBS2 while others do not.
 
 Strategy:
-  - Combined two-tier germline identification:
-    Tier 1 (high confidence): alt_allele_in_normal flag
-      (variant detected in patient's matched normal sample)
-    Tier 2 (moderate confidence): germline_risk flag only
-      (population database match in gnomAD, not confirmed in normal)
+  - Tier 1 germline variants: SNPs flagged with alt_allele_in_normal
+    (variant detected in patient's matched normal sample)
   - Group selection: identical to network pipeline Step03
     (A3 median filter, rank by SBS2, equal-sized top/bottom 25%)
   - Per-variant Fisher's exact test (HIGH vs LOW)
-  - BH correction at three tiers (0.05, 0.10, 0.25)
-  - Gene-level aggregation
+  - BH correction, gene-level aggregation
   - Chromosome ideogram visualization
   - KEGG pathway enrichment
-  - Cross-reference with Harris A3 interactors and network communities
 
 Inputs:
   - consolidated/per_cancer/TCGA-HNSC_mutations.maf.tsv
   - data/FIG_1/HNSC_A3_SBS2_matched_v3.tsv
-  - data/FIG_4/00_input/Harris_A3_interactors.txt
-  - data/FIG_4/00_input/Harris_A3_interactors_A3B_only.txt
-  - data/FIG_2/05_communities/TCGA-HNSC/TCGA-HNSC_community_gene_lists.csv
 
 Outputs (-> data/FIG_GERMLINE/):
   - germline_snp_enrichment_results.tsv
@@ -72,14 +64,8 @@ for d in [OUTPUT_DIR, PANEL_DIR, TROUBLE_DIR]:
 A3_SUM_PERCENTILE = 0.50      # median
 SBS2_GROUP_FRACTION = 0.25    # top/bottom 25% of high-A3 tumors
 
-# Germline filter: Combined Tier 1 + Tier 2 strategy
-# Tier 1 (high confidence): alt_allele_in_normal — variant in patient's matched normal
-# Tier 2 (moderate confidence): germline_risk — population database match (gnomAD)
-#   Tier 2 adds variants at known polymorphic sites that may have been missed
-#   in the normal due to low coverage, or represent common germline variation
-#   not captured by MuTect2's normal comparison.
-TIER1_FLAG = 'alt_allele_in_normal'
-TIER2_FLAG = 'germline_risk'
+# Germline filter
+GERMLINE_FLAG = 'alt_allele_in_normal'  # Tier 1: patient's normal carries variant
 
 # Recurrence filter
 # With n=53 per group, Fisher's exact requires at least 5 carriers all in
@@ -188,49 +174,26 @@ assert len(high_patients) == len(low_patients), \
 log(f"  CONFIRMED: equal group sizes ({n_per_group} each)")
 
 # =============================================================================
-# STEP 3: EXTRACT GERMLINE SNPs (Tier 1 + Tier 2)
+# STEP 3: EXTRACT TIER 1 GERMLINE SNPs
 # =============================================================================
-banner("STEP 3: Extract Germline SNPs (Tier 1 + Tier 2)")
+banner("STEP 3: Extract Tier 1 Germline SNPs")
 
 # Add patient ID
 maf['patient_id'] = maf['Tumor_Sample_Barcode'].str[:12]
 
-# Filter to our patient set
+# Filter to: SNPs with alt_allele_in_normal flag, in our patient set
 all_patients = high_patients | low_patients
 maf_our = maf[maf['patient_id'].isin(all_patients)].copy()
 log(f"  MAF rows for {len(all_patients)} patients: {len(maf_our):,}")
 
-# Parse FILTER flags
-maf_our['has_tier1'] = maf_our['FILTER'].str.contains(TIER1_FLAG, case=False, na=False)
-maf_our['has_tier2'] = maf_our['FILTER'].str.contains(TIER2_FLAG, case=False, na=False)
-
-# Tier 1: alt_allele_in_normal (patient's normal carries variant)
-tier1_mask = (maf_our['Variant_Type'] == 'SNP') & maf_our['has_tier1']
-n_tier1 = tier1_mask.sum()
-
-# Tier 2: germline_risk WITHOUT alt_allele_in_normal
-# (population database match, not confirmed in patient's normal)
-tier2_mask = (maf_our['Variant_Type'] == 'SNP') & maf_our['has_tier2'] & ~maf_our['has_tier1']
-n_tier2 = tier2_mask.sum()
-
-# Combined: either tier
-germline_mask = tier1_mask | tier2_mask
+# Filter to SNPs with germline flag
+germline_mask = (
+    (maf_our['Variant_Type'] == 'SNP') &
+    (maf_our['FILTER'].str.contains(GERMLINE_FLAG, case=False, na=False))
+)
 germline = maf_our[germline_mask].copy()
-
-# Annotate which tier each variant comes from
-germline['tier'] = 'Tier2'
-germline.loc[germline['has_tier1'], 'tier'] = 'Tier1'
-
-log(f"  Tier 1 SNPs (alt_allele_in_normal):     {n_tier1:,}")
-log(f"  Tier 2 SNPs (germline_risk only):        {n_tier2:,}")
-log(f"  Combined germline SNPs:                  {len(germline):,}")
+log(f"  Tier 1 germline SNPs (alt_allele_in_normal): {len(germline):,}")
 log(f"  Patients with germline SNPs: {germline['patient_id'].nunique()}")
-
-# Tier breakdown per patient
-tier1_per_patient = germline[germline['tier'] == 'Tier1'].groupby('patient_id').size()
-tier2_per_patient = germline[germline['tier'] == 'Tier2'].groupby('patient_id').size()
-log(f"\n  Tier 1 per patient: mean={tier1_per_patient.mean():.0f}, median={tier1_per_patient.median():.0f}")
-log(f"  Tier 2 per patient: mean={tier2_per_patient.mean():.0f}, median={tier2_per_patient.median():.0f}")
 
 # Create variant ID
 germline['variant_id'] = (germline['Chromosome'] + ':' +
@@ -240,7 +203,7 @@ germline['variant_id'] = (germline['Chromosome'] + ':' +
 
 # Per-patient counts
 per_patient = germline.groupby('patient_id').size()
-log(f"\n  Combined germline SNPs per patient:")
+log(f"\n  Germline SNPs per patient:")
 log(f"    Mean:   {per_patient.mean():.0f}")
 log(f"    Median: {per_patient.median():.0f}")
 
@@ -267,14 +230,6 @@ variant_pos = germline.groupby('variant_id')['Start_Position'].first().to_dict()
 variant_class = germline.groupby('variant_id')['Variant_Classification'].first().to_dict()
 variant_impact = germline.groupby('variant_id')['IMPACT'].first().to_dict()
 variant_dbsnp = germline.groupby('variant_id')['dbSNP_RS'].first().to_dict()
-variant_tier = germline.groupby('variant_id')['tier'].first().to_dict()
-
-# Tier breakdown of recurrent variants
-tier1_recurrent = sum(1 for v in recurrent_variants if variant_tier.get(v) == 'Tier1')
-tier2_recurrent = sum(1 for v in recurrent_variants if variant_tier.get(v) == 'Tier2')
-log(f"\n  Recurrent variants by tier:")
-log(f"    Tier 1 (alt_allele_in_normal): {tier1_recurrent:,}")
-log(f"    Tier 2 (germline_risk only):   {tier2_recurrent:,}")
 
 # =============================================================================
 # STEP 5: FISHER'S EXACT TEST PER VARIANT
@@ -305,7 +260,6 @@ for vid, carriers in recurrent_variants.items():
         'variant_class': variant_class.get(vid, ''),
         'impact': variant_impact.get(vid, ''),
         'dbSNP': variant_dbsnp.get(vid, ''),
-        'tier': variant_tier.get(vid, ''),
         'n_high': a,
         'n_low': c,
         'n_total': a + c,
@@ -336,14 +290,6 @@ if len(results_df) > 0:
     log(f"    Nominal p < 0.05:          {(results_df['pval'] < 0.05).sum()}")
     log(f"    Nominal p < 0.01:          {(results_df['pval'] < 0.01).sum()}")
 
-    # Tier breakdown of nominal hits
-    nom_sig = results_df[results_df['pval'] < 0.05]
-    if len(nom_sig) > 0:
-        tier_counts = nom_sig['tier'].value_counts()
-        log(f"\n  Nominal p < 0.05 by tier:")
-        for tier, count in tier_counts.items():
-            log(f"    {tier}: {count}")
-
     # Power analysis note
     log(f"\n  POWER ANALYSIS NOTE:")
     log(f"    With n={n_per_group} per group, detectable effects at p < 0.05:")
@@ -360,13 +306,13 @@ if len(results_df) > 0:
         else:
             log(f"    Frequency {freq:.0%}: too few carriers")
 
-    # Top hits with tier annotation
+    # Top hits
     log(f"\n  Top 30 variants by p-value:")
-    log(f"  {'Variant':40s} {'Gene':15s} {'Tier':>6s} {'HIGH':>5s} {'LOW':>5s} {'OR':>7s} {'p_raw':>10s} {'p_BH':>10s} {'Impact':>10s}")
-    log(f"  {'-'*40} {'-'*15} {'-'*6} {'-'*5} {'-'*5} {'-'*7} {'-'*10} {'-'*10} {'-'*10}")
+    log(f"  {'Variant':40s} {'Gene':15s} {'HIGH':>5s} {'LOW':>5s} {'OR':>7s} {'p_raw':>10s} {'p_BH':>10s} {'Impact':>10s}")
+    log(f"  {'-'*40} {'-'*15} {'-'*5} {'-'*5} {'-'*7} {'-'*10} {'-'*10} {'-'*10}")
     for _, row in results_df.head(30).iterrows():
-        sig_mark = '*' if row.get('sig_moderate', False) else ''
-        log(f"  {row['variant_id']:40s} {row['gene']:15s} {row['tier']:>6s} {row['n_high']:>5d} {row['n_low']:>5d} "
+        sig_mark = '*' if row['significant'] else ''
+        log(f"  {row['variant_id']:40s} {row['gene']:15s} {row['n_high']:>5d} {row['n_low']:>5d} "
             f"{row['odds_ratio']:>7.2f} {row['pval']:>10.4f} {row['pval_bh']:>10.4f} {str(row['impact']):>10s} {sig_mark}")
 
     # Save variant-level results
@@ -757,10 +703,9 @@ log(f"""
     LOW SBS2:  {n_per_group} patients (SBS2 <= {sbs2_low_max:.0f})
     Groups are EQUAL SIZE (n = {n_per_group} each)
 
-  Germline variants (Tier 1 + Tier 2 combined):
-    Tier 1 (alt_allele_in_normal): {n_tier1:,} SNPs
-    Tier 2 (germline_risk only):   {n_tier2:,} SNPs
-    Combined:                      {len(germline):,} SNPs
+  Germline variants:
+    Tier: alt_allele_in_normal (patient's normal carries variant)
+    Total germline SNPs: {len(germline):,}
     Recurrent (>= {MIN_RECURRENCE} patients): {len(recurrent_variants):,}
     Tested: {n_tested:,}
 

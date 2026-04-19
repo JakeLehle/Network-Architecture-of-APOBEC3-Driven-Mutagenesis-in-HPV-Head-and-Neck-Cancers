@@ -30,7 +30,7 @@ R --slave -e 'Cstack_info()'
 
 conda activate NETWORK
 
-conda run -n NETWORK python $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Step05_Revised_HNSC_A3_vs_SBS2.py
+#conda run -n NETWORK python $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Step05_Revised_HNSC_A3_vs_SBS2.py
 conda run -n NETWORK python $HOME/WORKING/2026_NMF_PAPER/scripts/TCGA/Step05_Panel_1d_Saturation.py
 
 exit
