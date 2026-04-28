@@ -33,15 +33,6 @@ TCGA_EXPRESSION_PATH = os.path.join(PROJECT_ROOT, "data", "FIG_1", "TCGA_master_
 #   Contains SBS1, SBS2, SBS3, ... columns with signature weights
 MUTATION_SIGNATURE_PATH = os.path.join(PROJECT_ROOT, "data", "FIG_1", "Mutation_Table_Tumors_TCGA.tsv")
 
-# NEW: SigProfiler v3.4 counts (COSMIC v3.4, 86 signatures, WES-barcode-indexed)
-NEW_COUNTS_PATH = os.path.join("/master/jlehle/SHARED/TCGA/VCF/SigProfiler_output",
-                                "TCGA_SBS_signature_counts.tsv")
-
-# Crosswalk: old file used ONLY for RNA -> WES barcode mapping
-CROSSWALK_PATH = MUTATION_SIGNATURE_PATH  # same file, different role
-CROSSWALK_RNA_COL = "TCGA_Gene_Expression_Entity_ID"
-CROSSWALK_WES_COL = "Mutation_Signature__File_Orginal_Entity_ID"
-
 # Column in the mutation signature file that holds the TCGA barcode
 SIGNATURE_SAMPLE_COL = "TCGA_Gene_Expression_Entity_ID"
 
