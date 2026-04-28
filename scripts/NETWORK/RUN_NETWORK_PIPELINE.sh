@@ -42,7 +42,7 @@ source ~/anaconda3/bin/activate 2>/dev/null || conda activate NETWORK
 
 # ---- Navigate to script directory
 CONDA_ENV="NETWORK"
-SCRIPT_DIR="/master/jlehle/WORKING/2026_NMF_PAPER/scripts"
+SCRIPT_DIR="/master/jlehle/WORKING/2026_NMF_PAPER/scripts/FIG_2"
 cd "$SCRIPT_DIR"
 echo "Working directory: $(pwd)"
 echo ""
