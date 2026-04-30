@@ -7,7 +7,7 @@ gene lists. Run KEGG pathway enrichment on each community using
 gseapy's enrichr interface. Output a comprehensive summary report
 for writing the results and methods sections.
 
-Run AFTER the full pipeline (Steps 01-07) has completed.
+Run AFTER the full pipeline (Steps 01–07) has completed.
 
 Dependencies:
     pip install gseapy    (for KEGG enrichment)
@@ -19,7 +19,6 @@ Usage:
 import os
 import json
 import pickle
-import time
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -69,53 +68,7 @@ def sym(ensg):
 
 
 # =============================================================================
-# ENRICHR RATE-LIMIT HANDLING
-# =============================================================================
-ENRICHR_MAX_RETRIES = 5
-ENRICHR_BASE_DELAY = 10       # seconds, doubles each retry
-ENRICHR_BETWEEN_DELAY = 5     # seconds between communities
-
-
-def enrichr_with_retry(gene_list, gene_sets="KEGG_2021_Human",
-                       max_retries=ENRICHR_MAX_RETRIES,
-                       base_delay=ENRICHR_BASE_DELAY):
-    """
-    Run gseapy.enrichr with exponential backoff on HTTP 429 errors.
-
-    Returns:
-        (results_df, error_msg)
-        On success: (DataFrame, None)
-        On failure: (None, error_string)
-    """
-    import gseapy as gp
-
-    for attempt in range(max_retries):
-        try:
-            enr = gp.enrichr(
-                gene_list=gene_list,
-                gene_sets=[gene_sets],
-                organism="human",
-                outdir=None,
-                no_plot=True,
-                verbose=False,
-            )
-            return enr.results, None
-
-        except Exception as e:
-            err_str = str(e)
-            if "429" in err_str:
-                delay = base_delay * (2 ** attempt)
-                log(f"    [RETRY] 429 rate limit, attempt {attempt+1}/{max_retries}, "
-                    f"waiting {delay}s...")
-                time.sleep(delay)
-            else:
-                return None, err_str
-
-    return None, f"Failed after {max_retries} retries (429 rate limit)"
-
-
-# =============================================================================
-# SECTION 1 -- Pipeline Configuration Parameters
+# SECTION 1 — Pipeline Configuration Parameters
 # =============================================================================
 banner("[SECTION 1] Pipeline Configuration Parameters")
 
@@ -153,12 +106,12 @@ add("Min community size", MIN_COMMUNITY_SIZE)
 
 
 # =============================================================================
-# SECTION 2 -- Per-Cancer-Type Pipeline Statistics
+# SECTION 2 — Per-Cancer-Type Pipeline Statistics
 # =============================================================================
 
 for cancer_type in CANCER_TYPES:
 
-    banner(f"[SECTION 2] Pipeline Statistics -- {cancer_type}")
+    banner(f"[SECTION 2] Pipeline Statistics — {cancer_type}")
 
     report = {}
     report["cancer_type"] = cancer_type
@@ -196,21 +149,21 @@ for cancer_type in CANCER_TYPES:
                     low_vals = pd.to_numeric(df_low[ensg], errors="coerce")
                     report[f"{alias}_median_HIGH"] = round(float(high_vals.median()), 4)
                     report[f"{alias}_median_LOW"] = round(float(low_vals.median()), 4)
-                    log(f"  {alias} median -- HIGH: {high_vals.median():.4f}, LOW: {low_vals.median():.4f}")
+                    log(f"  {alias} median — HIGH: {high_vals.median():.4f}, LOW: {low_vals.median():.4f}")
                 elif alias in df_high.columns:
                     high_vals = pd.to_numeric(df_high[alias], errors="coerce")
                     low_vals = pd.to_numeric(df_low[alias], errors="coerce")
                     report[f"{alias}_median_HIGH"] = round(float(high_vals.median()), 4)
                     report[f"{alias}_median_LOW"] = round(float(low_vals.median()), 4)
-                    log(f"  {alias} median -- HIGH: {high_vals.median():.4f}, LOW: {low_vals.median():.4f}")
+                    log(f"  {alias} median — HIGH: {high_vals.median():.4f}, LOW: {low_vals.median():.4f}")
 
         # SBS2 stats
         if "SBS2" in df_high.columns:
             report["SBS2_median_HIGH"] = round(float(df_high["SBS2"].median()), 6)
             report["SBS2_median_LOW"] = round(float(df_low["SBS2"].median()), 6)
-            report["SBS2_range_HIGH"] = f"{df_high['SBS2'].min():.6f} -- {df_high['SBS2'].max():.6f}"
-            report["SBS2_range_LOW"] = f"{df_low['SBS2'].min():.6f} -- {df_low['SBS2'].max():.6f}"
-            log(f"  SBS2 median -- HIGH: {df_high['SBS2'].median():.6f}, LOW: {df_low['SBS2'].median():.6f}")
+            report["SBS2_range_HIGH"] = f"{df_high['SBS2'].min():.6f} – {df_high['SBS2'].max():.6f}"
+            report["SBS2_range_LOW"] = f"{df_low['SBS2'].min():.6f} – {df_low['SBS2'].max():.6f}"
+            log(f"  SBS2 median — HIGH: {df_high['SBS2'].median():.6f}, LOW: {df_low['SBS2'].median():.6f}")
     else:
         log("  [WARNING] Group pickle files not found")
 
@@ -331,9 +284,9 @@ for cancer_type in CANCER_TYPES:
 
 
     # ================================================================
-    # SECTION 3 -- KEGG Pathway Enrichment Per Community
+    # SECTION 3 — KEGG Pathway Enrichment Per Community
     # ================================================================
-    banner(f"[SECTION 3] KEGG Enrichment -- {cancer_type}")
+    banner(f"[SECTION 3] KEGG Enrichment — {cancer_type}")
 
     try:
         import gseapy as gp
@@ -341,7 +294,7 @@ for cancer_type in CANCER_TYPES:
         log("gseapy loaded successfully")
     except ImportError:
         HAS_GSEAPY = False
-        log("[WARNING] gseapy not installed -- skipping KEGG enrichment")
+        log("[WARNING] gseapy not installed — skipping KEGG enrichment")
         log("  Install with: pip install gseapy")
 
     enrichment_results = []
@@ -355,9 +308,8 @@ for cancer_type in CANCER_TYPES:
             g = row["gene"]
             comm_to_genes.setdefault(c, []).append(g)
 
-        sorted_comms = sorted(comm_to_genes.keys())
-
-        for i, c in enumerate(sorted_comms):
+        # Convert ENSG IDs to symbols for enrichment
+        for c in sorted(comm_to_genes.keys()):
             genes_ensg = comm_to_genes[c]
             genes_symbols = [sym(g) for g in genes_ensg]
             # Remove any that are still ENSG (unmapped)
@@ -382,70 +334,76 @@ for cancer_type in CANCER_TYPES:
                 })
                 continue
 
-            results_df, err = enrichr_with_retry(genes_symbols_clean)
+            try:
+                enr = gp.enrichr(
+                    gene_list=genes_symbols_clean,
+                    gene_sets=["KEGG_2021_Human"],
+                    organism="human",
+                    outdir=None,
+                    no_plot=True,
+                    verbose=False
+                )
 
-            if results_df is not None and len(results_df) > 0:
-                # Filter significant results
-                sig_results = results_df[results_df["Adjusted P-value"] < 0.05]
-                n_sig = len(sig_results)
+                results_df = enr.results
 
-                # Top result
-                top = results_df.iloc[0]
-                top_term = top["Term"]
-                top_pval = top["Adjusted P-value"]
-                top_genes = top["Genes"]
+                if len(results_df) > 0:
+                    # Filter significant results
+                    sig_results = results_df[results_df["Adjusted P-value"] < 0.05]
+                    n_sig = len(sig_results)
 
-                log(f"    Top KEGG: {top_term} (adj.p = {top_pval:.2e})")
-                log(f"    Significant KEGG terms (adj.p < 0.05): {n_sig}")
+                    # Top result
+                    top = results_df.iloc[0]
+                    top_term = top["Term"]
+                    top_pval = top["Adjusted P-value"]
+                    top_genes = top["Genes"]
 
-                if n_sig > 0:
-                    log(f"    Top 5 significant terms:")
-                    for _, r in sig_results.head(5).iterrows():
-                        log(f"      {r['Term']} (adj.p = {r['Adjusted P-value']:.2e}, "
-                            f"genes: {r['Genes']})")
+                    log(f"    Top KEGG: {top_term} (adj.p = {top_pval:.2e})")
+                    log(f"    Significant KEGG terms (adj.p < 0.05): {n_sig}")
 
+                    if n_sig > 0:
+                        log(f"    Top 5 significant terms:")
+                        for _, r in sig_results.head(5).iterrows():
+                            log(f"      {r['Term']} (adj.p = {r['Adjusted P-value']:.2e}, "
+                                f"genes: {r['Genes']})")
+
+                    enrichment_results.append({
+                        "community": c,
+                        "n_genes": n_total,
+                        "n_mapped": n_mapped,
+                        "top_kegg_term": top_term,
+                        "top_kegg_pvalue": top_pval,
+                        "top_kegg_genes": top_genes,
+                        "n_kegg_significant": n_sig
+                    })
+
+                    # Save full enrichment results for this community
+                    comm_enr_path = os.path.join(REPORT_DIR,
+                                                  f"{cancer_type}_community_{c:02d}_KEGG.csv")
+                    results_df.to_csv(comm_enr_path, index=False)
+
+                else:
+                    log(f"    No KEGG results returned")
+                    enrichment_results.append({
+                        "community": c,
+                        "n_genes": n_total,
+                        "n_mapped": n_mapped,
+                        "top_kegg_term": "No results",
+                        "top_kegg_pvalue": None,
+                        "top_kegg_genes": None,
+                        "n_kegg_significant": 0
+                    })
+
+            except Exception as e:
+                log(f"    [ERROR] Enrichment failed: {e}")
                 enrichment_results.append({
                     "community": c,
                     "n_genes": n_total,
                     "n_mapped": n_mapped,
-                    "top_kegg_term": top_term,
-                    "top_kegg_pvalue": top_pval,
-                    "top_kegg_genes": top_genes,
-                    "n_kegg_significant": n_sig
-                })
-
-                # Save full enrichment results for this community
-                comm_enr_path = os.path.join(REPORT_DIR,
-                                              f"{cancer_type}_community_{c:02d}_KEGG.csv")
-                results_df.to_csv(comm_enr_path, index=False)
-
-            elif results_df is not None and len(results_df) == 0:
-                log(f"    No KEGG results returned")
-                enrichment_results.append({
-                    "community": c,
-                    "n_genes": n_total,
-                    "n_mapped": n_mapped,
-                    "top_kegg_term": "No results",
+                    "top_kegg_term": f"ERROR: {str(e)[:50]}",
                     "top_kegg_pvalue": None,
                     "top_kegg_genes": None,
                     "n_kegg_significant": 0
                 })
-
-            else:
-                log(f"    [ERROR] Enrichment failed: {err}")
-                enrichment_results.append({
-                    "community": c,
-                    "n_genes": n_total,
-                    "n_mapped": n_mapped,
-                    "top_kegg_term": f"ERROR: {str(err)[:50]}",
-                    "top_kegg_pvalue": None,
-                    "top_kegg_genes": None,
-                    "n_kegg_significant": 0
-                })
-
-            # Rate-limit delay between communities (skip after last one)
-            if i < len(sorted_comms) - 1:
-                time.sleep(ENRICHR_BETWEEN_DELAY)
 
         # Save enrichment summary
         enr_summary_df = pd.DataFrame(enrichment_results)
@@ -456,16 +414,16 @@ for cancer_type in CANCER_TYPES:
 
 
     # ================================================================
-    # SECTION 4 -- Compile Full Report
+    # SECTION 4 — Compile Full Report
     # ================================================================
-    banner(f"[SECTION 4] Full Report -- {cancer_type}")
+    banner(f"[SECTION 4] Full Report — {cancer_type}")
 
     report_path = os.path.join(REPORT_DIR, f"{cancer_type}_pipeline_report.txt")
 
     with open(report_path, "w") as f:
 
         f.write("=" * 80 + "\n")
-        f.write(f"PIPELINE SUMMARY REPORT -- {cancer_type}\n")
+        f.write(f"PIPELINE SUMMARY REPORT — {cancer_type}\n")
         f.write(f"Generated: {TIMESTAMP}\n")
         f.write("=" * 80 + "\n\n")
 
@@ -582,10 +540,10 @@ banner("STEP 08 COMPLETE")
 
 log(f"\nOutput directory: {REPORT_DIR}")
 log(f"\nFiles generated per cancer type:")
-log(f"  {{cancer_type}}_pipeline_report.txt    -- Human-readable full report")
-log(f"  {{cancer_type}}_pipeline_report.json   -- Machine-readable report")
-log(f"  {{cancer_type}}_KEGG_enrichment_summary.csv -- One row per community")
-log(f"  {{cancer_type}}_community_XX_KEGG.csv  -- Full KEGG results per community")
+log(f"  {{cancer_type}}_pipeline_report.txt    — Human-readable full report")
+log(f"  {{cancer_type}}_pipeline_report.json   — Machine-readable report")
+log(f"  {{cancer_type}}_KEGG_enrichment_summary.csv — One row per community")
+log(f"  {{cancer_type}}_community_XX_KEGG.csv  — Full KEGG results per community")
 
 log(f"\nKey questions this report addresses:")
 log(f"  1. What parameters defined the HIGH and LOW SBS2 groups?")
