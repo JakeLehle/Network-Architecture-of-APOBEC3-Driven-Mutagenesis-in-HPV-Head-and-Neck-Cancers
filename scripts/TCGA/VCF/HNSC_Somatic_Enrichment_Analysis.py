@@ -9,14 +9,15 @@ somatic mutations (gene-level) compared to tumors with low burden, when
 both groups have comparable A3 expression.
 
 Phases:
-  0. Load HIGH/LOW groups from network pipeline Step03 output
-  1. Load per-cancer MAF, filter to PASS somatic, compute TMB
-  2. Track A: gene-level burden (non-silent, damaging, silent control)
-     + TMB-adjusted logistic regression
-  3. Track B: A3-specific somatic catalog
-  4. APOBEC trinucleotide context from per-sample MAF files
-  5. Track C: gene set enrichment (Harris, network communities, DDR,
-     chromatin remodelers) + KEGG via gseapy/Enrichr
+  0.  Load HIGH/LOW groups from network pipeline Step03 output
+  0B. Load reference gene sets (Harris, communities, DDR, chromatin)
+  1.  Load per-cancer MAF, filter to PASS somatic, compute TMB
+  2.  Track A: gene-level burden (non-silent, damaging, silent control)
+      + TMB-adjusted logistic regression
+  2C. Frequency tier binning + per-tier gene set cross-reference + KEGG
+  3.  Track B: A3-specific somatic catalog
+  4.  APOBEC trinucleotide context from per-sample MAF files
+  5.  Track C: gene set enrichment (hypergeometric + KEGG via Enrichr)
 
 Groups use the SAME Step03 selection as the network pipeline to ensure
 identical patient sets across all analyses.
@@ -217,6 +218,95 @@ for a3_col in ["A3A", "A3B", "APOBEC3A", "APOBEC3B"]:
     if a3_col in high_df.columns:
         log(f"    {a3_col} HIGH mean={high_df[a3_col].mean():.1f}, "
             f"LOW mean={low_df[a3_col].mean():.1f}")
+
+
+# =============================================================================
+# PHASE 0B: Load Reference Gene Sets
+# =============================================================================
+# Loaded early so all downstream phases (2C tier cross-referencing, 5A/5B
+# gene set enrichment) can use the same definitions without duplication.
+# =============================================================================
+banner("PHASE 0B: Load Reference Gene Sets")
+
+# 1. Harris A3 interactors (all)
+with open(HARRIS_ALL_PATH) as f:
+    harris_all = set(line.strip() for line in f if line.strip())
+log(f"  Harris A3 interactors (all): {len(harris_all)} genes")
+
+# 2. Harris A3B-specific
+with open(HARRIS_A3B_PATH) as f:
+    harris_a3b = set(line.strip() for line in f if line.strip())
+log(f"  Harris A3B interactors: {len(harris_a3b)} genes")
+
+# 3. Network community genes
+with open(ENSG_TO_SYMBOL_PATH) as f:
+    ensg_to_symbol = json.load(f)
+
+comm_df = pd.read_csv(COMMUNITY_GENE_LISTS_PATH)
+community_gene_sets = {}
+all_network_genes = set()
+
+for _, row in comm_df.iterrows():
+    comm_id = row['community']
+    gene_list = str(row['genes']).split(';')
+
+    # Detect format: if genes start with ENSG, convert to symbols;
+    # if they're already symbols (e.g., CASP8, APOBEC3B), use directly.
+    sample_genes = [g.strip() for g in gene_list[:5] if g.strip()]
+    is_ensg = any(g.startswith('ENSG') for g in sample_genes)
+
+    symbols = set()
+    if is_ensg:
+        for ensg in gene_list:
+            sym = ensg_to_symbol.get(ensg.strip(), '')
+            if sym:
+                symbols.add(sym)
+    else:
+        # Already gene symbols
+        symbols = set(g.strip() for g in gene_list if g.strip())
+
+    if symbols:
+        community_gene_sets[f"Community_{comm_id}"] = symbols
+        all_network_genes |= symbols
+
+gene_format = "ENSG (converted)" if any(
+    g.startswith('ENSG') for g in str(comm_df.iloc[0]['genes']).split(';')[:3]
+) else "gene symbols (direct)"
+log(f"  Network community gene format: {gene_format}")
+log(f"  Network communities loaded: {len(community_gene_sets)}")
+for comm_name, genes in sorted(community_gene_sets.items()):
+    log(f"    {comm_name}: {len(genes)} genes")
+log(f"  Total network genes (all communities): {len(all_network_genes)}")
+
+if len(community_gene_sets) == 0:
+    raise ValueError(
+        "Community gene loading produced 0 communities!\n"
+        f"  File: {COMMUNITY_GENE_LISTS_PATH}\n"
+        f"  Columns: {comm_df.columns.tolist()}\n"
+        f"  First gene entry: {comm_df.iloc[0]['genes'][:100] if len(comm_df) > 0 else 'N/A'}"
+    )
+
+# 4. DDR genes
+ddr_set = set(DDR_GENES)
+log(f"  DDR genes: {len(ddr_set)}")
+
+# 5. Chromatin remodelers
+chromatin_set = set(CHROMATIN_GENES)
+log(f"  Chromatin remodelers: {len(chromatin_set)}")
+
+# Consolidated dictionary for cross-referencing (used by Phase 2C and Phase 5A)
+REFERENCE_GENE_SETS = {
+    'Harris_A3_all': harris_all,
+    'Harris_A3B_specific': harris_a3b,
+    'DDR_genes': ddr_set,
+    'Chromatin_remodelers': chromatin_set,
+    'Network_all_communities': all_network_genes,
+}
+# Add individual communities
+for comm_name, comm_genes in community_gene_sets.items():
+    REFERENCE_GENE_SETS[comm_name] = comm_genes
+
+log(f"\n  Reference gene sets consolidated: {len(REFERENCE_GENE_SETS)} sets")
 
 
 # =============================================================================
@@ -530,6 +620,225 @@ if len(track_a1) > 0:
 
 
 # =============================================================================
+# PHASE 2C: Frequency Tier + Group Bias Binning
+# =============================================================================
+# Parallels the single-cell tier analysis (Tier2B_SNP_Pattern_Analysis.py)
+# so that bulk and SC results use comparable vocabulary.
+#
+# Frequency tiers (based on HIGH group carrier rate):
+#   Highly retained: >=75% of HIGH (>=40/53)
+#   Common:          >=50% of HIGH (>=27/53)
+#   Moderate:        >=25% of HIGH (>=14/53)
+#   Uncommon:        >=10% of HIGH (>=6/53)
+#
+# Group bias (fraction of total carriers in HIGH):
+#   HIGH-exclusive:    n_low == 0
+#   HIGH-predominant:  >=75% carriers in HIGH
+#   Balanced:          25-75% carriers in HIGH
+#   LOW-predominant:   <25% carriers in HIGH
+#   LOW-exclusive:     n_high == 0
+# =============================================================================
+banner("PHASE 2C: Frequency Tier + Group Bias Binning")
+
+if len(track_a1) > 0:
+    # Frequency tier thresholds (based on n_high)
+    TIER_THRESHOLDS = [
+        ('Highly_retained', int(np.ceil(n_high * 0.75))),
+        ('Common',          int(np.ceil(n_high * 0.50))),
+        ('Moderate',        int(np.ceil(n_high * 0.25))),
+        ('Uncommon',        int(np.ceil(n_high * 0.10))),
+    ]
+
+    log(f"  Frequency tier thresholds (n_high={n_high}):")
+    for tier_name, thresh in TIER_THRESHOLDS:
+        log(f"    {tier_name}: >= {thresh} carriers in HIGH (>= {100*thresh/n_high:.0f}%)")
+
+    def assign_frequency_tier(n_carriers_high):
+        for tier_name, thresh in TIER_THRESHOLDS:
+            if n_carriers_high >= thresh:
+                return tier_name
+        return 'Below_threshold'
+
+    def assign_group_bias(n_h, n_l):
+        total = n_h + n_l
+        if total == 0:
+            return 'No_carriers'
+        if n_l == 0:
+            return 'HIGH-exclusive'
+        if n_h == 0:
+            return 'LOW-exclusive'
+        frac_high = n_h / total
+        if frac_high >= 0.75:
+            return 'HIGH-predominant'
+        elif frac_high <= 0.25:
+            return 'LOW-predominant'
+        else:
+            return 'Balanced'
+
+    track_a1['frequency_tier'] = track_a1['n_carriers_high'].apply(assign_frequency_tier)
+    track_a1['group_bias'] = track_a1.apply(
+        lambda r: assign_group_bias(r['n_carriers_high'], r['n_carriers_low']), axis=1
+    )
+
+    # Report tier distribution
+    log(f"\n  Frequency tier distribution (non-silent genes):")
+    for tier_name, _ in TIER_THRESHOLDS:
+        tier_genes = track_a1[track_a1['frequency_tier'] == tier_name]
+        if len(tier_genes) > 0:
+            log(f"\n  --- {tier_name} (n={len(tier_genes)} genes) ---")
+
+            # Group bias breakdown within this tier
+            bias_counts = tier_genes['group_bias'].value_counts()
+            for bias, count in bias_counts.items():
+                log(f"    {bias}: {count} genes")
+
+            # Show HIGH-exclusive and HIGH-predominant genes in this tier
+            interesting = tier_genes[tier_genes['group_bias'].isin(
+                ['HIGH-exclusive', 'HIGH-predominant']
+            )].sort_values('n_carriers_high', ascending=False)
+            if len(interesting) > 0:
+                log(f"\n    HIGH-biased genes in {tier_name} tier:")
+                log(f"    {'Gene':15s} {'HIGH':>5s} {'LOW':>5s} {'Bias':>18s} "
+                    f"{'FisherP':>10s} {'LR_P':>10s}")
+                for _, row in interesting.head(15).iterrows():
+                    lr_p_val = ''
+                    if len(lr_df) > 0:
+                        lr_match = lr_df[lr_df['gene'] == row['gene']]
+                        if len(lr_match) > 0:
+                            lr_p_val = f"{lr_match.iloc[0]['lr_group_p']:.4f}"
+                    log(f"    {row['gene']:15s} {row['n_carriers_high']:>5d} "
+                        f"{row['n_carriers_low']:>5d} {row['group_bias']:>18s} "
+                        f"{row['pval']:>10.4f} {lr_p_val:>10s}")
+
+            # Show LOW-exclusive and LOW-predominant genes in this tier
+            low_interesting = tier_genes[tier_genes['group_bias'].isin(
+                ['LOW-exclusive', 'LOW-predominant']
+            )].sort_values('n_carriers_low', ascending=False)
+            if len(low_interesting) > 0:
+                log(f"\n    LOW-biased genes in {tier_name} tier:")
+                log(f"    {'Gene':15s} {'HIGH':>5s} {'LOW':>5s} {'Bias':>18s} "
+                    f"{'FisherP':>10s} {'LR_P':>10s}")
+                for _, row in low_interesting.head(15).iterrows():
+                    lr_p_val = ''
+                    if len(lr_df) > 0:
+                        lr_match = lr_df[lr_df['gene'] == row['gene']]
+                        if len(lr_match) > 0:
+                            lr_p_val = f"{lr_match.iloc[0]['lr_group_p']:.4f}"
+                    log(f"    {row['gene']:15s} {row['n_carriers_high']:>5d} "
+                        f"{row['n_carriers_low']:>5d} {row['group_bias']:>18s} "
+                        f"{row['pval']:>10.4f} {lr_p_val:>10s}")
+
+    # Re-save Track A1 with tier and bias columns
+    track_a1.to_csv(os.path.join(OUTPUT_DIR, "HNSC_somatic_track_A_nonsilent.tsv"),
+                    sep='\t', index=False)
+    log(f"\n  Updated Track A1 with frequency_tier and group_bias columns")
+
+    # Summary cross-tab
+    log(f"\n  Cross-tab: Frequency Tier x Group Bias")
+    tier_order = ['Highly_retained', 'Common', 'Moderate', 'Uncommon']
+    bias_order = ['HIGH-exclusive', 'HIGH-predominant', 'Balanced', 'LOW-predominant', 'LOW-exclusive']
+    ct = pd.crosstab(track_a1['frequency_tier'], track_a1['group_bias'])
+    ct = ct.reindex(index=[t for t in tier_order if t in ct.index],
+                    columns=[b for b in bias_order if b in ct.columns], fill_value=0)
+    log(f"\n  {'Tier':20s} " + " ".join(f"{b:>18s}" for b in ct.columns))
+    for tier in ct.index:
+        vals = " ".join(f"{ct.loc[tier, b]:>18d}" for b in ct.columns)
+        log(f"  {tier:20s} {vals}")
+
+    # -----------------------------------------------------------------
+    # PHASE 2C (cont.): Per-tier gene set cross-referencing + KEGG
+    # -----------------------------------------------------------------
+    # For each frequency tier, check overlap with reference gene sets
+    # and run KEGG enrichment. Parallels SC Analyze_SNP_Tier_Genes.py.
+    # -----------------------------------------------------------------
+    banner("PHASE 2C+: Per-Tier Gene Set Cross-Reference + KEGG")
+
+    # Reference sets to cross-reference (top-level only, skip individual communities)
+    TIER_XREF_SETS = {
+        'Harris_A3_all': harris_all,
+        'Harris_A3B_specific': harris_a3b,
+        'DDR_genes': ddr_set,
+        'Chromatin_remodelers': chromatin_set,
+        'Network_all_communities': all_network_genes,
+    }
+    # Also include the A3B community (Community_4) individually since it is
+    # the focal community for the paper
+    if 'Community_4' in community_gene_sets:
+        TIER_XREF_SETS['Community_4_A3B'] = community_gene_sets['Community_4']
+
+    tier_xref_rows = []
+
+    for tier_name, _ in TIER_THRESHOLDS:
+        tier_genes_set = set(
+            track_a1[track_a1['frequency_tier'] == tier_name]['gene'].values
+        )
+        n_tier = len(tier_genes_set)
+        if n_tier == 0:
+            continue
+
+        log(f"\n  --- {tier_name} tier ({n_tier} genes) ---")
+
+        for gs_name, gs_genes in TIER_XREF_SETS.items():
+            overlap = tier_genes_set & gs_genes
+            n_overlap = len(overlap)
+            tier_xref_rows.append({
+                'frequency_tier': tier_name,
+                'gene_set': gs_name,
+                'n_tier_genes': n_tier,
+                'n_set_genes': len(gs_genes),
+                'n_overlap': n_overlap,
+                'overlap_genes': ';'.join(sorted(overlap)) if overlap else '',
+            })
+            if n_overlap > 0:
+                log(f"    {gs_name}: {n_overlap} overlap "
+                    f"({', '.join(sorted(overlap))})")
+
+        # KEGG enrichment for this tier (if enough genes)
+        TIER_KEGG_MIN_GENES = 5
+        if n_tier >= TIER_KEGG_MIN_GENES:
+            try:
+                import gseapy as gp
+                tier_gene_list = sorted(list(tier_genes_set))
+                enrichr_res = gp.enrichr(
+                    gene_list=tier_gene_list,
+                    gene_sets=['KEGG_2021_Human'],
+                    organism='human',
+                    outdir=os.path.join(OUTPUT_DIR, f"enrichr_kegg_{tier_name}"),
+                    no_plot=True,
+                )
+                kegg_tier = enrichr_res.results.sort_values('Adjusted P-value')
+                n_sig = (kegg_tier['Adjusted P-value'] < 0.05).sum()
+                log(f"    KEGG ({tier_name}): {len(kegg_tier)} pathways tested, "
+                    f"{n_sig} adj p < 0.05")
+                if n_sig > 0:
+                    for _, krow in kegg_tier[kegg_tier['Adjusted P-value'] < 0.05].head(5).iterrows():
+                        log(f"      {krow['Term'][:55]:55s} "
+                            f"{krow['Overlap']:>8s}  adj p={krow['Adjusted P-value']:.4f}")
+                kegg_tier['frequency_tier'] = tier_name
+                kegg_tier.to_csv(
+                    os.path.join(OUTPUT_DIR, f"HNSC_somatic_tier_kegg_{tier_name}.tsv"),
+                    sep='\t', index=False,
+                )
+            except ImportError:
+                log(f"    KEGG ({tier_name}): skipped (gseapy not installed)")
+            except Exception as e:
+                log(f"    KEGG ({tier_name}): failed ({e})")
+        else:
+            log(f"    KEGG ({tier_name}): skipped (only {n_tier} genes, "
+                f"need >= {TIER_KEGG_MIN_GENES})")
+
+    # Save cross-reference table
+    if tier_xref_rows:
+        xref_df = pd.DataFrame(tier_xref_rows)
+        xref_path = os.path.join(OUTPUT_DIR, "HNSC_somatic_tier_geneset_xref.tsv")
+        xref_df.to_csv(xref_path, sep='\t', index=False)
+        log(f"\n  Saved: {os.path.basename(xref_path)}")
+
+else:
+    log("  No Track A1 results for binning")
+
+
+# =============================================================================
 # PHASE 3: Track B -- A3-specific somatic catalog
 # =============================================================================
 banner("PHASE 3: Track B -- A3-Specific Somatic Catalog")
@@ -685,76 +994,10 @@ log(f"\n  Overall APOBEC context rate: {total_apobec:,}/{total_all:,} "
 # =============================================================================
 # PHASE 5: Track C -- Gene set enrichment + KEGG
 # =============================================================================
+# NOTE: Reference gene sets (harris_all, harris_a3b, community_gene_sets,
+# ddr_set, chromatin_set, REFERENCE_GENE_SETS) were loaded in Phase 0B.
+# =============================================================================
 banner("PHASE 5: Track C -- Gene Set and Pathway Enrichment")
-
-# --- Load gene sets ---
-log("  Loading gene sets...")
-
-# 1. Harris A3 interactors (all)
-with open(HARRIS_ALL_PATH) as f:
-    harris_all = set(line.strip() for line in f if line.strip())
-log(f"  Harris A3 interactors (all): {len(harris_all)} genes")
-
-# 2. Harris A3B-specific
-with open(HARRIS_A3B_PATH) as f:
-    harris_a3b = set(line.strip() for line in f if line.strip())
-log(f"  Harris A3B interactors: {len(harris_a3b)} genes")
-
-# 3. Network community genes (REQUIRED -- fail if missing)
-with open(ENSG_TO_SYMBOL_PATH) as f:
-    ensg_to_symbol = json.load(f)
-
-comm_df = pd.read_csv(COMMUNITY_GENE_LISTS_PATH)
-community_gene_sets = {}
-all_network_genes = set()
-
-for _, row in comm_df.iterrows():
-    comm_id = row['community']
-    gene_list = str(row['genes']).split(';')
-
-    # Detect format: if genes start with ENSG, convert to symbols;
-    # if they're already symbols (e.g., CASP8, APOBEC3B), use directly.
-    sample_genes = [g.strip() for g in gene_list[:5] if g.strip()]
-    is_ensg = any(g.startswith('ENSG') for g in sample_genes)
-
-    symbols = set()
-    if is_ensg:
-        for ensg in gene_list:
-            sym = ensg_to_symbol.get(ensg.strip(), '')
-            if sym:
-                symbols.add(sym)
-    else:
-        # Already gene symbols
-        symbols = set(g.strip() for g in gene_list if g.strip())
-
-    if symbols:
-        community_gene_sets[f"Community_{comm_id}"] = symbols
-        all_network_genes |= symbols
-
-gene_format = "ENSG (converted)" if any(
-    g.startswith('ENSG') for g in str(comm_df.iloc[0]['genes']).split(';')[:3]
-) else "gene symbols (direct)"
-log(f"  Network community gene format: {gene_format}")
-log(f"  Network communities loaded: {len(community_gene_sets)}")
-for comm_name, genes in sorted(community_gene_sets.items()):
-    log(f"    {comm_name}: {len(genes)} genes")
-log(f"  Total network genes (all communities): {len(all_network_genes)}")
-
-if len(community_gene_sets) == 0:
-    raise ValueError(
-        "Community gene loading produced 0 communities!\n"
-        f"  File: {COMMUNITY_GENE_LISTS_PATH}\n"
-        f"  Columns: {comm_df.columns.tolist()}\n"
-        f"  First gene entry: {comm_df.iloc[0]['genes'][:100] if len(comm_df) > 0 else 'N/A'}"
-    )
-
-# 4. DDR genes
-ddr_set = set(DDR_GENES)
-log(f"  DDR genes: {len(ddr_set)}")
-
-# 5. Chromatin remodelers
-chromatin_set = set(CHROMATIN_GENES)
-log(f"  Chromatin remodelers: {len(chromatin_set)}")
 
 # --- Hypergeometric gene set tests ---
 banner("PHASE 5A: Hypergeometric Gene Set Tests")
@@ -769,19 +1012,8 @@ if len(track_a1) > 0:
 
     from scipy.stats import hypergeom
 
-    gene_set_dict = {
-        'Harris_A3_all': harris_all,
-        'Harris_A3B_specific': harris_a3b,
-        'DDR_genes': ddr_set,
-        'Chromatin_remodelers': chromatin_set,
-        'Network_all_communities': all_network_genes,
-    }
-    # Add individual communities
-    for comm_name, comm_genes in community_gene_sets.items():
-        gene_set_dict[comm_name] = comm_genes
-
     enrichment_results = []
-    for gs_name, gs_genes in gene_set_dict.items():
+    for gs_name, gs_genes in REFERENCE_GENE_SETS.items():
         # Genes in gene set that were actually tested
         gs_tested = gs_genes & all_tested
         gs_hits = gs_genes & nominal_hits
