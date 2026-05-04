@@ -72,8 +72,8 @@ def sym(ensg):
 # ENRICHR RATE-LIMIT HANDLING
 # =============================================================================
 ENRICHR_MAX_RETRIES = 5
-ENRICHR_BASE_DELAY = 10       # seconds, doubles each retry
-ENRICHR_BETWEEN_DELAY = 5     # seconds between communities
+ENRICHR_BASE_DELAY = 30       # seconds, doubles each retry (30/60/120/240/480)
+ENRICHR_BETWEEN_DELAY = 15    # seconds between communities (15s prevents 429s)
 
 
 def enrichr_with_retry(gene_list, gene_sets="KEGG_2021_Human",

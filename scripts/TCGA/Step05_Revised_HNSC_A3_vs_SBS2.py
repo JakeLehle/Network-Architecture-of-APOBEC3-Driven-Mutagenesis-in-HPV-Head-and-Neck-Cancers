@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step05_Revised_HNSC_A3_vs_SBS2_v3.py
+Step05_Revised_HNSC_A3_vs_SBS2_v4.py
 ====================================
 Figure 1: three panels + supplemental.
 
@@ -8,6 +8,15 @@ Panel 1a: A3A+A3B vs SBS2 scatter (necessary but not sufficient)
 Panel 1b: A3A vs A3B colored by SBS2 (visual gradient, depth-sorted)
 Panel 1c: Box-and-whisker of SBS2 across 4 A3A/A3B quadrants + 2x2 heatmap
 Supplemental: Zoomed view of low-A3 / high-SBS2 boundary region
+
+CHANGE FROM v3:
+  Panel 1a/1b: Point size increased from 50 to 100 for visibility.
+  Panel 1c boxplot: Significance brackets revised:
+    - Bracket 1: LOW/LOW vs A3A-HIGH/A3B-LOW (A3A effect alone)
+    - Bracket 2: A3A-HIGH/A3B-LOW vs BOTH-HIGH (adding A3B is ns)
+    Outlier (flier) marker size doubled (4 -> 8).
+  Panel 1c heatmap: vmax set to 25 for better color discrimination
+    between A3A-HIGH/A3B-LOW and BOTH-HIGH cells.
 
 CHANGE FROM v2:
   After barcode matching, CASE_ID (12-char) matches are dropped.
@@ -205,7 +214,7 @@ pcols = [rcol[r] for r in regions]
 x_max=x_all.max()*1.05; y_max=y_all.max()*1.05
 
 # =============================================================================
-# PANEL 1a
+# PANEL 1a  (v4: point size 50 -> 100)
 # =============================================================================
 banner("Panel 1a")
 bs,be,hb = find_axis_break(x_all)
@@ -216,7 +225,7 @@ def draw_1a(ax, xl, xh, is_main=True):
     add_inner_axes(ax,xl,xh,0,y_max,y_color=COLOR_NORMAL if is_main else COLOR_BLACK,lw=3,zorder=1)
     ax.plot([0,X_THR],[0,y_thr],'--',color=COLOR_DARK_GRAY,lw=1,alpha=0.7,zorder=2)
     ax.plot([X_THR,x_max*2],[y_thr,y_thr],'--',color=COLOR_DARK_GRAY,lw=1,alpha=0.7,zorder=2)
-    ax.scatter(x_all,y_all,c=pcols,s=50,alpha=0.7,edgecolors=COLOR_BLACK,linewidths=0.4,rasterized=True,zorder=3)
+    ax.scatter(x_all,y_all,c=pcols,s=100,alpha=0.7,edgecolors=COLOR_BLACK,linewidths=0.4,rasterized=True,zorder=3)
     ax.set_xlim(xl,xh); ax.set_ylim(-y_max*0.02,y_max)
 
 if hb:
@@ -241,7 +250,7 @@ else:
     plt.tight_layout(); save_fig(fig,"Panel_1a_A3sum_vs_SBS2")
 
 # =============================================================================
-# PANEL 1b
+# PANEL 1b  (v4: point size 50 -> 100)
 # =============================================================================
 banner("Panel 1b")
 pdf = final.sort_values('SBS2',ascending=True).copy()
@@ -249,7 +258,7 @@ x2=pdf['A3A'].values; y2=pdf['A3B'].values; c2=pdf['SBS2'].values; c2l=np.log1p(
 y2m=y2.max()*1.05; bs2,be2,hb2 = find_axis_break(x2); x2m=x2.max()*1.05
 def draw_1b(ax,xl,xh,is_main=True):
     add_inner_axes(ax,xl,xh,0,y2m,y_color=COLOR_BLACK,lw=3,zorder=0)
-    sc = ax.scatter(x2,y2,c=c2l,cmap='magma',s=50,alpha=0.7,edgecolors=COLOR_BLACK,linewidths=0.3,rasterized=True,zorder=2)
+    sc = ax.scatter(x2,y2,c=c2l,cmap='magma',s=100,alpha=0.7,edgecolors=COLOR_BLACK,linewidths=0.3,rasterized=True,zorder=2)
     ax.set_xlim(xl,xh); ax.set_ylim(-y2m*0.02,y2m); return sc
 if hb2:
     fig,(axM,axB) = plt.subplots(1,2,sharey=True,figsize=(16,10),gridspec_kw={'width_ratios':[3,1],'wspace':0.04})
@@ -273,7 +282,13 @@ else:
     plt.tight_layout(); save_fig(fig,"Panel_1b_A3A_vs_A3B_SBS2")
 
 # =============================================================================
-# PANEL 1c: Box-and-whisker + 2x2 heatmap (UPDATED)
+# PANEL 1c: Box-and-whisker + 2x2 heatmap (v4 UPDATED)
+#
+# v4 changes:
+#   - Bracket 1: LOW/LOW vs A3A-HIGH/A3B-LOW (A3A gain effect)
+#   - Bracket 2: A3A-HIGH/A3B-LOW vs BOTH-HIGH (A3B addition is ns)
+#   - Flier marker size doubled: 4 -> 8
+#   - Heatmap vmax set to 25 for better color discrimination
 # =============================================================================
 banner("Panel 1c: Boxplot + Heatmap")
 
@@ -292,7 +307,7 @@ medians = [np.median(d) for d in box_data]
 ns = [len(d) for d in box_data]
 
 bp = ax_box.boxplot(box_data, patch_artist=True, widths=0.6, showfliers=True,
-                     flierprops=dict(marker='o', markersize=4, alpha=0.3,
+                     flierprops=dict(marker='o', markersize=8, alpha=0.3,
                                      markerfacecolor=COLOR_DARK_GRAY, markeredgecolor=COLOR_DARK_GRAY))
 for patch, color in zip(bp['boxes'], quad_colors):
     patch.set_facecolor(color); patch.set_alpha(0.75)
@@ -317,19 +332,25 @@ ax_box.set_xticklabels(quad_labels, fontsize=FONT_SIZE-6)
 ax_box.set_ylabel('SBS2 Weight (mutation count)', fontsize=FONT_SIZE)
 ax_box.tick_params(labelsize=FONT_SIZE-6)
 
-# Significance bracket
-p_both_vs_neither = mannwhitneyu(box_data[0], box_data[3], alternative='two-sided').pvalue
-y_sig = max(np.percentile(box_data[3],99), np.percentile(box_data[0],99)) * 1.1
-ax_box.plot([1, 1, 4, 4], [y_sig, y_sig*1.03, y_sig*1.03, y_sig],
+# =========================================================================
+# v4 Significance brackets:
+#   Bracket 1: LOW/LOW (pos 1) vs A3A-HIGH/A3B-LOW (pos 3)
+#              Shows that gaining A3A alone significantly increases SBS2
+#   Bracket 2: A3A-HIGH/A3B-LOW (pos 3) vs BOTH-HIGH (pos 4)
+#              Shows that adding A3B to high-A3A does not further increase SBS2
+# =========================================================================
+
+# Bracket 1: LOW/LOW vs A3A-HIGH/A3B-LOW (A3A effect)
+p_a3a_effect = mannwhitneyu(box_data[0], box_data[2], alternative='two-sided').pvalue
+y_sig = max(np.percentile(box_data[2],99), np.percentile(box_data[0],99)) * 1.1
+ax_box.plot([1, 1, 3, 3], [y_sig, y_sig*1.03, y_sig*1.03, y_sig],
             color=COLOR_DARK_GRAY, linewidth=1.5)
-sig_text = f'p = {p_both_vs_neither:.2e}' if p_both_vs_neither < 0.001 else f'p = {p_both_vs_neither:.4f}'
-ax_box.text(2.5, y_sig*1.05, sig_text, ha='center', fontsize=FONT_SIZE-8, color=COLOR_DARK_GRAY)
+sig_text = f'p = {p_a3a_effect:.2e}' if p_a3a_effect < 0.001 else f'p = {p_a3a_effect:.4f}'
+ax_box.text(2, y_sig*1.05, sig_text, ha='center', fontsize=FONT_SIZE-8, color=COLOR_DARK_GRAY)
 
-ax_box.spines['top'].set_visible(False); ax_box.spines['right'].set_visible(False)
-
-# Second bracket: groups 3 vs 4 (plateau effect, expected ns)
+# Bracket 2: A3A-HIGH/A3B-LOW vs BOTH-HIGH (plateau / A3B addition)
 p_plateau = mannwhitneyu(box_data[2], box_data[3], alternative='two-sided').pvalue
-y_sig2 = y_sig * 1.15  # position above the first bracket
+y_sig2 = y_sig * 1.15
 ax_box.plot([3, 3, 4, 4], [y_sig2, y_sig2*1.03, y_sig2*1.03, y_sig2],
             color=COLOR_DARK_GRAY, linewidth=1.5)
 if p_plateau >= 0.05:
@@ -338,6 +359,8 @@ if p_plateau >= 0.05:
 else:
     sig_text2 = f'p = {p_plateau:.2e}' if p_plateau < 0.001 else f'p = {p_plateau:.4f}'
     ax_box.text(3.5, y_sig2*1.05, sig_text2, ha='center', fontsize=FONT_SIZE-8, color=COLOR_DARK_GRAY)
+
+ax_box.spines['top'].set_visible(False); ax_box.spines['right'].set_visible(False)
 
 # --- 2x2 Heatmap ---
 # Rows = A3B (HIGH top, LOW bottom), Cols = A3A (LOW left, HIGH right)
@@ -350,8 +373,9 @@ heat_n = np.array([
     [ns[0], ns[2]],
 ])
 
+# v4: vmax=25 for better color discrimination between A3A-HIGH/A3B-LOW and BOTH-HIGH
 im = ax_heat.imshow(heat_matrix, cmap='YlOrRd', aspect='equal',
-                     vmin=0, vmax=max(medians)*1.1)
+                     vmin=0, vmax=25)
 
 for i in range(2):
     for j in range(2):
@@ -437,7 +461,7 @@ log(f"\n  Spearman correlations:")
 for g in ['A3A','A3B','A3A_plus_A3B']:
     rho,p = spearmanr(final[g],final['SBS2'])
     log(f"    {g} vs SBS2: rho={rho:.4f}, p={p:.2e}")
-rp = os.path.join(TROUBLE_DIR,"figure1_v3_pipeline_report.txt")
+rp = os.path.join(TROUBLE_DIR,"figure1_v4_pipeline_report.txt")
 with open(rp,'w') as f: f.write('\n'.join(report_lines))
 log(f"\n  Report: {rp}")
-banner("FIGURE 1 PIPELINE COMPLETE (v3 - DIRECT ONLY)")
+banner("FIGURE 1 PIPELINE COMPLETE (v4)")
