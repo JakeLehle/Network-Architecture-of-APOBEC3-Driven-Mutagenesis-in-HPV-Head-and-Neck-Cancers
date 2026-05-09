@@ -9,13 +9,12 @@ single-cell basal epithelial cell expression data.
 
 Key differences from Figure 2 (TCGA bulk):
   - Input is single-cell expression (cells = samples)
-  - No TCGA clinical metadata -- groups defined by SBS2 weight
+  - No TCGA clinical metadata — groups defined by SBS2 weight
   - Gene IDs are HYBRID: gene symbols for annotated genes (APOBEC3B, KRT5),
     ENSG IDs only for unannotated transcripts (NaN-replaced in adata.var)
   - The SC data from Cell Ranger already contains ~20K protein-coding genes,
     so NO protein-coding filter is needed (unlike TCGA bulk which starts at ~60K)
-  - DIFF threshold auto-selected per network using component peak + LCC criterion
-  - Leiden resolution auto-selected using modularity jump detection
+  - DIFF threshold relaxed to 0.45 (from 0.70 in bulk) due to weaker SC correlations
   - Output goes to data/FIG_4/
 
 Author: Jake Lehle
@@ -64,7 +63,7 @@ LOW_EXPR_PATH  = os.path.join(DIR_01_GROUPS, "SC_Basal_SBS2_LOW_expression.tsv")
 GROUP_ASSIGN_PATH = os.path.join(DIR_01_GROUPS, "SC_Basal_group_assignments.tsv")
 
 # =============================================================================
-# STEP 00 -- CELL SELECTION PARAMETERS
+# STEP 00 — CELL SELECTION PARAMETERS
 # =============================================================================
 TARGET_CELL_TYPE = "basal cell"
 SBS2_HIGH_PERCENTILE = 0.80
@@ -72,7 +71,7 @@ N_CONTROLS_MATCH     = True
 SBS2_LOW_MAX_WEIGHT  = 0.01
 
 # =============================================================================
-# STEP 01 -- DIFFERENTIAL EXPRESSION PARAMETERS
+# STEP 01 — DIFFERENTIAL EXPRESSION PARAMETERS
 # =============================================================================
 MIN_CELLS_DETECTED  = 10
 RAW_P_THRESHOLD     = 0.05
@@ -81,33 +80,26 @@ FORCE_KEEP_A3       = True
 FILTER_PROTEIN_CODING = False   # SC data already ~20K protein-coding genes
 
 # =============================================================================
-# STEP 02 -- CORRELATION NETWORK PARAMETERS
+# STEP 02 — CORRELATION NETWORK PARAMETERS
 # =============================================================================
 CORRELATION_METHOD = "spearman"
 
 CORR_THRESHOLD     = 0.80     # |rho| threshold for HIGH/LOW network edges
 
-# DIFF threshold: auto-selected per network comparison.
-# The auto-selector (Auto_Select_Network_Parameters.py) finds the threshold
-# where connected components peak and LCC < DIFF_THRESHOLD_MAX_LCC.
-# This produces pathway-scale communities that are biologically interpretable.
-#
-# Typical auto-selected thresholds:
-#   SBS2_VS_CNV:    0.65 (narrowest biological contrast)
-#   SBS2_VS_NORMAL: 0.65 (cancer vs normal)
-#   CNV_VS_NORMAL:  0.70 (widest biological contrast)
-#
-# Fallback value used if auto-selection is disabled or sweep data unavailable.
-DIFF_THRESHOLD          = 0.40     # Fallback (only used if auto disabled)
-DIFF_THRESHOLD_AUTO     = True     # Enable auto-selection from sweep data
-DIFF_THRESHOLD_MAX_LCC  = 300      # Max LCC size for auto-selection
+# DIFF threshold: relaxed from 0.70 (TCGA bulk) to 0.40 for single-cell.
+# SC Spearman correlations are attenuated by dropout and sparsity.
+# Threshold sweep results (with 15-sig corrected weights, 546 cells/group):
+#   0.70 → ~100 nodes, fragmented, no A3 genes
+#   0.45 → ~1000 nodes, LCC ~89%, A3A just barely excluded (max 0.4493)
+#   0.40 → ~1600 nodes, LCC ~97%, A3A + A3H captured, avg deg ~4.4
+#   0.35 → ~2500 nodes, avg deg ~6.7, also captures A3D/A3G
+# 0.40 captures A3A/A3H with network density comparable to Figure 2 (avg deg 4.8).
+DIFF_THRESHOLD     = 0.40
 
-# Finer granularity in the 0.50-0.70 range where thresholds typically land
-SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70,
-                    0.75, 0.80, 0.85, 0.90]
+SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80, 0.90]
 
 # =============================================================================
-# STEP 03 -- COMMUNITY DETECTION PARAMETERS
+# STEP 03 — COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
 COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]
@@ -117,14 +109,8 @@ USE_LARGEST_COMPONENT = True
 TARGET_BIG_COMMUNITIES = 14
 MIN_COMMUNITY_SIZE     = 10
 
-# Resolution auto-selection: modularity jump detection with stability floor.
-# Finds the resolution where modularity increases most (structural jump)
-# and verifies ARI stability is above the floor.
-RESOLUTION_AUTO     = True     # Enable auto-selection from resolution sweep
-RESOLUTION_MIN_ARI  = 0.65    # Stability floor (TCGA bulk used ARI ~0.63)
-
 # =============================================================================
-# STEP 05 -- OVERLAP ANALYSIS PARAMETERS
+# STEP 05 — OVERLAP ANALYSIS PARAMETERS
 # =============================================================================
 OVERLAP_FDR_METHOD  = "BH"
 OVERLAP_P_THRESHOLD = 0.05
@@ -174,7 +160,7 @@ A3_GENES = A3_GENES_SYMBOLS
 A3_ID_TO_ALIAS = A3_SYMBOL_TO_ALIAS
 
 # =============================================================================
-# BIOMARKER GENES -- gene symbols
+# BIOMARKER GENES — gene symbols
 # =============================================================================
 BIOMARKERS_SYMBOLS = {
     'CD4+ T cell':              ['IL7R', 'CD3E'],
@@ -220,7 +206,7 @@ def load_ensg_to_symbol():
         with open(ENSG_TO_SYMBOL_PATH) as f:
             return json.load(f)
     else:
-        log(f"WARNING: ENSG->symbol mapping not found at {ENSG_TO_SYMBOL_PATH}")
+        log(f"WARNING: ENSG→symbol mapping not found at {ENSG_TO_SYMBOL_PATH}")
         return {}
 
 def load_ensg_to_biotype():
@@ -229,79 +215,8 @@ def load_ensg_to_biotype():
         with open(ENSG_TO_BIOTYPE_PATH) as f:
             return json.load(f)
     else:
-        log(f"WARNING: ENSG->biotype mapping not found at {ENSG_TO_BIOTYPE_PATH}")
+        log(f"WARNING: ENSG→biotype mapping not found at {ENSG_TO_BIOTYPE_PATH}")
         return {}
-
-def load_harris_interactors():
-    """
-    Load Harris A3 interactors from TSV files.
-    Files have columns: gene_symbol, A3_baits, source, R_loop_associated,
-    confirmed_coIP, A3B_interactor.
-    Returns (harris_all, harris_a3b) as sets of gene symbols.
-    """
-    import pandas as pd
-
-    harris_all = set()
-    harris_a3b = set()
-
-    if os.path.exists(HARRIS_ALL_PATH):
-        try:
-            df = pd.read_csv(HARRIS_ALL_PATH, sep='\t')
-            harris_all = set(df['gene_symbol'].dropna().values)
-            log(f"  Harris interactors (all): {len(harris_all)} genes")
-        except Exception as e:
-            log(f"  WARNING: Could not load Harris interactors: {e}")
-    else:
-        log(f"  WARNING: Harris interactors not found: {HARRIS_ALL_PATH}")
-
-    if os.path.exists(HARRIS_A3B_PATH):
-        try:
-            df = pd.read_csv(HARRIS_A3B_PATH, sep='\t')
-            harris_a3b = set(df['gene_symbol'].dropna().values)
-            log(f"  Harris interactors (A3B-specific): {len(harris_a3b)} genes")
-        except Exception as e:
-            log(f"  WARNING: Could not load A3B interactors: {e}")
-    else:
-        log(f"  WARNING: A3B interactors not found: {HARRIS_A3B_PATH}")
-
-    return harris_all, harris_a3b
-
-def load_tcga_bulk_communities():
-    """
-    Load TCGA bulk community assignments for overlap analysis.
-    Converts ENSG IDs to gene symbols using ensg_to_symbol.json.
-    Returns dict of {community_id: set of gene symbols}.
-    """
-    import pandas as pd
-
-    tcga_comms = {}
-    cancer_type = "TCGA-HNSC"
-    part_path = os.path.join(FIG2_COMMUNITIES, cancer_type,
-                              f"{cancer_type}_best_partition.csv")
-
-    if not os.path.exists(part_path):
-        log(f"  WARNING: TCGA partition not found: {part_path}")
-        return tcga_comms
-
-    ensg_to_sym = load_ensg_to_symbol()
-    df = pd.read_csv(part_path)
-
-    for _, row in df.iterrows():
-        c = int(row['community'])
-        gene = row['gene']
-        # Convert ENSG to symbol
-        if gene.startswith('ENSG'):
-            symbol = ensg_to_sym.get(gene)
-            if symbol is None:
-                symbol = A3_ENSG_TO_SYMBOL.get(gene, gene)
-        else:
-            symbol = gene
-        tcga_comms.setdefault(c, set()).add(symbol)
-
-    log(f"  TCGA bulk communities: {len(tcga_comms)} communities, "
-        f"{sum(len(v) for v in tcga_comms.values())} genes")
-
-    return tcga_comms
 
 def convert_tcga_genes_to_symbols(gene_set, ensg_to_symbol=None):
     """Convert TCGA ENSG IDs to gene symbols for overlap analysis."""
