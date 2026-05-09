@@ -4,27 +4,13 @@ Compute_Node_Importance_Scores_SC.py
 ======================================
 
 Compute dual importance scores for all genes in the single-cell differential
-co-expression network (Figure 4). Adapted from the bulk TCGA version
-(Compute_Node_Importance_Scores.py) used for Figure 2.
+co-expression network (Figure 4). Adapted from the bulk TCGA version.
 
 Scoring:
   1. INTRA score ("local hub"): How central is this gene within its
      own community? Drives node size in Figure 4 panels.
-
   2. INTER score ("bridge"): How much does this gene connect different
      communities? Drives border/shape annotation in Figure 4 panels.
-
-Components:
-  INTRA: intra-community degree, intra-community strength,
-         within-community eigenvector centrality
-  INTER: inter-community degree, global betweenness centrality,
-         number of distinct communities connected to
-
-Key differences from bulk version:
-  - SC network uses gene symbols directly (no ENSG-to-symbol mapping)
-  - Edge list is TSV (not CSV)
-  - No KEGG summary available (skipped in reporting)
-  - Output to data/FIG_4/ instead of data/FIG_2/
 
 Outputs:
   - data/FIG_4/DIAGNOSTIC_AUDIT/Supp_Table_SC_Node_Scores.tsv
@@ -44,45 +30,30 @@ import pandas as pd
 import networkx as nx
 from datetime import datetime
 
+from network_config_SC import (
+    DIR_03_NETWORKS, DIR_04_COMMUNITIES,
+    load_harris_interactors, load_tcga_bulk_communities,
+    banner as config_banner, log as config_log, ensure_dir
+)
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
 PROJECT_ROOT = "/master/jlehle/WORKING/2026_NMF_PAPER"
 
-# Input paths (SC pipeline outputs)
 DIFF_EDGES = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/03_correlation_networks/edge_lists/SC_edges_DIFF.tsv"
-)
+    PROJECT_ROOT, "data/FIG_4/03_correlation_networks/edge_lists/SC_edges_DIFF.tsv")
 BEST_PARTITION = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/04_communities/SC_best_partition.csv"
-)
-COMM_GRAPH = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/04_communities/SC_G_comm.gpickle"
-)
-
-# Harris interactors
-HARRIS_ALL_PATH = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/00_input/Harris_A3_interactors.txt"
-)
-HARRIS_A3B_PATH = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/00_input/Harris_A3_interactors_A3B_only.txt"
-)
-
-# TCGA shared genes (from overlap analysis, if available)
-TCGA_OVERLAP_PATH = os.path.join(
-    PROJECT_ROOT, "data/FIG_4/06_overlap_analysis/overlap_gene_details.csv"
-)
+    PROJECT_ROOT, "data/FIG_4/04_communities/SC_best_partition.csv")
 
 A3_SYMBOLS = {
     'APOBEC3A', 'APOBEC3B', 'APOBEC3C', 'APOBEC3D',
     'APOBEC3F', 'APOBEC3G', 'APOBEC3H',
 }
 
-# Output
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data/FIG_4/DIAGNOSTIC_AUDIT")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
 
 # =============================================================================
 # LOGGING
@@ -116,14 +87,13 @@ def load_data():
     comm_genes = partition.groupby('community')['gene'].apply(set).to_dict()
     log(f"  Partition: {len(partition)} genes in {len(comm_genes)} communities")
 
-    # DIFF edges (TSV for SC pipeline)
+    # DIFF edges
     edges_df = pd.read_csv(DIFF_EDGES, sep='\t')
     log(f"  DIFF edges: {len(edges_df)}")
     log(f"  Edge columns: {list(edges_df.columns)}")
 
-    # Build networkx graph from edges (community genes only)
+    # Build networkx graph (community genes only)
     community_gene_set = set(partition['gene'])
-
     G = nx.Graph()
     for _, row in edges_df.iterrows():
         s, t = row['source'], row['target']
@@ -131,37 +101,22 @@ def load_data():
             G.add_edge(s, t,
                        weight=row.get('weight', 0),
                        abs_weight=row.get('abs_weight', abs(row.get('weight', 0))))
-
-    # Add isolated community genes
     for gene in community_gene_set:
         if gene not in G:
             G.add_node(gene)
-
     log(f"  Community subgraph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
-    # Harris interactors
-    harris_all = set()
-    harris_a3b = set()
-    if os.path.exists(HARRIS_ALL_PATH):
-        with open(HARRIS_ALL_PATH) as f:
-            harris_all = set(line.strip() for line in f if line.strip())
-        log(f"  Harris interactors (all): {len(harris_all)}")
-    if os.path.exists(HARRIS_A3B_PATH):
-        with open(HARRIS_A3B_PATH) as f:
-            harris_a3b = set(line.strip() for line in f if line.strip())
-        log(f"  Harris interactors (A3B): {len(harris_a3b)}")
+    # Harris interactors (TSV with gene_symbol column)
+    harris_all, harris_a3b = load_harris_interactors()
 
-    # TCGA shared genes (optional)
+    # TCGA bulk community genes (for cross-reference)
+    tcga_comms = load_tcga_bulk_communities()
     tcga_shared = set()
-    if os.path.exists(TCGA_OVERLAP_PATH):
-        overlap_df = pd.read_csv(TCGA_OVERLAP_PATH)
-        if 'gene' in overlap_df.columns:
-            tcga_shared = set(overlap_df['gene'].values)
-        elif 'gene_symbol' in overlap_df.columns:
-            tcga_shared = set(overlap_df['gene_symbol'].values)
-        log(f"  TCGA shared genes: {len(tcga_shared)}")
-    else:
-        log(f"  TCGA overlap file not found (skipping)")
+    for genes in tcga_comms.values():
+        tcga_shared |= genes
+    # Intersect with SC network genes to get shared set
+    tcga_shared = tcga_shared & community_gene_set
+    log(f"  TCGA genes shared with SC network: {len(tcga_shared)}")
 
     return G, gene_to_comm, comm_genes, community_gene_set, harris_all, harris_a3b, tcga_shared
 
@@ -171,12 +126,9 @@ def load_data():
 # =============================================================================
 
 def classify_edges(G, gene_to_comm):
-    """Split edges into intra-community and inter-community."""
     banner("CLASSIFY EDGES")
-
     intra_edges = []
     inter_edges = []
-
     for u, v, data in G.edges(data=True):
         comm_u = gene_to_comm.get(u, -1)
         comm_v = gene_to_comm.get(v, -1)
@@ -184,12 +136,10 @@ def classify_edges(G, gene_to_comm):
             intra_edges.append((u, v, data))
         else:
             inter_edges.append((u, v, data))
-
     log(f"  Intra-community edges: {len(intra_edges)}")
     log(f"  Inter-community edges: {len(inter_edges)}")
     if G.number_of_edges() > 0:
         log(f"  Intra fraction: {len(intra_edges)/G.number_of_edges():.1%}")
-
     return intra_edges, inter_edges
 
 
@@ -198,16 +148,13 @@ def classify_edges(G, gene_to_comm):
 # =============================================================================
 
 def compute_intra(G, comm_genes, gene_to_comm, community_gene_set):
-    """Compute intra-community degree, strength, and eigenvector centrality."""
     banner("COMPUTE INTRA-COMMUNITY METRICS")
-
     intra_degree = {}
     intra_strength = {}
     intra_eigenvector = {}
 
     for cid, genes in sorted(comm_genes.items()):
         subgraph = G.subgraph(genes).copy()
-
         for gene in genes:
             ideg = 0
             istr = 0.0
@@ -245,9 +192,7 @@ def compute_intra(G, comm_genes, gene_to_comm, community_gene_set):
 # =============================================================================
 
 def compute_inter(G, inter_edges, gene_to_comm, community_gene_set):
-    """Compute inter-community degree, strength, betweenness, and bridge count."""
     banner("COMPUTE INTER-COMMUNITY METRICS")
-
     inter_degree = {g: 0 for g in community_gene_set}
     inter_strength = {g: 0.0 for g in community_gene_set}
     communities_connected = {g: set() for g in community_gene_set}
@@ -255,14 +200,11 @@ def compute_inter(G, inter_edges, gene_to_comm, community_gene_set):
     for u, v, data in inter_edges:
         comm_u = gene_to_comm.get(u, -1)
         comm_v = gene_to_comm.get(v, -1)
-
         inter_degree[u] = inter_degree.get(u, 0) + 1
         inter_degree[v] = inter_degree.get(v, 0) + 1
-
         w = abs(data.get('abs_weight', 0))
         inter_strength[u] = inter_strength.get(u, 0) + w
         inter_strength[v] = inter_strength.get(v, 0) + w
-
         if comm_v >= 0:
             communities_connected[u].add(comm_v)
         if comm_u >= 0:
@@ -273,7 +215,6 @@ def compute_inter(G, inter_edges, gene_to_comm, community_gene_set):
     log(f"\n  Computing global betweenness centrality...")
     global_betweenness = nx.betweenness_centrality(G, weight='abs_weight')
 
-    # Report top bridges
     inter_sorted = sorted(community_gene_set, key=lambda g: inter_degree.get(g, 0), reverse=True)
     log(f"\n  Top 15 inter-community bridges:")
     log(f"  {'Gene':15s} {'Comm':>5s} {'InterDeg':>9s} {'InterStr':>9s} "
@@ -295,28 +236,20 @@ def build_scores(community_gene_set, gene_to_comm,
                  intra_degree, intra_strength, intra_eigenvector,
                  inter_degree, inter_strength, n_comms_connected,
                  global_betweenness, harris_all, harris_a3b, tcga_shared):
-    """Build composite intra/inter scores and return DataFrame."""
     banner("BUILD COMPOSITE SCORES")
-
     rows = []
     for gene in community_gene_set:
         cid = gene_to_comm[gene]
-
         rows.append({
-            'gene_symbol': gene,
-            'community': cid,
-            # Raw intra metrics
+            'gene_symbol': gene, 'community': cid,
             'intra_degree': intra_degree.get(gene, 0),
             'intra_strength': round(intra_strength.get(gene, 0), 4),
             'intra_eigenvector': round(intra_eigenvector.get(gene, 0), 6),
-            # Raw inter metrics
             'inter_degree': inter_degree.get(gene, 0),
             'inter_strength': round(inter_strength.get(gene, 0), 4),
             'n_communities_connected': n_comms_connected.get(gene, 0),
             'global_betweenness': round(global_betweenness.get(gene, 0), 6),
-            # Total degree
             'total_degree': intra_degree.get(gene, 0) + inter_degree.get(gene, 0),
-            # Flags
             'is_a3_gene': gene in A3_SYMBOLS,
             'is_harris_all': gene in harris_all,
             'is_harris_a3b': gene in harris_a3b,
@@ -325,34 +258,20 @@ def build_scores(community_gene_set, gene_to_comm,
 
     df = pd.DataFrame(rows)
 
-    # Percentile ranks for intra components
     for col in ['intra_degree', 'intra_strength', 'intra_eigenvector']:
         df[f'{col}_pctrank'] = df[col].rank(pct=True)
+    df['intra_score'] = df[['intra_degree_pctrank', 'intra_strength_pctrank',
+                             'intra_eigenvector_pctrank']].mean(axis=1).round(4)
 
-    df['intra_score'] = df[[
-        'intra_degree_pctrank',
-        'intra_strength_pctrank',
-        'intra_eigenvector_pctrank',
-    ]].mean(axis=1).round(4)
-
-    # Percentile ranks for inter components
     for col in ['inter_degree', 'inter_strength', 'n_communities_connected', 'global_betweenness']:
         df[f'{col}_pctrank'] = df[col].rank(pct=True)
+    df['inter_score'] = df[['inter_degree_pctrank', 'inter_strength_pctrank',
+                             'n_communities_connected_pctrank',
+                             'global_betweenness_pctrank']].mean(axis=1).round(4)
 
-    df['inter_score'] = df[[
-        'inter_degree_pctrank',
-        'inter_strength_pctrank',
-        'n_communities_connected_pctrank',
-        'global_betweenness_pctrank',
-    ]].mean(axis=1).round(4)
-
-    # Drop intermediate rank columns
     rank_cols = [c for c in df.columns if c.endswith('_pctrank')]
     df = df.drop(columns=rank_cols)
-
-    # Sort by intra_score descending
     df = df.sort_values(['intra_score', 'inter_score'], ascending=[False, False])
-
     return df
 
 
@@ -361,8 +280,6 @@ def build_scores(community_gene_set, gene_to_comm,
 # =============================================================================
 
 def report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared):
-    """Print summary tables."""
-
     banner("TOP 25 GENES BY INTRA SCORE (Local Hubs)")
     log(f"  {'Gene':15s} {'Comm':>5s} {'InDeg':>6s} {'InStr':>7s} {'InEig':>7s} "
         f"{'INTRA':>6s} {'ExDeg':>6s} {'INTER':>6s} {'Flags':>12s}")
@@ -395,12 +312,10 @@ def report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared):
     for cid in sorted(comm_genes.keys()):
         c_df = df[df['community'] == cid].sort_values('intra_score', ascending=False)
         n_genes = len(c_df)
-
         top3 = c_df.head(3)
         hub_str = ', '.join(
             f"{r['gene_symbol']}(in={int(r['intra_degree'])},ex={int(r['inter_degree'])})"
-            for _, r in top3.iterrows()
-        )
+            for _, r in top3.iterrows())
 
         a3_in = [r['gene_symbol'] for _, r in c_df.iterrows() if r['is_a3_gene']]
         harris_in = [r['gene_symbol'] for _, r in c_df.iterrows() if r['is_harris_all']]
@@ -422,10 +337,7 @@ def report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared):
                 f"ex_deg={int(top_bridge['inter_degree'])}, "
                 f"to {int(top_bridge['n_communities_connected'])} communities)")
 
-    # Special interest genes
     banner("SPECIAL INTEREST GENES")
-
-    # A3 genes in network
     a3_df = df[df['is_a3_gene']].sort_values('intra_score', ascending=False)
     log(f"\n  A3 genes in network: {len(a3_df)}")
     for _, row in a3_df.iterrows():
@@ -433,14 +345,22 @@ def report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared):
             f"intra={row['intra_score']:.4f}  inter={row['inter_score']:.4f}  "
             f"deg={int(row['total_degree'])}")
 
-    # Harris interactors in network
     harris_df = df[df['is_harris_all']].sort_values('intra_score', ascending=False)
     log(f"\n  Harris A3 interactors in network: {len(harris_df)}")
-    for _, row in harris_df.iterrows():
-        a3b_flag = " [A3B-specific]" if row['is_harris_a3b'] else ""
-        log(f"    {row['gene_symbol']:12s} C{int(row['community']):>2d}  "
-            f"intra={row['intra_score']:.4f}  inter={row['inter_score']:.4f}  "
-            f"deg={int(row['total_degree'])}{a3b_flag}")
+    if len(harris_df) > 0:
+        # Show top 20 and community distribution
+        log(f"  Top 20 by intra score:")
+        for _, row in harris_df.head(20).iterrows():
+            a3b_flag = " [A3B]" if row['is_harris_a3b'] else ""
+            log(f"    {row['gene_symbol']:12s} C{int(row['community']):>2d}  "
+                f"intra={row['intra_score']:.4f}  inter={row['inter_score']:.4f}  "
+                f"deg={int(row['total_degree'])}{a3b_flag}")
+
+        # Community distribution of Harris interactors
+        harris_comm_counts = harris_df['community'].value_counts().sort_index()
+        log(f"\n  Harris interactors per community:")
+        for cid, cnt in harris_comm_counts.items():
+            log(f"    C{int(cid)}: {cnt} interactors")
 
 
 # =============================================================================
@@ -448,24 +368,19 @@ def report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared):
 # =============================================================================
 
 def save_outputs(df):
-    """Save node scores and figure-ready sizing table."""
     banner("SAVE OUTPUTS")
-
-    # Full scores table
     out_path = os.path.join(OUTPUT_DIR, "Supp_Table_SC_Node_Scores.tsv")
     df_save = df.sort_values(['community', 'intra_score'], ascending=[True, False])
     df_save.to_csv(out_path, sep='\t', index=False)
     log(f"  Node scores table: {out_path}")
     log(f"  Total genes: {len(df_save)}")
 
-    # Figure-ready sizing table (matches Figure2_Node_Sizing.tsv format)
     fig_cols = ['gene_symbol', 'community', 'intra_score', 'inter_score',
                 'intra_degree', 'inter_degree', 'total_degree']
     fig_path = os.path.join(OUTPUT_DIR, "Figure4_Node_Sizing.tsv")
     df_save[fig_cols].to_csv(fig_path, sep='\t', index=False)
     log(f"  Figure 4 sizing table: {fig_path}")
 
-    # Report
     report_path = os.path.join(OUTPUT_DIR, "SC_Node_Score_Summary_Report.txt")
     with open(report_path, 'w') as f:
         f.write('\n'.join(report_lines))
@@ -481,31 +396,24 @@ def main():
     banner("COMPUTE NODE IMPORTANCE SCORES -- SINGLE CELL (Figure 4)")
     log(f"  Start: {t0}")
 
-    # Load
     (G, gene_to_comm, comm_genes, community_gene_set,
      harris_all, harris_a3b, tcga_shared) = load_data()
 
-    # Classify edges
     intra_edges, inter_edges = classify_edges(G, gene_to_comm)
 
-    # Compute metrics
     intra_degree, intra_strength, intra_eigenvector = compute_intra(
         G, comm_genes, gene_to_comm, community_gene_set)
 
     inter_degree, inter_strength, n_comms_connected, global_betweenness = compute_inter(
         G, inter_edges, gene_to_comm, community_gene_set)
 
-    # Build scores
     df = build_scores(
         community_gene_set, gene_to_comm,
         intra_degree, intra_strength, intra_eigenvector,
         inter_degree, inter_strength, n_comms_connected,
         global_betweenness, harris_all, harris_a3b, tcga_shared)
 
-    # Report
     report_scores(df, comm_genes, harris_all, harris_a3b, tcga_shared)
-
-    # Save
     save_outputs(df)
 
     banner("DONE")
