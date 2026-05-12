@@ -4,25 +4,46 @@ Step03_SC_Community_Detection.py
 =================================
 
 Figure 4 -- Step 03: Leiden community detection on the single-cell DIFF
-network across multiple resolutions.
+network with unified threshold and resolution selection.
+
+Mirrors Step05_Community_Detection.py from the Figure 2 (TCGA bulk) pipeline.
+Uses the same threshold selection criterion and resolution selection logic
+so that both TCGA and single-cell networks are built identically.
 
 IMPORTANT: This script builds the DIFF graph from the saved correlation
-matrix pickle. The DIFF threshold is auto-selected from Step02.1 sweep
-data (component peak + LCC < 300 criterion), or falls back to the config
-value if auto-selection is disabled or sweep data is unavailable.
+matrix pickle. The DIFF threshold is auto-selected using the unified
+criterion: among thresholds where A3A and/or A3B (those passing DE at
+raw p < 0.05 without force-keeping) have degree >= 1, select the
+threshold with the highest connected component count. Ties broken by
+the lower (more inclusive) threshold.
 
-The Leiden resolution is auto-selected via modularity jump detection:
-finds the resolution with the largest single-step Q increase, subject
-to an ARI stability floor.
+Leiden resolution is selected using composite score = modularity x ARI x
+evenness, matching TCGA Step05 exactly.
+
+Workflow:
+  1. Load DIFF correlation matrix from Step 02 pickle
+  2. Auto-select DIFF threshold (A3 connectivity + component peak)
+  3. Build graph at selected threshold, remove isolates
+  4. Extract largest connected component (LCC)
+  5. Run Leiden at multiple resolutions (15 runs each for stability)
+  6. Select best resolution via composite score (Mod x ARI x Evenness)
+  7. Merge communities smaller than MIN_COMMUNITY_SIZE
+  8. Save community assignments, gene lists, and annotated graph
 
 Input:
   data/FIG_4/03_correlation_networks/corr_matrices/SC_corr_DIFF.pkl
-  data/FIG_4/03_correlation_networks/sweep_detailed.csv  (from Step02.1)
+  data/FIG_4/02_differential_expression/SC_DE_results.csv  (for A3 seed ID)
 
 Output (to data/FIG_4/04_communities/):
-  SC_resolution_sweep.csv, SC_best_partition.csv, SC_community_gene_lists.csv,
-  SC_community_summary.txt, SC_G_comm.gpickle, SC_selected_parameters.txt,
-  SC_sweep_plots.png, sweep/
+  sweep/                          -- per-resolution assignments
+  SC_resolution_sweep.csv         -- stability metrics per resolution
+  SC_sweep_diagnostics.png        -- 6-panel diagnostic plots
+  SC_best_partition.csv           -- final gene-to-community assignments
+  SC_community_gene_lists.csv     -- genes per community
+  SC_community_summary.txt        -- community sizes and key genes
+  SC_G_comm.gpickle               -- annotated graph with community labels
+  SC_selected_parameters.txt      -- threshold + resolution + metrics
+  SC_threshold_sweep.csv          -- threshold selection diagnostics
 
 Usage:
   conda run -n NETWORK python Step03_SC_Community_Detection.py
@@ -44,165 +65,15 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from datetime import datetime
 
 from network_config_SC import (
-    DIR_03_NETWORKS, DIR_04_COMMUNITIES,
-    DIFF_THRESHOLD, DIFF_THRESHOLD_AUTO, DIFF_THRESHOLD_MAX_LCC,
-    RESOLUTION_AUTO, RESOLUTION_MIN_ARI,
-    A3_GENES, A3_ID_TO_ALIAS, BIOMARKERS,
+    DIR_02_DE, DIR_03_NETWORKS, DIR_04_COMMUNITIES,
+    DIFF_THRESHOLD, SWEEP_THRESHOLDS,
+    A3_GENES, A3_ID_TO_ALIAS, A3_SYMBOL_TO_ALIAS, BIOMARKERS,
     COMMUNITY_METHOD, COMMUNITY_RESOLUTIONS, RUNS_PER_RESOLUTION,
     COMMUNITY_BASE_SEED, USE_LARGEST_COMPONENT,
     TARGET_BIG_COMMUNITIES, MIN_COMMUNITY_SIZE,
+    RAW_P_THRESHOLD,
     banner, log, ensure_dir
 )
-
-
-# =============================================================================
-# AUTO-SELECTION: DIFF THRESHOLD
-# =============================================================================
-
-def auto_select_threshold(sweep_csv, max_lcc=300, comp_fraction=0.80):
-    """
-    Select optimal DIFF threshold from sweep data.
-    Criterion: peak connected components with LCC < max_lcc.
-    Returns selected threshold (float) or None if selection fails.
-    """
-    if not os.path.exists(sweep_csv):
-        log(f"  Sweep data not found: {sweep_csv}")
-        return None
-
-    df = pd.read_csv(sweep_csv)
-
-    col_map = {}
-    for col in df.columns:
-        cl = col.strip().lower()
-        if 'threshold' in cl:
-            col_map[col] = 'threshold'
-        elif cl in ['comp', 'components', 'n_components']:
-            col_map[col] = 'components'
-        elif cl in ['lcc', 'lcc_size']:
-            col_map[col] = 'lcc'
-        elif 'node' in cl:
-            col_map[col] = 'nodes'
-        elif 'edge' in cl:
-            col_map[col] = 'edges'
-        elif 'avgdeg' in cl or 'avg_deg' in cl or 'avg deg' in cl:
-            col_map[col] = 'avg_deg'
-    df = df.rename(columns=col_map)
-
-    for col in ['threshold', 'components', 'lcc', 'nodes', 'edges']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    df = df.sort_values('threshold').reset_index(drop=True)
-
-    peak_idx = df['components'].idxmax()
-    peak_row = df.loc[peak_idx]
-    peak_comp = peak_row['components']
-    peak_thresh = peak_row['threshold']
-    peak_lcc = peak_row['lcc']
-
-    log(f"  Component peak: threshold={peak_thresh}, "
-        f"components={int(peak_comp)}, LCC={int(peak_lcc)}")
-
-    if peak_lcc <= max_lcc:
-        selected = peak_row
-        reason = "Component peak with LCC within limit"
-    else:
-        candidates = df[(df['threshold'] > peak_thresh) & (df['lcc'] <= max_lcc)]
-        if len(candidates) > 0:
-            selected = candidates.iloc[0]
-            reason = f"LCC at peak ({int(peak_lcc)}) > {max_lcc}, stepped up"
-        else:
-            above = df[df['threshold'] > peak_thresh]
-            if len(above) > 0:
-                selected = above.loc[above['lcc'].idxmin()]
-                reason = f"No threshold gives LCC < {max_lcc}, using smallest LCC"
-            else:
-                return None
-
-    sel_comp = selected['components']
-    if sel_comp < peak_comp * comp_fraction:
-        log(f"  WARNING: Selected has {int(sel_comp)} components "
-            f"({sel_comp/peak_comp:.0%} of peak {int(peak_comp)})")
-
-    sel_thresh = float(selected['threshold'])
-    log(f"  Auto-selected threshold: {sel_thresh}")
-    log(f"    Reason: {reason}")
-    log(f"    Nodes: {int(selected['nodes']):,}, Edges: {int(selected['edges']):,}")
-    log(f"    Components: {int(sel_comp)}, LCC: {int(selected['lcc'])}")
-
-    return sel_thresh
-
-
-# =============================================================================
-# AUTO-SELECTION: LEIDEN RESOLUTION
-# =============================================================================
-
-def auto_select_resolution(sweep_df, min_ari=0.65):
-    """
-    Select optimal Leiden resolution via modularity jump detection.
-    Finds the largest single-step Q increase, subject to ARI floor.
-    Returns selected resolution (float).
-    """
-    df = sweep_df.sort_values('resolution').reset_index(drop=True)
-    df['delta_q'] = df['modularity_mean'].diff().fillna(0)
-
-    log(f"\n  Modularity jump analysis:")
-    log(f"  {'Res':>5s} {'Comms':>6s} {'Q':>7s} {'dQ':>7s} "
-        f"{'ARI':>7s} {'NMI':>7s}")
-    log(f"  {'-'*5} {'-'*6} {'-'*7} {'-'*7} {'-'*7} {'-'*7}")
-    for _, row in df.iterrows():
-        log(f"  {row['resolution']:>5.1f} {int(row['n_communities']):>6} "
-            f"{row['modularity_mean']:>7.4f} {row['delta_q']:>+7.4f} "
-            f"{row['ari_mean']:>7.4f} {row['nmi_mean']:>7.4f}")
-
-    if len(df) < 2:
-        log(f"  Only one resolution tested, using it")
-        return float(df.iloc[0]['resolution'])
-
-    jump_candidates = df.iloc[1:].copy()
-    best_jump_idx = jump_candidates['delta_q'].idxmax()
-    best_jump = df.loc[best_jump_idx]
-    best_dq = best_jump['delta_q']
-
-    log(f"\n  Largest modularity jump: dQ={best_dq:+.4f} "
-        f"at resolution={best_jump['resolution']}")
-
-    if best_jump['ari_mean'] >= min_ari:
-        selected = best_jump
-        reason = f"Largest Q jump (dQ={best_dq:+.4f}), ARI passes floor"
-    else:
-        prev_idx = best_jump_idx - 1
-        if prev_idx >= 0:
-            prev = df.loc[prev_idx]
-            selected = prev
-            reason = (f"Jump at r={best_jump['resolution']} has "
-                      f"ARI={best_jump['ari_mean']:.3f} < {min_ari}, "
-                      f"stepped back to r={prev['resolution']}")
-            log(f"  ARI at jump ({best_jump['ari_mean']:.4f}) < floor ({min_ari})")
-        else:
-            selected = best_jump
-            reason = "Largest jump (no earlier resolution available)"
-
-    next_idx = best_jump_idx + 1
-    if next_idx < len(df):
-        beyond = df.loc[next_idx]
-        marginal_q = beyond['modularity_mean'] - selected['modularity_mean']
-        marginal_ari = selected['ari_mean'] - beyond['ari_mean']
-        if marginal_ari > 0:
-            efficiency = marginal_q / marginal_ari
-            verdict = "worth exploring" if efficiency > 0.5 else "diminishing returns"
-            log(f"  Beyond (r={beyond['resolution']}): "
-                f"dQ={marginal_q:+.4f}, ARI cost={marginal_ari:+.4f}, "
-                f"efficiency={efficiency:.2f}x ({verdict})")
-
-    sel_res = float(selected['resolution'])
-    log(f"\n  Auto-selected resolution: {sel_res}")
-    log(f"    Reason: {reason}")
-    log(f"    Communities: {int(selected['n_communities'])}")
-    log(f"    Modularity: {selected['modularity_mean']:.4f}")
-    log(f"    ARI: {selected['ari_mean']:.4f}")
-
-    return sel_res
 
 
 # =============================================================================
@@ -210,7 +81,7 @@ def auto_select_resolution(sweep_df, min_ari=0.65):
 # =============================================================================
 
 def build_weighted_graph(corr_df, threshold):
-    """Build undirected weighted graph from correlation matrix."""
+    """Build undirected weighted graph from correlation matrix with |corr| >= threshold."""
     genes = list(corr_df.index)
     G = nx.Graph()
     G.add_nodes_from(genes)
@@ -224,6 +95,7 @@ def build_weighted_graph(corr_df, threshold):
 
 
 def remove_isolated(G):
+    """Return copy of G with degree-0 nodes removed."""
     G2 = G.copy()
     isolates = [n for n in G2.nodes() if G2.degree(n) == 0]
     G2.remove_nodes_from(isolates)
@@ -231,10 +103,241 @@ def remove_isolated(G):
 
 
 # =============================================================================
+# UNIFIED THRESHOLD SELECTION
+# =============================================================================
+
+def auto_select_threshold(corr_diff, a3_seeds, sweep_thresholds):
+    """
+    Unified DIFF threshold selection (identical logic for TCGA and SC).
+
+    Among all thresholds where every A3 seed gene has degree >= 1,
+    select the threshold with the highest connected component count.
+    Ties broken by the lower (more inclusive) threshold.
+
+    Parameters
+    ----------
+    corr_diff : pd.DataFrame
+        DIFF correlation matrix (genes x genes).
+    a3_seeds : list of str
+        Gene IDs (symbols or ENSG) that passed DE. Only A3A and/or A3B.
+        The caller filters to whichever passed DE at raw p < 0.05.
+    sweep_thresholds : list of float
+        Thresholds to evaluate (e.g. [0.30, 0.35, ..., 0.90]).
+
+    Returns
+    -------
+    selected_threshold : float or None
+        The selected threshold, or None if no threshold satisfies the criterion.
+    sweep_df : pd.DataFrame
+        Diagnostic table with per-threshold metrics.
+    """
+    matrix_genes = set(corr_diff.index)
+
+    # Verify which A3 seeds are actually in the matrix
+    seeds_in_matrix = [g for g in a3_seeds if g in matrix_genes]
+    seeds_missing = [g for g in a3_seeds if g not in matrix_genes]
+
+    log(f"  A3 seed genes for threshold selection:")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+        log(f"    {g} ({alias}) -- IN matrix")
+    for g in seeds_missing:
+        alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+        log(f"    {g} ({alias}) -- MISSING from matrix")
+
+    if not seeds_in_matrix:
+        log("  WARNING: No A3 seed genes found in DIFF matrix. Cannot auto-select.")
+        return None, pd.DataFrame()
+
+    # Sweep thresholds
+    rows = []
+    for t in sorted(sweep_thresholds):
+        G = build_weighted_graph(corr_diff, t)
+        G_noiso = remove_isolated(G)
+
+        n_nodes = G_noiso.number_of_nodes()
+        n_edges = G_noiso.number_of_edges()
+
+        if n_nodes > 0:
+            components = list(nx.connected_components(G_noiso))
+            n_comp = len(components)
+            lcc_size = len(max(components, key=len))
+        else:
+            n_comp = 0
+            lcc_size = 0
+
+        # Check degree of each A3 seed
+        seed_degrees = {}
+        all_seeds_connected = True
+        for g in seeds_in_matrix:
+            deg = G_noiso.degree(g) if g in G_noiso else 0
+            seed_degrees[g] = deg
+            if deg < 1:
+                all_seeds_connected = False
+
+        rows.append({
+            "threshold": t,
+            "nodes": n_nodes,
+            "edges": n_edges,
+            "components": n_comp,
+            "lcc_size": lcc_size,
+            "all_seeds_connected": all_seeds_connected,
+            **{f"deg_{A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))}": d
+               for g, d in seed_degrees.items()},
+        })
+
+    sweep_df = pd.DataFrame(rows)
+
+    # Log the sweep table
+    log(f"\n  {'Thresh':>7s}  {'Nodes':>6s}  {'Edges':>7s}  {'Comp':>5s}  "
+        f"{'LCC':>5s}  {'A3 OK':>5s}  ", end="")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+        log(f"{'deg_' + alias:>8s}  ", end="")
+    log("")
+    log(f"  {'-----':>7s}  {'-----':>6s}  {'-----':>7s}  {'----':>5s}  "
+        f"{'---':>5s}  {'-----':>5s}  ", end="")
+    for _ in seeds_in_matrix:
+        log(f"{'--------':>8s}  ", end="")
+    log("")
+
+    for _, row in sweep_df.iterrows():
+        marker = " <--" if row["all_seeds_connected"] else ""
+        log(f"  {row['threshold']:>7.2f}  {row['nodes']:>6.0f}  "
+            f"{row['edges']:>7.0f}  {row['components']:>5.0f}  "
+            f"{row['lcc_size']:>5.0f}  {'YES' if row['all_seeds_connected'] else 'no':>5s}  ",
+            end="")
+        for g in seeds_in_matrix:
+            alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+            col = f"deg_{alias}"
+            log(f"{row[col]:>8.0f}  ", end="")
+        log(marker)
+
+    # Filter to A3-valid thresholds
+    valid = sweep_df[sweep_df["all_seeds_connected"]].copy()
+
+    if len(valid) == 0:
+        log("\n  WARNING: No threshold keeps all A3 seeds connected (degree >= 1).")
+        log("  Falling back to config DIFF_THRESHOLD.")
+        return None, sweep_df
+
+    # Among valid thresholds, find peak component count
+    max_comp = valid["components"].max()
+    peak_candidates = valid[valid["components"] == max_comp]
+
+    # Ties broken by lower (more inclusive) threshold
+    selected = float(peak_candidates["threshold"].min())
+
+    sel_row = sweep_df[sweep_df["threshold"] == selected].iloc[0]
+    log(f"\n  SELECTED threshold: {selected:.2f}")
+    log(f"    Reason: peak components ({int(sel_row['components'])}) among "
+        f"A3-valid thresholds")
+    log(f"    Nodes: {int(sel_row['nodes'])}, Edges: {int(sel_row['edges'])}, "
+        f"LCC: {int(sel_row['lcc_size'])}")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+        col = f"deg_{alias}"
+        log(f"    {alias} degree: {int(sel_row[col])}")
+
+    return selected, sweep_df
+
+
+# =============================================================================
+# A3 SEED IDENTIFICATION
+# =============================================================================
+
+def identify_a3_seeds(de_dir):
+    """
+    Identify which of A3A and A3B pass DE at raw p < 0.05 without force-keeping.
+
+    Scans DE result files in de_dir for A3A and A3B. Returns list of gene IDs
+    (symbols or ENSG depending on what's in the DE file) that passed the
+    raw p-value threshold.
+
+    Parameters
+    ----------
+    de_dir : str
+        Path to DE results directory (e.g. data/FIG_4/02_differential_expression/).
+
+    Returns
+    -------
+    seeds : list of str
+        Gene IDs for A3A and/or A3B that passed DE.
+    """
+    # Look for DE results file
+    de_candidates = [
+        os.path.join(de_dir, "SC_DE_results.csv"),
+        os.path.join(de_dir, "SC_DE_results.tsv"),
+    ]
+
+    de_path = None
+    for p in de_candidates:
+        if os.path.exists(p):
+            de_path = p
+            break
+
+    if de_path is None:
+        log(f"  WARNING: No DE results file found in {de_dir}")
+        log(f"  Defaulting to both A3A and A3B as seeds")
+        return ["APOBEC3A", "APOBEC3B"]
+
+    log(f"  Loading DE results: {de_path}")
+    sep = "\t" if de_path.endswith(".tsv") else ","
+    de_df = pd.read_csv(de_path, sep=sep)
+
+    # Identify gene column (could be 'gene', 'gene_symbol', 'Gene', etc.)
+    gene_col = None
+    for col in ["gene", "gene_symbol", "Gene", "gene_id"]:
+        if col in de_df.columns:
+            gene_col = col
+            break
+    if gene_col is None:
+        log(f"  WARNING: Cannot identify gene column in DE file. "
+            f"Columns: {list(de_df.columns)}")
+        return ["APOBEC3A", "APOBEC3B"]
+
+    # Identify p-value column
+    pval_col = None
+    for col in ["pvalue", "p_value", "pval", "raw_p", "PValue"]:
+        if col in de_df.columns:
+            pval_col = col
+            break
+    if pval_col is None:
+        log(f"  WARNING: Cannot identify p-value column in DE file. "
+            f"Columns: {list(de_df.columns)}")
+        return ["APOBEC3A", "APOBEC3B"]
+
+    # Check A3A and A3B
+    a3a_names = ["APOBEC3A", "A3A", "ENSG00000128383"]
+    a3b_names = ["APOBEC3B", "A3B", "ENSG00000179750"]
+
+    seeds = []
+    for target_names, label in [(a3a_names, "A3A"), (a3b_names, "A3B")]:
+        match = de_df[de_df[gene_col].isin(target_names)]
+        if len(match) > 0:
+            row = match.iloc[0]
+            pval = float(row[pval_col])
+            gene_id = str(row[gene_col])
+            if pval < RAW_P_THRESHOLD:
+                log(f"    {label}: PASSED DE (p={pval:.2e}, gene_id={gene_id})")
+                seeds.append(gene_id)
+            else:
+                log(f"    {label}: FAILED DE (p={pval:.2e})")
+        else:
+            log(f"    {label}: not found in DE results")
+
+    if not seeds:
+        log(f"  WARNING: Neither A3A nor A3B passed DE. Cannot anchor threshold.")
+
+    return seeds
+
+
+# =============================================================================
 # COMMUNITY DETECTION
 # =============================================================================
 
 def detect_leiden(G, seed=42, resolution=1.0, weight="abs_weight"):
+    """Run Leiden community detection. Returns {node: community_id} dict."""
     import leidenalg
     import igraph as ig
 
@@ -264,10 +367,12 @@ def detect_leiden(G, seed=42, resolution=1.0, weight="abs_weight"):
 
 
 def partition_to_labels(comm_map, nodes):
+    """Convert {node: community} to label array aligned with node list."""
     return [comm_map.get(n, -1) for n in nodes]
 
 
 def compute_modularity(G, comm_map, weight="abs_weight"):
+    """Compute modularity of a partition."""
     from networkx.algorithms.community.quality import modularity as nx_mod
     comm_sets = {}
     for n, c in comm_map.items():
@@ -279,6 +384,12 @@ def compute_modularity(G, comm_map, weight="abs_weight"):
 
 
 def merge_small_communities(comm_map, G, min_size, target_big, weight="abs_weight"):
+    """
+    Merge communities smaller than min_size into nearest large community.
+
+    If no communities meet min_size, the largest community is kept as-is
+    and all others are merged into it based on edge weight proximity.
+    """
     comm_sizes = {}
     for n, c in comm_map.items():
         comm_sizes[c] = comm_sizes.get(c, 0) + 1
@@ -293,54 +404,68 @@ def merge_small_communities(comm_map, G, min_size, target_big, weight="abs_weigh
                 f"n={sorted_comms[0][1]}) as anchor.")
             big_comms = [biggest]
         else:
-            return comm_map
+            return comm_map.copy()
 
-    small_nodes = {n: c for n, c in comm_map.items() if c not in big_comms}
-    if not small_nodes:
-        return comm_map
+    big_set = set(big_comms)
+    new_map = {}
 
-    log(f"  Merging {len(small_nodes)} nodes from {len(set(small_nodes.values()))} "
-        f"small communities into {len(big_comms)} large communities")
+    for n, c in comm_map.items():
+        if c in big_set:
+            new_map[n] = c
+        else:
+            # Find nearest big community by total edge weight
+            best_comm = None
+            best_weight = -1
+            for neighbor in G.neighbors(n):
+                nc = comm_map.get(neighbor)
+                if nc in big_set:
+                    w = abs(float(G[n][neighbor].get(weight, G[n][neighbor].get("weight", 1.0))))
+                    if w > best_weight:
+                        best_weight = w
+                        best_comm = nc
+            if best_comm is not None:
+                new_map[n] = best_comm
+            else:
+                # No direct edge to a big community -- assign to largest
+                new_map[n] = big_comms[0]
 
-    merged = dict(comm_map)
-    n_reassigned = 0
-    for node in small_nodes:
-        if node not in G:
-            continue
-        comm_weights = {c: 0.0 for c in big_comms}
-        for neighbor in G.neighbors(node):
-            nb_comm = comm_map.get(neighbor)
-            if nb_comm in big_comms:
-                w = abs(float(G[node][neighbor].get(weight, 1.0)))
-                comm_weights[nb_comm] += w
+    n_merged = sum(1 for n in comm_map if comm_map[n] not in big_set and n in new_map)
+    log(f"  Merged {n_merged} genes from small communities into {len(big_comms)} large communities")
 
-        best_weight = max(comm_weights.values())
-        best = max(comm_weights, key=comm_weights.get) if best_weight > 0 else big_comms[0]
-        merged[node] = best
-        n_reassigned += 1
-
-    log(f"  Reassigned {n_reassigned} nodes")
-    return merged
+    return new_map
 
 
 def remove_intra_community_isolates(comm_map, G):
+    """
+    Remove nodes that have zero edges to other members of their own community.
+    These are 'orphan' nodes created by merging -- they were assigned to a community
+    they have no connections to. Matches the TCGA pipeline's nx9_remove_degree0
+    behavior applied after community assignment.
+    """
     cleaned = {}
     n_removed = 0
     for node, comm in comm_map.items():
         if node not in G:
             n_removed += 1
             continue
-        has_intra = any(comm_map.get(nb) == comm for nb in G.neighbors(node))
+        # Check if node has at least one intra-community neighbor
+        has_intra = False
+        for neighbor in G.neighbors(node):
+            if comm_map.get(neighbor) == comm:
+                has_intra = True
+                break
         if has_intra:
             cleaned[node] = comm
         else:
             n_removed += 1
+
     if n_removed > 0:
-        log(f"  Removed {n_removed} intra-community isolates")
+        log(f"  Removed {n_removed} intra-community isolates (no edges within their community)")
     return cleaned
 
 
 def renumber_communities(comm_map):
+    """Renumber communities 0, 1, 2, ... by descending size."""
     comm_sizes = {}
     for c in comm_map.values():
         comm_sizes[c] = comm_sizes.get(c, 0) + 1
@@ -362,34 +487,51 @@ def main():
     sweep_dir = ensure_dir(os.path.join(DIR_04_COMMUNITIES, "sweep"))
 
     # =========================================================================
-    # 1. Auto-select DIFF threshold
+    # 1. Identify A3 seed genes from DE results
     # =========================================================================
-    banner("[STEP 03.1] Select DIFF threshold")
+    banner("[STEP 03.1] Identify A3 seed genes from DE results")
 
-    active_threshold = DIFF_THRESHOLD
+    a3_seeds = identify_a3_seeds(DIR_02_DE)
 
-    if DIFF_THRESHOLD_AUTO:
-        sweep_csv = os.path.join(DIR_03_NETWORKS, "sweep_detailed.csv")
-        log(f"  Auto-selection enabled (max LCC = {DIFF_THRESHOLD_MAX_LCC})")
-        auto_thresh = auto_select_threshold(sweep_csv, max_lcc=DIFF_THRESHOLD_MAX_LCC)
-        if auto_thresh is not None:
-            active_threshold = auto_thresh
-            log(f"  Using auto-selected threshold: {active_threshold}")
-        else:
-            log(f"  Auto-selection failed, using config fallback: {active_threshold}")
-    else:
-        log(f"  Auto-selection disabled, using config value: {active_threshold}")
+    if not a3_seeds:
+        log("FATAL: No A3 seed genes available. Cannot proceed with threshold selection.")
+        return
+
+    log(f"\n  A3 seeds for threshold selection: {a3_seeds}")
 
     # =========================================================================
-    # 2. Load DIFF correlation matrix and build graph
+    # 2. Load DIFF correlation matrix and auto-select threshold
     # =========================================================================
-    banner("[STEP 03.2] Load DIFF correlation matrix and build graph")
+    banner("[STEP 03.2] Load DIFF correlation matrix and auto-select threshold")
 
     corr_path = os.path.join(DIR_03_NETWORKS, "corr_matrices", "SC_corr_DIFF.pkl")
     log(f"Loading: {corr_path}")
     with open(corr_path, "rb") as f:
         corr_diff = pickle.load(f)
     log(f"  DIFF correlation matrix: {corr_diff.shape}")
+
+    # Auto-select threshold
+    selected_threshold, threshold_sweep_df = auto_select_threshold(
+        corr_diff, a3_seeds, SWEEP_THRESHOLDS
+    )
+
+    if selected_threshold is not None:
+        active_threshold = selected_threshold
+        log(f"\n  Using auto-selected threshold: {active_threshold}")
+    else:
+        active_threshold = DIFF_THRESHOLD
+        log(f"\n  Auto-selection failed. Using config fallback: {active_threshold}")
+
+    # Save threshold sweep diagnostics
+    if len(threshold_sweep_df) > 0:
+        thresh_csv = os.path.join(DIR_04_COMMUNITIES, "SC_threshold_sweep.csv")
+        threshold_sweep_df.to_csv(thresh_csv, index=False)
+        log(f"  [SAVE] Threshold sweep diagnostics -> {thresh_csv}")
+
+    # =========================================================================
+    # 3. Build graph at selected threshold
+    # =========================================================================
+    banner("[STEP 03.3] Build DIFF graph at selected threshold")
 
     log(f"  Building graph at |delta-rho| >= {active_threshold}")
     G_diff = build_weighted_graph(corr_diff, active_threshold)
@@ -402,6 +544,7 @@ def main():
     log(f"  Edges: {G_diff_noiso.number_of_edges()}")
     log(f"  Isolated nodes removed: {n_iso}")
 
+    # Save the rebuilt graph for Steps 04 and 05
     graph_dir = ensure_dir(os.path.join(DIR_03_NETWORKS, "graph_objects"))
     graph_save_path = os.path.join(graph_dir, "SC_G_diff_noiso.gpickle")
     with open(graph_save_path, "wb") as f:
@@ -409,51 +552,68 @@ def main():
     log(f"  [SAVE] Updated DIFF graph -> {graph_save_path}")
 
     if G_diff_noiso.number_of_nodes() < 5 or G_diff_noiso.number_of_edges() < 3:
-        log(f"WARNING: Graph too small ({G_diff_noiso.number_of_nodes()} nodes)")
+        log(f"WARNING: Graph too small for community detection "
+            f"({G_diff_noiso.number_of_nodes()} nodes, {G_diff_noiso.number_of_edges()} edges)")
+        log(f"  Consider relaxing the DIFF threshold (currently {active_threshold})")
         return
 
     # =========================================================================
-    # 3. Extract LCC
+    # 4. Extract LCC
     # =========================================================================
     if USE_LARGEST_COMPONENT and G_diff_noiso.number_of_nodes() > 0:
-        banner("[STEP 03.3] Extract largest connected component")
+        banner("[STEP 03.4] Extract largest connected component")
         components = list(nx.connected_components(G_diff_noiso))
         lcc = max(components, key=len)
         G_comm = G_diff_noiso.subgraph(lcc).copy()
         log(f"  Components: {len(components)}")
-        log(f"  LCC: {len(lcc)} nodes "
-            f"({100*len(lcc)/G_diff_noiso.number_of_nodes():.1f}%)")
+        log(f"  LCC: {len(lcc)} nodes ({100*len(lcc)/G_diff_noiso.number_of_nodes():.1f}%)")
         log(f"  Non-LCC nodes dropped: {G_diff_noiso.number_of_nodes() - len(lcc)}")
+
+        # Report A3 seed status in LCC
+        for g in a3_seeds:
+            alias = A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g))
+            in_lcc = g in lcc
+            deg = G_diff_noiso.degree(g) if g in G_diff_noiso else 0
+            log(f"    {alias}: {'IN LCC' if in_lcc else 'NOT in LCC'} (degree={deg})")
     else:
         G_comm = G_diff_noiso.copy()
 
-    if G_comm.number_of_nodes() < 5:
-        log("WARNING: LCC too small. Exiting.")
+    if G_comm.number_of_nodes() < 5 or G_comm.number_of_edges() < 3:
+        log("WARNING: LCC too small for community detection. Exiting.")
         return
 
+    # Ensure abs_weight on all edges
     for u, v, d in G_comm.edges(data=True):
         d["abs_weight"] = abs(float(d.get("abs_weight", d.get("weight", 1.0))))
 
     nodes = sorted(G_comm.nodes())
 
     # =========================================================================
-    # 4. Resolution sweep
+    # 5. Resolution sweep with stability assessment
     # =========================================================================
-    banner("[STEP 03.4] Resolution sweep")
+    banner("[STEP 03.5] Resolution sweep")
 
     sweep_results = []
-    all_partitions = {}
+    all_best_partitions = {}
 
     for res in COMMUNITY_RESOLUTIONS:
         log(f"\n  Resolution {res}:")
 
         partitions = []
         modularities = []
+        best_cm = None
+        best_mod = -999
+
         for r in range(RUNS_PER_RESOLUTION):
             seed = COMMUNITY_BASE_SEED + r
             cm = detect_leiden(G_comm, seed=seed, resolution=res)
             partitions.append(cm)
-            modularities.append(compute_modularity(G_comm, cm))
+            mod = compute_modularity(G_comm, cm)
+            modularities.append(mod)
+
+            if mod > best_mod:
+                best_mod = mod
+                best_cm = cm.copy()
 
         labels_list = [partition_to_labels(p, nodes) for p in partitions]
 
@@ -466,60 +626,111 @@ def main():
         mean_mod = np.mean(modularities)
         mean_ari = np.mean(ari_pairs)
         mean_nmi = np.mean(nmi_pairs)
-        n_comms = len(set(partitions[0].values()))
 
-        log(f"    Communities: {n_comms}")
-        log(f"    Modularity: {mean_mod:.4f} (+/- {np.std(modularities):.4f})")
+        # Community count stats
+        ncomms_list = [len(set(p.values())) for p in partitions]
+        n_comms_mean = np.mean(ncomms_list)
+        n_comms_std = np.std(ncomms_list)
+
+        # Largest community size (from best partition)
+        comm_sizes_best = {}
+        for c in best_cm.values():
+            comm_sizes_best[c] = comm_sizes_best.get(c, 0) + 1
+        largest_comm = max(comm_sizes_best.values()) if comm_sizes_best else 0
+        n_total_genes = len(best_cm)
+
+        log(f"    Communities: {n_comms_mean:.1f} (+/- {n_comms_std:.1f})")
+        log(f"    Modularity: {best_mod:.4f} (mean {mean_mod:.4f} +/- {np.std(modularities):.4f})")
         log(f"    ARI stability: {mean_ari:.4f}")
         log(f"    NMI stability: {mean_nmi:.4f}")
+        log(f"    Largest community: {largest_comm} genes")
 
         sweep_results.append({
-            "resolution": res, "n_communities": n_comms,
-            "modularity_mean": mean_mod, "modularity_std": np.std(modularities),
-            "ari_mean": mean_ari, "ari_std": np.std(ari_pairs),
-            "nmi_mean": mean_nmi, "nmi_std": np.std(nmi_pairs),
+            "resolution": res,
+            "ncomms_mean": n_comms_mean,
+            "ncomms_std": n_comms_std,
+            "modularity_best": best_mod,
+            "modularity_mean": mean_mod,
+            "modularity_std": np.std(modularities),
+            "ARI_mean": mean_ari,
+            "ARI_std": np.std(ari_pairs),
+            "NMI_mean": mean_nmi,
+            "NMI_std": np.std(nmi_pairs),
+            "n_total_genes": n_total_genes,
+            "largest_community": largest_comm,
         })
-        all_partitions[res] = partitions[0]
 
-        res_df = pd.DataFrame([{"gene": g, "community": c} for g, c in partitions[0].items()])
-        res_df.to_csv(os.path.join(sweep_dir, f"SC_partition_res{res:.1f}.csv"), index=False)
+        all_best_partitions[res] = best_cm
+
+        # Save per-resolution partition
+        res_df = pd.DataFrame([
+            {"gene": g, "community": c} for g, c in best_cm.items()
+        ])
+        res_path = os.path.join(sweep_dir, f"SC_partition_res{res:.1f}.csv")
+        res_df.to_csv(res_path, index=False)
 
     sweep_df = pd.DataFrame(sweep_results)
-    sweep_csv_out = os.path.join(DIR_04_COMMUNITIES, "SC_resolution_sweep.csv")
-    sweep_df.to_csv(sweep_csv_out, index=False)
-    log(f"\n  [SAVE] Resolution sweep -> {sweep_csv_out}")
 
     # =========================================================================
-    # 5. Select best resolution
+    # Compute composite selection metrics (matches TCGA Step05)
     # =========================================================================
-    banner("[STEP 03.5] Select best resolution")
+    # Evenness: 1 - (largest_community / total_genes)
+    # Penalizes degenerate solutions where one community absorbs everything
+    sweep_df["evenness"] = 1.0 - (sweep_df["largest_community"] / sweep_df["n_total_genes"])
 
-    if RESOLUTION_AUTO:
-        log(f"  Auto-selection enabled (ARI floor = {RESOLUTION_MIN_ARI})")
-        best_res = auto_select_resolution(sweep_df, min_ari=RESOLUTION_MIN_ARI)
-    else:
-        log(f"  Auto-selection disabled, using max modularity with ARI > 0.3")
-        stable = sweep_df[sweep_df["ari_mean"] > 0.3]
-        if len(stable) == 0:
-            stable = sweep_df
-        best_idx = stable["modularity_mean"].idxmax()
-        best_res = float(stable.loc[best_idx, "resolution"])
+    # Composite score: modularity x ARI x evenness
+    # - modularity rewards partition quality
+    # - ARI rewards reproducibility
+    # - evenness penalizes one-giant-community solutions
+    sweep_df["composite_score"] = (
+        sweep_df["modularity_best"] *
+        sweep_df["ARI_mean"] *
+        sweep_df["evenness"]
+    )
 
-    best_row = sweep_df[sweep_df["resolution"] == best_res].iloc[0]
-    best_mod = float(best_row["modularity_mean"])
-    best_ari = float(best_row["ari_mean"])
-    best_nmi = float(best_row["nmi_mean"])
-    best_n_comms = int(best_row["n_communities"])
+    # Delta-modularity: marginal gain at each resolution step
+    sweep_df["delta_modularity"] = sweep_df["modularity_best"].diff().fillna(0)
 
-    log(f"\n  Final selection: resolution={best_res}, Q={best_mod:.4f}, "
-        f"ARI={best_ari:.4f}, communities={best_n_comms}")
+    sweep_csv = os.path.join(DIR_04_COMMUNITIES, "SC_resolution_sweep.csv")
+    sweep_df.to_csv(sweep_csv, index=False)
+    log(f"\n  [SAVE] Resolution sweep -> {sweep_csv}")
 
-    best_partition = detect_leiden(G_comm, seed=COMMUNITY_BASE_SEED, resolution=best_res)
+    # Log the full sweep table
+    log(f"\n  {'Res':>5s} | {'Mod':>6s} | {'ARI':>5s} | {'Even':>5s} | "
+        f"{'Comp':>6s} | {'dMod':>6s} | {'Comms':>5s} | {'Largest':>7s}")
+    log(f"  " + "-" * 65)
+    for _, row in sweep_df.iterrows():
+        log(f"  {row['resolution']:5.2f} | {row['modularity_best']:6.4f} | "
+            f"{row['ARI_mean']:5.3f} | {row['evenness']:5.3f} | "
+            f"{row['composite_score']:6.4f} | {row['delta_modularity']:+6.4f} | "
+            f"{row['ncomms_mean']:5.1f} | {row['largest_community']:7.0f}")
 
     # =========================================================================
-    # 6. Merge small communities
+    # 6. Select best resolution using composite score
     # =========================================================================
-    banner("[STEP 03.6] Merge small communities")
+    banner("[STEP 03.6] Select best resolution (composite score)")
+
+    best_row = sweep_df.loc[sweep_df["composite_score"].idxmax()]
+    best_res = float(best_row["resolution"])
+
+    log(f"  SELECTED RESOLUTION: {best_res:.2f}")
+    log(f"    Composite score: {best_row['composite_score']:.4f}")
+    log(f"    Modularity: {best_row['modularity_best']:.4f}")
+    log(f"    ARI: {best_row['ARI_mean']:.3f}")
+    log(f"    Evenness: {best_row['evenness']:.3f}")
+    log(f"    Communities: {best_row['ncomms_mean']:.1f}")
+    log(f"    Largest community: {best_row['largest_community']:.0f} genes")
+
+    best_mod = float(best_row["modularity_best"])
+    best_ari = float(best_row["ARI_mean"])
+    best_nmi = float(best_row["NMI_mean"])
+
+    best_partition = all_best_partitions[best_res]
+
+    # =========================================================================
+    # 7. Merge small communities
+    # =========================================================================
+    banner("[STEP 03.7] Merge small communities")
 
     comm_sizes = {}
     for c in best_partition.values():
@@ -530,9 +741,15 @@ def main():
         log(f"    Community {c}: {s} genes")
 
     merged = merge_small_communities(
-        best_partition, G_comm, MIN_COMMUNITY_SIZE, TARGET_BIG_COMMUNITIES)
+        best_partition, G_comm, MIN_COMMUNITY_SIZE, TARGET_BIG_COMMUNITIES
+    )
+
+    # Remove nodes with zero intra-community edges (orphans from merging)
     cleaned = remove_intra_community_isolates(merged, G_comm)
 
+    # Remove small disconnected islands within each community
+    # After merging, some communities contain multiple disconnected sub-components.
+    # Keep only the largest connected component within each community.
     pruned = {}
     n_island_removed = 0
     for comm_id in sorted(set(cleaned.values())):
@@ -547,6 +764,7 @@ def main():
             for n in comm_nodes:
                 pruned[n] = comm_id
         else:
+            # Keep only the largest connected component
             lcc_sub = max(components, key=len)
             island_nodes = set(comm_nodes) - lcc_sub
             n_island_removed += len(island_nodes)
@@ -563,12 +781,13 @@ def main():
 
     final_partition = renumber_communities(pruned)
 
+    # Update graph to match final partition (remove nodes not in partition)
     nodes_in_partition = set(final_partition.keys())
     nodes_to_remove = [n for n in G_comm.nodes() if n not in nodes_in_partition]
     if nodes_to_remove:
         G_comm = G_comm.copy()
         G_comm.remove_nodes_from(nodes_to_remove)
-        log(f"  Removed {len(nodes_to_remove)} nodes from graph")
+        log(f"  Removed {len(nodes_to_remove)} nodes from graph (not in final partition)")
 
     final_sizes = {}
     for c in final_partition.values():
@@ -582,108 +801,200 @@ def main():
     log(f"  Total genes in communities: {total_genes}")
 
     # =========================================================================
-    # 7. Save results
+    # 8. Save community assignments
     # =========================================================================
-    banner("[STEP 03.7] Save community assignments")
+    banner("[STEP 03.8] Save community assignments")
 
-    part_rows = [{"gene": g, "community": c, "a3_alias": A3_ID_TO_ALIAS.get(g, "")}
-                 for g, c in sorted(final_partition.items(), key=lambda x: (x[1], x[0]))]
+    # Best partition CSV
+    part_rows = []
+    for gene, comm in sorted(final_partition.items(), key=lambda x: (x[1], x[0])):
+        alias = A3_ID_TO_ALIAS.get(gene, A3_SYMBOL_TO_ALIAS.get(gene, ""))
+        part_rows.append({"gene": gene, "community": comm, "a3_alias": alias})
+
     part_df = pd.DataFrame(part_rows)
-    part_df.to_csv(os.path.join(DIR_04_COMMUNITIES, "SC_best_partition.csv"), index=False)
-    log(f"  [SAVE] Best partition ({len(part_df)} genes)")
+    part_path = os.path.join(DIR_04_COMMUNITIES, "SC_best_partition.csv")
+    part_df.to_csv(part_path, index=False)
+    log(f"  [SAVE] Best partition ({len(part_df)} genes) -> {part_path}")
 
+    # Community gene lists
     gene_list_rows = []
     for comm in sorted(final_sizes.keys()):
         genes = sorted([g for g, c in final_partition.items() if c == comm])
-        gene_list_rows.append({"community": comm, "size": len(genes), "genes": ";".join(genes)})
-    pd.DataFrame(gene_list_rows).to_csv(
-        os.path.join(DIR_04_COMMUNITIES, "SC_community_gene_lists.csv"), index=False)
-    log(f"  [SAVE] Gene lists")
+        gene_list_rows.append({
+            "community": comm,
+            "size": len(genes),
+            "genes": ";".join(genes)
+        })
 
+    gene_list_df = pd.DataFrame(gene_list_rows)
+    gene_list_path = os.path.join(DIR_04_COMMUNITIES, "SC_community_gene_lists.csv")
+    gene_list_df.to_csv(gene_list_path, index=False)
+    log(f"  [SAVE] Gene lists -> {gene_list_path}")
+
+    # Annotated graph
     for n in G_comm.nodes():
         G_comm.nodes[n]["community"] = final_partition.get(n, -1)
-    with open(os.path.join(DIR_04_COMMUNITIES, "SC_G_comm.gpickle"), "wb") as f:
-        pickle.dump(G_comm, f)
-    log(f"  [SAVE] Annotated graph")
 
+    graph_path = os.path.join(DIR_04_COMMUNITIES, "SC_G_comm.gpickle")
+    with open(graph_path, "wb") as f:
+        pickle.dump(G_comm, f)
+    log(f"  [SAVE] Annotated graph -> {graph_path}")
+
+    # Selected parameters
     params_path = os.path.join(DIR_04_COMMUNITIES, "SC_selected_parameters.txt")
-    with open(params_path, 'w') as f:
+    with open(params_path, "w") as f:
         f.write(f"DIFF_THRESHOLD={active_threshold}\n")
+        f.write(f"THRESHOLD_METHOD=unified_a3_connectivity_component_peak\n")
         f.write(f"LEIDEN_RESOLUTION={best_res}\n")
+        f.write(f"RESOLUTION_METHOD=composite_score_mod_x_ari_x_evenness\n")
         f.write(f"N_COMMUNITIES={len(final_sizes)}\n")
         f.write(f"N_GENES={total_genes}\n")
         f.write(f"MODULARITY={best_mod:.4f}\n")
         f.write(f"ARI={best_ari:.4f}\n")
         f.write(f"NMI={best_nmi:.4f}\n")
+        f.write(f"EVENNESS={float(best_row['evenness']):.4f}\n")
+        f.write(f"COMPOSITE_SCORE={float(best_row['composite_score']):.4f}\n")
+        f.write(f"A3_SEEDS={','.join(a3_seeds)}\n")
     log(f"  [SAVE] Selected parameters -> {params_path}")
 
     # =========================================================================
-    # 8. Community summary
+    # 9. Community summary
     # =========================================================================
-    banner("[STEP 03.8] Community summary")
+    banner("[STEP 03.9] Community summary")
 
     summary_lines = []
-    summary_lines.append("Single-Cell Community Detection Summary")
-    summary_lines.append("=" * 60)
-    summary_lines.append(f"DIFF threshold: |delta-rho| >= {active_threshold}"
-                         f" {'(auto-selected)' if DIFF_THRESHOLD_AUTO else '(config)'}")
-    summary_lines.append(f"Resolution: {best_res}"
-                         f" {'(auto-selected)' if RESOLUTION_AUTO else '(config)'}")
+    summary_lines.append(f"Single-Cell Community Detection Summary")
+    summary_lines.append(f"=" * 60)
+    summary_lines.append(f"DIFF threshold: {active_threshold} (unified A3 connectivity + component peak)")
+    summary_lines.append(f"Leiden resolution: {best_res} (composite score: Mod x ARI x Evenness)")
     summary_lines.append(f"Modularity: {best_mod:.4f}")
     summary_lines.append(f"ARI stability: {best_ari:.4f}")
-    summary_lines.append(f"Total genes: {total_genes}")
+    summary_lines.append(f"NMI stability: {best_nmi:.4f}")
+    summary_lines.append(f"Evenness: {float(best_row['evenness']):.4f}")
+    summary_lines.append(f"Composite score: {float(best_row['composite_score']):.4f}")
     summary_lines.append(f"Communities: {len(final_sizes)}")
-    summary_lines.append("")
+    summary_lines.append(f"Total genes: {total_genes}")
+    summary_lines.append(f"A3 seeds: {', '.join(a3_seeds)}")
+    summary_lines.append(f"")
 
-    for comm in sorted(final_sizes.keys()):
-        genes_in_comm = [g for g, c in final_partition.items() if c == comm]
-        summary_lines.append(f"Community {comm} ({len(genes_in_comm)} genes):")
-        for a3 in A3_GENES:
-            if a3 in genes_in_comm:
-                summary_lines.append(f"  ** {A3_ID_TO_ALIAS.get(a3, a3)} ({a3}) **")
-        for bm in BIOMARKERS:
-            if bm in genes_in_comm:
-                summary_lines.append(f"  [biomarker] {bm}")
+    # Per-community details
+    all_biomarker_genes = set()
+    for markers in BIOMARKERS.values():
+        all_biomarker_genes.update(markers)
+
+    for c in sorted(final_sizes.keys()):
+        genes_in_c = sorted([g for g, cc in final_partition.items() if cc == c])
+        summary_lines.append(f"Community {c}: {len(genes_in_c)} genes")
+
+        # A3 genes
+        a3_in_c = [g for g in genes_in_c if g in A3_ID_TO_ALIAS or g in A3_SYMBOL_TO_ALIAS]
+        if a3_in_c:
+            aliases = [A3_ID_TO_ALIAS.get(g, A3_SYMBOL_TO_ALIAS.get(g, g)) for g in a3_in_c]
+            summary_lines.append(f"  A3 genes: {', '.join(aliases)}")
+
+        # Biomarkers
+        bio_in_c = [g for g in genes_in_c if g in all_biomarker_genes]
+        if bio_in_c:
+            summary_lines.append(f"  Biomarkers: {', '.join(bio_in_c)}")
+
+        # Top genes by degree (top 5)
+        if G_comm.number_of_nodes() > 0:
+            degs = [(g, G_comm.degree(g)) for g in genes_in_c if g in G_comm]
+            degs.sort(key=lambda x: -x[1])
+            top5 = degs[:5]
+            summary_lines.append(f"  Top hubs: {', '.join(f'{g}(d={d})' for g, d in top5)}")
+
         summary_lines.append("")
 
     summary_path = os.path.join(DIR_04_COMMUNITIES, "SC_community_summary.txt")
     with open(summary_path, "w") as f:
         f.write("\n".join(summary_lines))
-    log(f"  [SAVE] Summary -> {summary_path}")
+    log(f"  [SAVE] Community summary -> {summary_path}")
+
+    # Print summary
     for line in summary_lines:
-        print(line)
+        log(f"  {line}")
 
     # =========================================================================
-    # 9. Sweep plots
+    # 10. Diagnostic sweep plots (6-panel, matches TCGA Step05)
     # =========================================================================
-    banner("[STEP 03.9] Resolution sweep plots")
+    banner("[STEP 03.10] Resolution sweep diagnostic plots")
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    axes[0].errorbar(sweep_df["resolution"], sweep_df["modularity_mean"],
-                     yerr=sweep_df["modularity_std"], fmt="o-", c="steelblue")
-    axes[0].axvline(best_res, ls="--", c="red", alpha=0.5)
-    axes[0].set_xlabel("Resolution"); axes[0].set_ylabel("Modularity")
-    axes[0].set_title("Modularity vs Resolution")
+    fig, axes = plt.subplots(2, 3, figsize=(22, 12))
 
-    axes[1].errorbar(sweep_df["resolution"], sweep_df["ari_mean"],
-                     yerr=sweep_df["ari_std"], fmt="o-", c="darkgreen")
-    axes[1].axvline(best_res, ls="--", c="red", alpha=0.5)
-    axes[1].set_xlabel("Resolution"); axes[1].set_ylabel("ARI")
-    axes[1].set_title("Partition Stability (ARI)")
+    # Panel 1: Modularity vs resolution
+    ax = axes[0, 0]
+    ax.errorbar(sweep_df["resolution"], sweep_df["modularity_best"],
+                yerr=sweep_df["modularity_std"], marker="o", capsize=3, color="steelblue")
+    ax.axvline(best_res, ls="--", c="red", alpha=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Modularity", fontsize=12)
+    ax.set_title("Modularity", fontsize=13)
 
-    axes[2].plot(sweep_df["resolution"], sweep_df["n_communities"], "o-", c="purple")
-    axes[2].axvline(best_res, ls="--", c="red", alpha=0.5)
-    axes[2].set_xlabel("Resolution"); axes[2].set_ylabel("N Communities")
-    axes[2].set_title("Community Count")
+    # Panel 2: ARI stability vs resolution
+    ax = axes[0, 1]
+    ax.errorbar(sweep_df["resolution"], sweep_df["ARI_mean"],
+                yerr=sweep_df["ARI_std"], marker="o", capsize=3, color="firebrick")
+    ax.axvline(best_res, ls="--", c="red", alpha=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("ARI (stability)", fontsize=12)
+    ax.set_title("Stability (ARI)", fontsize=13)
 
+    # Panel 3: Evenness vs resolution
+    ax = axes[0, 2]
+    ax.plot(sweep_df["resolution"], sweep_df["evenness"], "o-", color="forestgreen")
+    ax.axvline(best_res, ls="--", c="red", alpha=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Evenness", fontsize=12)
+    ax.set_title("Evenness (1 - largest/total)", fontsize=13)
+    ax.set_ylim(-0.05, 1.05)
+
+    # Panel 4: Composite score vs resolution (the selection criterion)
+    ax = axes[1, 0]
+    ax.plot(sweep_df["resolution"], sweep_df["composite_score"], "o-",
+            color="darkorange", linewidth=2, markersize=8)
+    best_idx = sweep_df["composite_score"].idxmax()
+    ax.scatter([sweep_df.loc[best_idx, "resolution"]],
+               [sweep_df.loc[best_idx, "composite_score"]],
+               s=200, c="red", zorder=5, edgecolors="black", linewidths=2)
+    ax.axvline(best_res, ls="--", c="red", alpha=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Composite (Mod x ARI x Even)", fontsize=12)
+    ax.set_title("Composite Score", fontsize=13, fontweight="bold")
+
+    # Panel 5: Delta-modularity (elbow plot)
+    ax = axes[1, 1]
+    ax.bar(sweep_df["resolution"], sweep_df["delta_modularity"],
+           width=0.08, color="steelblue", edgecolor="black", linewidth=0.5)
+    ax.axhline(0, color="black", lw=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("Delta Modularity", fontsize=12)
+    ax.set_title("Delta-Modularity (Elbow)", fontsize=13)
+
+    # Panel 6: Number of communities vs resolution
+    ax = axes[1, 2]
+    ax.errorbar(sweep_df["resolution"], sweep_df["ncomms_mean"],
+                yerr=sweep_df["ncomms_std"], marker="o", capsize=3, color="purple")
+    ax.axvline(best_res, ls="--", c="red", alpha=0.5)
+    ax.set_xlabel("Resolution", fontsize=12)
+    ax.set_ylabel("N Communities", fontsize=12)
+    ax.set_title("Community Count", fontsize=13)
+
+    plt.suptitle(f"SC Network -- Resolution Selection Diagnostics "
+                 f"(threshold={active_threshold})", fontsize=16, fontweight="bold")
     plt.tight_layout()
-    plt.savefig(os.path.join(DIR_04_COMMUNITIES, "SC_sweep_plots.png"), dpi=300)
+    sweep_plot = os.path.join(DIR_04_COMMUNITIES, "SC_sweep_diagnostics.png")
+    plt.savefig(sweep_plot, dpi=300)
     plt.close()
-    log(f"  [SAVE] Sweep plots")
+    log(f"  [SAVE] Sweep diagnostics -> {sweep_plot}")
 
+    # =========================================================================
+    # DONE
+    # =========================================================================
     elapsed = datetime.now() - start_time
     banner(f"[STEP 03 COMPLETE] {len(final_sizes)} communities, "
-           f"{total_genes} genes | Elapsed: {elapsed}")
+           f"{total_genes} genes | threshold={active_threshold}, "
+           f"resolution={best_res} | Elapsed: {elapsed}")
 
 
 if __name__ == "__main__":

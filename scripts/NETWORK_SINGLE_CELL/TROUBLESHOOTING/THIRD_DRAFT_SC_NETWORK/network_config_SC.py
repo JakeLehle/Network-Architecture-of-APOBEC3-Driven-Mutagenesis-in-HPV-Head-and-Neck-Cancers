@@ -14,10 +14,8 @@ Key differences from Figure 2 (TCGA bulk):
     ENSG IDs only for unannotated transcripts (NaN-replaced in adata.var)
   - The SC data from Cell Ranger already contains ~20K protein-coding genes,
     so NO protein-coding filter is needed (unlike TCGA bulk which starts at ~60K)
-  - DIFF threshold auto-selected using unified criterion (A3 connectivity +
-    component peak), identical to TCGA bulk
-  - Leiden resolution auto-selected using composite score (modularity x ARI x
-    evenness), identical to TCGA bulk Step05
+  - DIFF threshold auto-selected per network using component peak + LCC criterion
+  - Leiden resolution auto-selected using modularity jump detection
   - Output goes to data/FIG_4/
 
 Author: Jake Lehle
@@ -79,8 +77,8 @@ SBS2_LOW_MAX_WEIGHT  = 0.01
 MIN_CELLS_DETECTED  = 10
 RAW_P_THRESHOLD     = 0.05
 LOGFC_THRESHOLD     = 0
-FORCE_KEEP_A3       = False      # Let A3 genes pass/fail DE on their own merit
-FILTER_PROTEIN_CODING = False    # SC data already ~20K protein-coding genes
+FORCE_KEEP_A3       = True
+FILTER_PROTEIN_CODING = False   # SC data already ~20K protein-coding genes
 
 # =============================================================================
 # STEP 02 -- CORRELATION NETWORK PARAMETERS
@@ -89,14 +87,22 @@ CORRELATION_METHOD = "spearman"
 
 CORR_THRESHOLD     = 0.80     # |rho| threshold for HIGH/LOW network edges
 
-# DIFF threshold: auto-selected using unified criterion.
-# Among thresholds where A3A and/or A3B (those passing DE) have degree >= 1,
-# select the threshold with the highest connected component count.
-# Ties broken by the lower (more inclusive) threshold.
-# This fallback value is used only if auto-selection fails.
-DIFF_THRESHOLD     = 0.40
+# DIFF threshold: auto-selected per network comparison.
+# The auto-selector (Auto_Select_Network_Parameters.py) finds the threshold
+# where connected components peak and LCC < DIFF_THRESHOLD_MAX_LCC.
+# This produces pathway-scale communities that are biologically interpretable.
+#
+# Typical auto-selected thresholds:
+#   SBS2_VS_CNV:    0.65 (narrowest biological contrast)
+#   SBS2_VS_NORMAL: 0.65 (cancer vs normal)
+#   CNV_VS_NORMAL:  0.70 (widest biological contrast)
+#
+# Fallback value used if auto-selection is disabled or sweep data unavailable.
+DIFF_THRESHOLD          = 0.40     # Fallback (only used if auto disabled)
+DIFF_THRESHOLD_AUTO     = True     # Enable auto-selection from sweep data
+DIFF_THRESHOLD_MAX_LCC  = 300      # Max LCC size for auto-selection
 
-# Threshold sweep range for auto-selection
+# Finer granularity in the 0.50-0.70 range where thresholds typically land
 SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70,
                     0.75, 0.80, 0.85, 0.90]
 
@@ -104,15 +110,18 @@ SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70,
 # STEP 03 -- COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
-
-# Resolution sweep: 0.1 to 0.8 in 0.1 steps (matches TCGA Step05)
-# Selection: composite score = modularity x ARI x evenness
-COMMUNITY_RESOLUTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
 USE_LARGEST_COMPONENT = True
 TARGET_BIG_COMMUNITIES = 14
 MIN_COMMUNITY_SIZE     = 10
+
+# Resolution auto-selection: modularity jump detection with stability floor.
+# Finds the resolution where modularity increases most (structural jump)
+# and verifies ARI stability is above the floor.
+RESOLUTION_AUTO     = True     # Enable auto-selection from resolution sweep
+RESOLUTION_MIN_ARI  = 0.65    # Stability floor (TCGA bulk used ARI ~0.63)
 
 # =============================================================================
 # STEP 05 -- OVERLAP ANALYSIS PARAMETERS
@@ -182,7 +191,7 @@ BIOMARKERS_SYMBOLS = {
     'myeloid dendritic':        ['LAMP3', 'CCR7'],
 }
 
-BIOMARKERS = BIOMARKERS_SYMBOLS
+BIOMARKERS = [gene for genes in BIOMARKERS_SYMBOLS.values() for gene in genes]
 
 # =============================================================================
 # GENERAL
@@ -190,44 +199,123 @@ BIOMARKERS = BIOMARKERS_SYMBOLS
 VERBOSE = True
 RANDOM_SEED = 42
 
-
 # =============================================================================
 # HELPERS
 # =============================================================================
-
 def banner(title, char="=", width=100):
-    """Print a visible section banner to stdout."""
     line = char * width
     print(f"\n{line}\n{title}\n{line}", flush=True)
 
-
 def log(msg):
-    """Print a log message (respects VERBOSE flag)."""
     if VERBOSE:
         print(msg, flush=True)
 
-
 def ensure_dir(path):
-    """Create directory if it doesn't exist."""
     os.makedirs(path, exist_ok=True)
     return path
 
-
 def load_ensg_to_symbol():
-    """Load ENSG-to-symbol mapping from Figure 2 reference."""
     import json
     if os.path.exists(ENSG_TO_SYMBOL_PATH):
         with open(ENSG_TO_SYMBOL_PATH) as f:
             return json.load(f)
-    return {}
+    else:
+        log(f"WARNING: ENSG->symbol mapping not found at {ENSG_TO_SYMBOL_PATH}")
+        return {}
 
+def load_ensg_to_biotype():
+    import json
+    if os.path.exists(ENSG_TO_BIOTYPE_PATH):
+        with open(ENSG_TO_BIOTYPE_PATH) as f:
+            return json.load(f)
+    else:
+        log(f"WARNING: ENSG->biotype mapping not found at {ENSG_TO_BIOTYPE_PATH}")
+        return {}
 
-def convert_tcga_genes_to_symbols(gene_list, ensg_to_symbol):
-    """Convert ENSG IDs to gene symbols where possible."""
-    converted = []
-    for g in gene_list:
-        if g.startswith("ENSG") and g in ensg_to_symbol:
-            converted.append(ensg_to_symbol[g])
+def load_harris_interactors():
+    """
+    Load Harris A3 interactors from TSV files.
+    Files have columns: gene_symbol, A3_baits, source, R_loop_associated,
+    confirmed_coIP, A3B_interactor.
+    Returns (harris_all, harris_a3b) as sets of gene symbols.
+    """
+    import pandas as pd
+
+    harris_all = set()
+    harris_a3b = set()
+
+    if os.path.exists(HARRIS_ALL_PATH):
+        try:
+            df = pd.read_csv(HARRIS_ALL_PATH, sep='\t')
+            harris_all = set(df['gene_symbol'].dropna().values)
+            log(f"  Harris interactors (all): {len(harris_all)} genes")
+        except Exception as e:
+            log(f"  WARNING: Could not load Harris interactors: {e}")
+    else:
+        log(f"  WARNING: Harris interactors not found: {HARRIS_ALL_PATH}")
+
+    if os.path.exists(HARRIS_A3B_PATH):
+        try:
+            df = pd.read_csv(HARRIS_A3B_PATH, sep='\t')
+            harris_a3b = set(df['gene_symbol'].dropna().values)
+            log(f"  Harris interactors (A3B-specific): {len(harris_a3b)} genes")
+        except Exception as e:
+            log(f"  WARNING: Could not load A3B interactors: {e}")
+    else:
+        log(f"  WARNING: A3B interactors not found: {HARRIS_A3B_PATH}")
+
+    return harris_all, harris_a3b
+
+def load_tcga_bulk_communities():
+    """
+    Load TCGA bulk community assignments for overlap analysis.
+    Converts ENSG IDs to gene symbols using ensg_to_symbol.json.
+    Returns dict of {community_id: set of gene symbols}.
+    """
+    import pandas as pd
+
+    tcga_comms = {}
+    cancer_type = "TCGA-HNSC"
+    part_path = os.path.join(FIG2_COMMUNITIES, cancer_type,
+                              f"{cancer_type}_best_partition.csv")
+
+    if not os.path.exists(part_path):
+        log(f"  WARNING: TCGA partition not found: {part_path}")
+        return tcga_comms
+
+    ensg_to_sym = load_ensg_to_symbol()
+    df = pd.read_csv(part_path)
+
+    for _, row in df.iterrows():
+        c = int(row['community'])
+        gene = row['gene']
+        # Convert ENSG to symbol
+        if gene.startswith('ENSG'):
+            symbol = ensg_to_sym.get(gene)
+            if symbol is None:
+                symbol = A3_ENSG_TO_SYMBOL.get(gene, gene)
         else:
-            converted.append(g)
+            symbol = gene
+        tcga_comms.setdefault(c, set()).add(symbol)
+
+    log(f"  TCGA bulk communities: {len(tcga_comms)} communities, "
+        f"{sum(len(v) for v in tcga_comms.values())} genes")
+
+    return tcga_comms
+
+def convert_tcga_genes_to_symbols(gene_set, ensg_to_symbol=None):
+    """Convert TCGA ENSG IDs to gene symbols for overlap analysis."""
+    if ensg_to_symbol is None:
+        ensg_to_symbol = load_ensg_to_symbol()
+    converted = set()
+    for gene in gene_set:
+        if gene.startswith("ENSG"):
+            symbol = ensg_to_symbol.get(gene)
+            if symbol:
+                converted.add(symbol)
+            else:
+                a3_sym = A3_ENSG_TO_SYMBOL.get(gene)
+                converted.add(a3_sym if a3_sym else gene)
+        else:
+            converted.add(gene)
     return converted
