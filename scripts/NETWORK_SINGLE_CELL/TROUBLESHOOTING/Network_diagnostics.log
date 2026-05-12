@@ -1,0 +1,1653 @@
+
+================================================================================
+  A3 PATHWAY NETWORK FEATURE SWEEP
+================================================================================
+  Start: 2026-05-09 23:36:14.080115
+  Harris (all): 174, (A3B-sp): 51
+
+********************************************************************************
+  FEATURE SWEEP: SBS2_VS_CNV
+********************************************************************************
+  SBS2-HIGH vs CNV-HIGH
+  Auto-selected threshold: 0.65
+  DIFF matrix: (9342, 9342)
+  A3 genes in matrix: 7 (A3A, A3B, A3C, A3D, A3F, A3G, A3H)
+  Harris interactors in matrix: 129
+
+--------------------------------------------------------------------------------
+  Threshold 0.30
+--------------------------------------------------------------------------------
+  Network: 7042 nodes, 113118 edges, 41 components, LCC=6962
+  A3 in network: 5 (A3A, A3B, A3D, A3G, A3H)
+  Harris in network: 89
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 445, non-zero: 80
+    Max TOM: 0.5000
+    A3A max TOM: 0.3333, A3B max TOM: 0.5000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B            PFDN4    0.5000        1       no
+         A3B             CCT7    0.5000        1       no
+         A3B            CCT6A    0.4762       10       no
+         A3G            PDIA3    0.4286        3       no
+         A3G           PTGES3    0.4286        3       no
+         A3B             TCP1    0.3478        8       no
+         A3A           PTGES3    0.3333        4       no
+         A3A             RPL5    0.3333        4       no
+         A3B             NXF1    0.3333        1       no
+         A3B            SF3B2    0.3333        3       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=11, 1-hop=0, 2-hop=19, total Harris=19 (7 A3B-sp)
+    A3B: deg=87, 1-hop=0, 2-hop=45, total Harris=45 (15 A3B-sp)
+    A3D: deg=4, 1-hop=0, 2-hop=2, total Harris=2 (0 A3B-sp)
+    A3G: deg=6, 1-hop=0, 2-hop=9, total Harris=9 (1 A3B-sp)
+    A3H: deg=27, 1-hop=0, 2-hop=5, total Harris=5 (1 A3B-sp)
+    Total unique Harris reached: 46
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0005, max: 0.0001
+    A3B sum to Harris: 0.0031, max: 0.0003
+    Harris reached (comm > 1e-6): 59
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000343
+        A3B ->          PTGES3  comm=0.000327
+        A3B ->           PDIA3  comm=0.000168
+        A3B ->           HSPD1  comm=0.000158
+        A3B ->            RPL5  comm=0.000149
+        A3B ->          DNAJB1  comm=0.000142
+        A3B ->       HNRNPA2B1  comm=0.000132
+        A3B ->           CCT6A  comm=0.000127
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 95
+    A3 coreness: A3A=11, A3B=46, A3D=4, A3G=6, A3H=16
+    Harris max coreness: 95
+    Harris mean coreness: 19.3
+    A3 shares core levels with Harris: {46, 4, 6}
+
+--------------------------------------------------------------------------------
+  Threshold 0.35
+--------------------------------------------------------------------------------
+  Network: 4536 nodes, 48307 edges, 29 components, LCC=4480
+  A3 in network: 4 (A3A, A3B, A3D, A3H)
+  Harris in network: 50
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 200, non-zero: 23
+    Max TOM: 0.3333
+    A3A max TOM: 0.3333, A3B max TOM: 0.2857
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A            SRSF2    0.3333        1       no
+         A3B             TCP1    0.2857        2       no
+         A3B           PTGES3    0.2059        7       no
+         A3B             RALY    0.1765        6       no
+         A3B            CCT6A    0.1667        1       no
+         A3B            NOP58    0.1429        1       no
+         A3B            PDIA3    0.1304        3       no
+         A3B        HNRNPA2B1    0.1290        4       no
+         A3B           DNAJB1    0.1176        4       no
+         A3B          HNRNPA3    0.1111        1       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=2, 1-hop=0, 2-hop=1, total Harris=1 (0 A3B-sp)
+    A3B: deg=33, 1-hop=0, 2-hop=20, total Harris=20 (7 A3B-sp)
+    A3D: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3H: deg=18, 1-hop=0, 2-hop=2, total Harris=2 (0 A3B-sp)
+    Total unique Harris reached: 20
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0016, max: 0.0003
+    Harris reached (comm > 1e-6): 32
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000278
+        A3B ->          PTGES3  comm=0.000213
+        A3B ->          DNAJB1  comm=0.000133
+        A3B ->       HNRNPA2B1  comm=0.000115
+        A3B ->            RPL5  comm=0.000100
+        A3B ->           PDIA3  comm=0.000093
+        A3H ->            RALY  comm=0.000072
+        A3B ->           HSPD1  comm=0.000072
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 64
+    A3 coreness: A3A=2, A3B=22, A3D=1, A3H=9
+    Harris max coreness: 64
+    Harris mean coreness: 13.5
+    A3 shares core levels with Harris: {1, 2, 22, 9}
+
+--------------------------------------------------------------------------------
+  Threshold 0.40
+--------------------------------------------------------------------------------
+  Network: 3023 nodes, 22240 edges, 24 components, LCC=2969
+  A3 in network: 4 (A3A, A3B, A3D, A3H)
+  Harris in network: 32
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 128, non-zero: 7
+    Max TOM: 0.2308
+    A3A max TOM: 0.0000, A3B max TOM: 0.2308
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B           PTGES3    0.2308        3       no
+         A3B        HNRNPA2B1    0.1818        2       no
+         A3H             RALY    0.1429        1       no
+         A3B            PDIA3    0.1250        1       no
+         A3B             RPL5    0.0769        1       no
+         A3B            HSPD1    0.0769        1       no
+         A3B             RALY    0.0769        1       no
+         A3A            NOP58    0.0000        0       no
+         A3A        HNRNPA2B1    0.0000        0       no
+         A3A             RPL5    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=12, 1-hop=0, 2-hop=6, total Harris=6 (1 A3B-sp)
+    A3D: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3H: deg=6, 1-hop=0, 2-hop=1, total Harris=1 (0 A3B-sp)
+    Total unique Harris reached: 6
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0006, max: 0.0002
+    Harris reached (comm > 1e-6): 17
+    Top communicability pairs:
+        A3B ->          PTGES3  comm=0.000185
+        A3B ->       HNRNPA2B1  comm=0.000120
+        A3B ->            RALY  comm=0.000098
+        A3H ->            RALY  comm=0.000067
+        A3B ->            RPL5  comm=0.000064
+        A3B ->           HSPD1  comm=0.000063
+        A3B ->           PDIA3  comm=0.000062
+        A3B ->        EBNA1BP2  comm=0.000006
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 44
+    A3 coreness: A3A=2, A3B=8, A3D=1, A3H=5
+    Harris max coreness: 44
+    Harris mean coreness: 8.2
+    A3 shares core levels with Harris: {8, 1, 2, 5}
+
+--------------------------------------------------------------------------------
+  Threshold 0.45
+--------------------------------------------------------------------------------
+  Network: 2079 nodes, 10657 edges, 36 components, LCC=1999
+  A3 in network: 3 (A3A, A3B, A3H)
+  Harris in network: 23
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 69, non-zero: 3
+    Max TOM: 0.3333
+    A3A max TOM: 0.0000, A3B max TOM: 0.3333
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B           PTGES3    0.3333        2       no
+         A3B            PDIA3    0.2000        1       no
+         A3B            HSPD1    0.1667        1       no
+         A3A        HNRNPA2B1    0.0000        0       no
+         A3A             RPL5    0.0000        0       no
+         A3A           TIMM8B    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+         A3A            PDIA3    0.0000        0       no
+         A3A             RPL3    0.0000        0       no
+         A3A          HNRNPA3    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=5, 1-hop=0, 2-hop=3, total Harris=3 (0 A3B-sp)
+    A3H: deg=4, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 3
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0006, max: 0.0003
+    Harris reached (comm > 1e-6): 13
+    Top communicability pairs:
+        A3B ->          PTGES3  comm=0.000255
+        A3B ->           HSPD1  comm=0.000128
+        A3B ->           PDIA3  comm=0.000127
+        A3B ->            RALY  comm=0.000032
+        A3B ->        EBNA1BP2  comm=0.000004
+        A3B ->          DNAJB1  comm=0.000003
+        A3B ->           PLOD1  comm=0.000003
+        A3H ->            RALY  comm=0.000002
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 30
+    A3 coreness: A3A=1, A3B=4, A3H=3
+    Harris max coreness: 30
+    Harris mean coreness: 4.7
+    A3 shares core levels with Harris: {1, 3, 4}
+
+--------------------------------------------------------------------------------
+  Threshold 0.50
+--------------------------------------------------------------------------------
+  Network: 1495 nodes, 5373 edges, 57 components, LCC=1336
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 9
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 18, non-zero: 2
+    Max TOM: 0.2500
+    A3A max TOM: 0.0000, A3B max TOM: 0.2500
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B            HSPD1    0.2500        1       no
+         A3B           PTGES3    0.2500        1       no
+         A3A         EBNA1BP2    0.0000        0       no
+         A3A           DNAJB1    0.0000        0       no
+         A3A             RPL5    0.0000        0       no
+         A3A            RPL27    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+         A3A            HSPD1    0.0000        0       no
+         A3A           PTGES3    0.0000        0       no
+         A3A             RPL3    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=3, 1-hop=0, 2-hop=2, total Harris=2 (0 A3B-sp)
+    Total unique Harris reached: 2
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0006, max: 0.0003
+    Harris reached (comm > 1e-6): 5
+    Top communicability pairs:
+        A3B ->          PTGES3  comm=0.000275
+        A3B ->           HSPD1  comm=0.000275
+        A3B ->            RALY  comm=0.000034
+        A3B ->        EBNA1BP2  comm=0.000009
+        A3B ->          DNAJB1  comm=0.000005
+        A3A ->          PTGES3  comm=0.000002
+        A3A ->           HSPD1  comm=0.000002
+        A3B ->            RPL5  comm=0.000001
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 22
+    A3 coreness: A3A=1, A3B=2
+    Harris max coreness: 22
+    Harris mean coreness: 6.0
+    A3 shares core levels with Harris: {1, 2}
+
+--------------------------------------------------------------------------------
+  Threshold 0.55
+--------------------------------------------------------------------------------
+  Network: 984 nodes, 2651 edges, 80 components, LCC=676
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 4
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 8, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL5    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+         A3A             RALY    0.0000        0       no
+         A3A           PTGES3    0.0000        0       no
+         A3B             RPL5    0.0000        0       no
+         A3B            PFDN2    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+         A3B           PTGES3    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 1
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000007
+        A3A ->            RALY  comm=0.000000
+        A3B ->          PTGES3  comm=0.000000
+        A3B ->            RPL5  comm=0.000000
+        A3B ->           PFDN2  comm=0.000000
+        A3A ->          PTGES3  comm=0.000000
+        A3A ->            RPL5  comm=0.000000
+        A3A ->           PFDN2  comm=0.000000
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 16
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 16
+    Harris mean coreness: 5.0
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.60
+--------------------------------------------------------------------------------
+  Network: 705 nodes, 1399 edges, 85 components, LCC=443
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 3
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 6, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL5    0.0000        0       no
+         A3A             RALY    0.0000        0       no
+         A3A           PTGES3    0.0000        0       no
+         A3B             RPL5    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+         A3B           PTGES3    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 10
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 10
+    Harris mean coreness: 4.0
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.65 <<<AUTO
+--------------------------------------------------------------------------------
+  Network: 471 nodes, 739 edges, 85 components, LCC=145
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 2, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RALY    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 7
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 7
+    Harris mean coreness: 7.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.70
+--------------------------------------------------------------------------------
+  Network: 351 nodes, 427 edges, 70 components, LCC=89
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 2, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RALY    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 6
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 4
+    Harris mean coreness: 4.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.75
+--------------------------------------------------------------------------------
+  Network: 179 nodes, 182 edges, 51 components, LCC=48
+  A3 in network: 0 ()
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 6
+    Harris max coreness: 3
+    Harris mean coreness: 3.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.80
+--------------------------------------------------------------------------------
+  Network: 122 nodes, 114 edges, 43 components, LCC=15
+  A3 in network: 0 ()
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 6
+    Harris max coreness: 2
+    Harris mean coreness: 2.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.85
+--------------------------------------------------------------------------------
+  Network: 98 nodes, 86 edges, 38 components, LCC=7
+  A3 in network: 0 ()
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 5
+    Harris max coreness: 1
+    Harris mean coreness: 1.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.90
+--------------------------------------------------------------------------------
+  Network: 75 nodes, 70 edges, 30 components, LCC=7
+  A3 in network: 0 ()
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 5
+    Harris max coreness: 1
+    Harris mean coreness: 1.0
+
+********************************************************************************
+  FEATURE SWEEP: SBS2_VS_NORMAL
+********************************************************************************
+  SBS2-HIGH vs NORMAL
+  Auto-selected threshold: 0.65
+  DIFF matrix: (8307, 8307)
+  A3 genes in matrix: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris interactors in matrix: 105
+
+--------------------------------------------------------------------------------
+  Threshold 0.30
+--------------------------------------------------------------------------------
+  Network: 8306 nodes, 450474 edges, 1 components, LCC=8306
+  A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris in network: 105
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 630, non-zero: 291
+    Max TOM: 0.3636
+    A3A max TOM: 0.3636, A3B max TOM: 0.2819
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL3    0.3636       36       no
+         A3A            PFDN5    0.3636        4       no
+         A3A             TCP1    0.3438       11       no
+         A3A             RPL5    0.3333       22       no
+         A3A         CDKN2AIP    0.2987       23       no
+         A3A            STRBP    0.2985       20       no
+         A3A        HNRNPA2B1    0.2917        7       no
+         A3B             POP7    0.2819       64       no
+         A3B          TRMT61A    0.2500       10       no
+         A3B             RCC2    0.2333       42       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=351, 1-hop=2, 2-hop=87, total Harris=89 (27 A3B-sp)
+      1-hop Harris: DHX30, SCO2
+    A3B: deg=226, 1-hop=3, 2-hop=87, total Harris=90 (25 A3B-sp)
+      1-hop Harris: HUWE1, PPM1G, RAD23B
+    A3C: deg=39, 1-hop=2, 2-hop=62, total Harris=64 (20 A3B-sp)
+      1-hop Harris: CCT7, SRSF4
+    A3D: deg=18, 1-hop=0, 2-hop=3, total Harris=3 (1 A3B-sp)
+    A3F: deg=25, 1-hop=0, 2-hop=21, total Harris=21 (9 A3B-sp)
+    A3G: deg=14, 1-hop=1, 2-hop=23, total Harris=24 (8 A3B-sp)
+      1-hop Harris: TMA16
+    Total unique Harris reached: 101
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0158, max: 0.0037
+    A3B sum to Harris: 0.0209, max: 0.0038
+    Harris reached (comm > 1e-6): 104
+    Top communicability pairs:
+        A3B ->           PPM1G  comm=0.003775
+        A3A ->            SCO2  comm=0.003719
+        A3B ->          RAD23B  comm=0.003691
+        A3B ->           HUWE1  comm=0.003605
+        A3A ->           DHX30  comm=0.003578
+        A3C ->           SRSF4  comm=0.003459
+        A3C ->            CCT7  comm=0.003413
+        A3G ->           TMA16  comm=0.003410
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 120
+    A3 coreness: A3A=119, A3B=120, A3C=38, A3D=17, A3F=23, A3G=14
+    Harris max coreness: 120
+    Harris mean coreness: 72.3
+    A3 shares core levels with Harris: {38, 17, 119, 23, 120}
+
+--------------------------------------------------------------------------------
+  Threshold 0.35
+--------------------------------------------------------------------------------
+  Network: 8152 nodes, 139644 edges, 1 components, LCC=8152
+  A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris in network: 103
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 618, non-zero: 96
+    Max TOM: 0.3889
+    A3A max TOM: 0.3889, A3B max TOM: 0.3333
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL5    0.3889        7       no
+         A3A             RPL3    0.3696       17       no
+         A3B          TRMT61A    0.3333        1       no
+         A3B          TAX1BP1    0.3333        2       no
+         A3A             TCP1    0.2857        2       no
+         A3A             OLA1    0.2500        1       no
+         A3A            PSME3    0.2500        1       no
+         A3A            PFDN5    0.2500        1       no
+         A3B            USP9X    0.2500        2       no
+         A3A         CDKN2AIP    0.2000        4       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=154, 1-hop=0, 2-hop=44, total Harris=44 (18 A3B-sp)
+    A3B: deg=72, 1-hop=0, 2-hop=46, total Harris=46 (17 A3B-sp)
+    A3C: deg=4, 1-hop=0, 2-hop=4, total Harris=4 (2 A3B-sp)
+    A3D: deg=8, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3F: deg=6, 1-hop=0, 2-hop=2, total Harris=2 (2 A3B-sp)
+    A3G: deg=3, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 65
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0056, max: 0.0006
+    A3B sum to Harris: 0.0056, max: 0.0004
+    Harris reached (comm > 1e-6): 91
+    Top communicability pairs:
+        A3A ->           PFDN2  comm=0.000572
+        A3A ->            RPL3  comm=0.000460
+        A3B ->           PFDN2  comm=0.000368
+        A3B ->            POP7  comm=0.000356
+        A3A ->           PPM1G  comm=0.000295
+        A3B ->            RALY  comm=0.000264
+        A3A ->            POP7  comm=0.000261
+        A3A ->            RALY  comm=0.000252
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 49
+    A3 coreness: A3A=48, A3B=46, A3C=4, A3D=8, A3F=5, A3G=3
+    Harris max coreness: 49
+    Harris mean coreness: 20.5
+    A3 shares core levels with Harris: {3, 4, 5, 8, 48}
+
+--------------------------------------------------------------------------------
+  Threshold 0.40
+--------------------------------------------------------------------------------
+  Network: 6685 nodes, 43988 edges, 37 components, LCC=6610
+  A3 in network: 4 (A3A, A3B, A3D, A3F)
+  Harris in network: 81
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 324, non-zero: 22
+    Max TOM: 0.5000
+    A3A max TOM: 0.5000, A3B max TOM: 0.1250
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A        HNRNPA2B1    0.5000        1       no
+         A3A            PSME3    0.5000        1       no
+         A3A             TCP1    0.3333        1       no
+         A3A         CDKN2AIP    0.2000        1       no
+         A3A             VBP1    0.2000        1       no
+         A3A           RNF126    0.1429        1       no
+         A3A             RPL3    0.1364        3       no
+         A3A             RPL5    0.1250        1       no
+         A3B            DHX36    0.1250        2       no
+         A3B            PFDN4    0.1000        2       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=61, 1-hop=0, 2-hop=13, total Harris=13 (5 A3B-sp)
+    A3B: deg=19, 1-hop=0, 2-hop=9, total Harris=9 (3 A3B-sp)
+    A3D: deg=3, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3F: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 18
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0030, max: 0.0007
+    A3B sum to Harris: 0.0021, max: 0.0003
+    Harris reached (comm > 1e-6): 70
+    Top communicability pairs:
+        A3A ->           PFDN2  comm=0.000669
+        A3B ->           PFDN2  comm=0.000335
+        A3A ->           PFDN4  comm=0.000330
+        A3A ->            RPL3  comm=0.000305
+        A3B ->           PFDN4  comm=0.000266
+        A3B ->           DHX36  comm=0.000231
+        A3B ->            POP7  comm=0.000213
+        A3A ->            RALY  comm=0.000203
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 23
+    A3 coreness: A3A=19, A3B=12, A3D=3, A3F=1
+    Harris max coreness: 23
+    Harris mean coreness: 6.3
+    A3 shares core levels with Harris: {19, 1, 3, 12}
+
+--------------------------------------------------------------------------------
+  Threshold 0.45
+--------------------------------------------------------------------------------
+  Network: 4191 nodes, 15326 edges, 89 components, LCC=4004
+  A3 in network: 3 (A3A, A3B, A3D)
+  Harris in network: 37
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 111, non-zero: 4
+    Max TOM: 0.5000
+    A3A max TOM: 0.5000, A3B max TOM: 0.5000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A        HNRNPA2B1    0.5000        1       no
+         A3B            PFDN2    0.5000        1       no
+         A3B         SNRNP200    0.5000        1       no
+         A3A             RPL3    0.2500        2       no
+         A3A            NOP58    0.0000        0       no
+         A3A           PABPN1    0.0000        0       no
+         A3A           DIS3L2    0.0000        0       no
+         A3A            PFDN4    0.0000        0       no
+         A3A             RPL5    0.0000        0       no
+         A3A          SYNCRIP    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=17, 1-hop=0, 2-hop=2, total Harris=2 (1 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=2, total Harris=2 (2 A3B-sp)
+    A3D: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 4
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0011, max: 0.0006
+    A3B sum to Harris: 0.0008, max: 0.0003
+    Harris reached (comm > 1e-6): 28
+    Top communicability pairs:
+        A3A ->            RPL3  comm=0.000606
+        A3B ->           PFDN2  comm=0.000341
+        A3B ->        SNRNP200  comm=0.000304
+        A3A ->       HNRNPA2B1  comm=0.000303
+        A3A ->            RALY  comm=0.000080
+        A3A ->           PFDN2  comm=0.000022
+        A3B ->           PFDN4  comm=0.000015
+        A3B ->           NOP56  comm=0.000014
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 15
+    A3 coreness: A3A=8, A3B=1, A3D=1
+    Harris max coreness: 12
+    Harris mean coreness: 2.9
+    A3 shares core levels with Harris: {8, 1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.50
+--------------------------------------------------------------------------------
+  Network: 2434 nodes, 6282 edges, 76 components, LCC=2265
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 11
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 22, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             POP7    0.0000        0       no
+         A3A            SRSF5    0.0000        0       no
+         A3A        HNRNPA2B1    0.0000        0       no
+         A3A             RPL5    0.0000        0       no
+         A3A            NOP56    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+         A3A            HUWE1    0.0000        0       no
+         A3A             RPL3    0.0000        0       no
+         A3A         HNRNPUL1    0.0000        0       no
+         A3A            PLOD2    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=7, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0001, max: 0.0001
+    A3B sum to Harris: 0.0001, max: 0.0000
+    Harris reached (comm > 1e-6): 8
+    Top communicability pairs:
+        A3A ->            RALY  comm=0.000063
+        A3B ->           PFDN2  comm=0.000031
+        A3B ->           SRSF5  comm=0.000016
+        A3A ->           PFDN2  comm=0.000014
+        A3A ->           SRSF5  comm=0.000014
+        A3B ->           NOP56  comm=0.000013
+        A3B ->        HNRNPUL1  comm=0.000013
+        A3A ->           NOP56  comm=0.000013
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 13
+    A3 coreness: A3A=4, A3B=1
+    Harris max coreness: 7
+    Harris mean coreness: 2.4
+    A3 shares core levels with Harris: {1, 4}
+
+--------------------------------------------------------------------------------
+  Threshold 0.55
+--------------------------------------------------------------------------------
+  Network: 1436 nodes, 2766 edges, 70 components, LCC=1266
+  A3 in network: 1 (A3A)
+  Harris in network: 3
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 3, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL3    0.0000        0       no
+         A3A            SRSF5    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 10
+    A3 coreness: A3A=1
+    Harris max coreness: 2
+    Harris mean coreness: 1.7
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.60
+--------------------------------------------------------------------------------
+  Network: 934 nodes, 1397 edges, 84 components, LCC=676
+  A3 in network: 1 (A3A)
+  Harris in network: 2
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 2, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RPL3    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 7
+    A3 coreness: A3A=1
+    Harris max coreness: 2
+    Harris mean coreness: 1.5
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.65 <<<AUTO
+--------------------------------------------------------------------------------
+  Network: 604 nodes, 729 edges, 110 components, LCC=188
+  A3 in network: 0 ()
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 7
+    Harris max coreness: 1
+    Harris mean coreness: 1.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.70
+--------------------------------------------------------------------------------
+  Network: 443 nodes, 490 edges, 98 components, LCC=82
+  A3 in network: 0 ()
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 5
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.75
+--------------------------------------------------------------------------------
+  Network: 229 nodes, 229 edges, 69 components, LCC=23
+  A3 in network: 0 ()
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 4
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.80
+--------------------------------------------------------------------------------
+  Network: 174 nodes, 164 edges, 58 components, LCC=14
+  A3 in network: 0 ()
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 4
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.85
+--------------------------------------------------------------------------------
+  Network: 124 nodes, 112 edges, 42 components, LCC=14
+  A3 in network: 0 ()
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 4
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.90
+--------------------------------------------------------------------------------
+  Network: 93 nodes, 74 edges, 35 components, LCC=9
+  A3 in network: 0 ()
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 4
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+********************************************************************************
+  FEATURE SWEEP: CNV_VS_NORMAL
+********************************************************************************
+  CNV-HIGH vs NORMAL
+  Auto-selected threshold: 0.7
+  DIFF matrix: (9843, 9843)
+  A3 genes in matrix: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris interactors in matrix: 139
+
+--------------------------------------------------------------------------------
+  Threshold 0.30
+--------------------------------------------------------------------------------
+  Network: 9843 nodes, 1295635 edges, 1 components, LCC=9843
+  A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris in network: 139
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 834, non-zero: 616
+    Max TOM: 0.5180
+    A3A max TOM: 0.4371, A3B max TOM: 0.4719
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3C            PFDN2    0.5180       71      yes
+         A3B            SRSF2    0.4719       42       no
+         A3B             TCP1    0.4620       79       no
+         A3B         CDKN2AIP    0.4498      197       no
+         A3A           TIMM8B    0.4371       65      yes
+         A3B            CCT6A    0.4316      281       no
+         A3C           SRSF10    0.4214       59       no
+         A3B           SNRPB2    0.4206      363       no
+         A3B           SRSF10    0.4166      467       no
+         A3C         HNRNPUL1    0.4143       58       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=151, 1-hop=3, 2-hop=122, total Harris=125 (37 A3B-sp)
+      1-hop Harris: CDKN2AIP, DNAJB1, TIMM8B
+    A3B: deg=1120, 1-hop=19, 2-hop=120, total Harris=139 (39 A3B-sp)
+      1-hop Harris: FAM120A, FMR1, FN3KRP, HNRNPUL1, HUWE1, LONP1, MAP4, NCBP2...
+    A3C: deg=139, 1-hop=5, 2-hop=123, total Harris=128 (38 A3B-sp)
+      1-hop Harris: FAM120A, GRSF1, PFDN2, PPP6C, TRMT6
+    A3D: deg=22, 1-hop=0, 2-hop=6, total Harris=6 (1 A3B-sp)
+    A3F: deg=69, 1-hop=1, 2-hop=108, total Harris=109 (33 A3B-sp)
+      1-hop Harris: PPIH
+    A3G: deg=61, 1-hop=1, 2-hop=108, total Harris=109 (30 A3B-sp)
+      1-hop Harris: CTPS1
+    Total unique Harris reached: 139
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0072, max: 0.0016
+    A3B sum to Harris: 0.0519, max: 0.0020
+    Harris reached (comm > 1e-6): 139
+    Top communicability pairs:
+        A3B ->            SCO2  comm=0.001963
+        A3B ->           PPM1G  comm=0.001932
+        A3B ->          RAD23B  comm=0.001927
+        A3B ->        SNRNP200  comm=0.001859
+        A3B ->        HNRNPUL1  comm=0.001836
+        A3B ->            MAP4  comm=0.001819
+        A3B ->          TIMM8B  comm=0.001765
+        A3B ->           HUWE1  comm=0.001765
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 310
+    A3 coreness: A3A=127, A3B=310, A3C=126, A3D=22, A3F=55, A3G=48
+    Harris max coreness: 310
+    Harris mean coreness: 207.5
+    A3 shares core levels with Harris: {310, 22}
+
+--------------------------------------------------------------------------------
+  Threshold 0.35
+--------------------------------------------------------------------------------
+  Network: 9798 nodes, 479608 edges, 1 components, LCC=9798
+  A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris in network: 138
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 828, non-zero: 305
+    Max TOM: 0.4444
+    A3A max TOM: 0.3393, A3B max TOM: 0.4286
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3C            PFDN2    0.4444       16       no
+         A3B             TCP1    0.4286       24       no
+         A3B            RBM8A    0.4286       15       no
+         A3B           AHCYL1    0.3939       13       no
+         A3C           RAD23B    0.3889       14       no
+         A3B         CDKN2AIP    0.3734       59       no
+         A3B            NCBP3    0.3636       12       no
+         A3C         HNRNPUL1    0.3611       13       no
+         A3B            CCT6A    0.3541       91       no
+         A3B             SRRT    0.3467       26       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=55, 1-hop=0, 2-hop=68, total Harris=68 (20 A3B-sp)
+    A3B: deg=593, 1-hop=9, 2-hop=116, total Harris=125 (37 A3B-sp)
+      1-hop Harris: HUWE1, LONP1, MAP4, PPM1G, RAD23B, RCC2, SCO2, SNRNP200...
+    A3C: deg=35, 1-hop=2, 2-hop=78, total Harris=80 (25 A3B-sp)
+      1-hop Harris: FAM120A, GRSF1
+    A3D: deg=15, 1-hop=0, 2-hop=2, total Harris=2 (0 A3B-sp)
+    A3F: deg=15, 1-hop=0, 2-hop=4, total Harris=4 (0 A3B-sp)
+    A3G: deg=11, 1-hop=0, 2-hop=26, total Harris=26 (7 A3B-sp)
+    Total unique Harris reached: 125
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0016, max: 0.0001
+    A3B sum to Harris: 0.0490, max: 0.0034
+    Harris reached (comm > 1e-6): 130
+    Top communicability pairs:
+        A3B ->            SCO2  comm=0.003440
+        A3B ->           PPM1G  comm=0.003420
+        A3B ->          RAD23B  comm=0.003399
+        A3B ->            MAP4  comm=0.003347
+        A3B ->        SNRNP200  comm=0.003324
+        A3B ->          TIMM8B  comm=0.003277
+        A3B ->            RCC2  comm=0.003208
+        A3B ->           HUWE1  comm=0.003188
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 146
+    A3 coreness: A3A=47, A3B=146, A3C=35, A3D=13, A3F=12, A3G=10
+    Harris max coreness: 146
+    Harris mean coreness: 76.8
+    A3 shares core levels with Harris: {35, 12, 13, 47, 146}
+
+--------------------------------------------------------------------------------
+  Threshold 0.40
+--------------------------------------------------------------------------------
+  Network: 8997 nodes, 169286 edges, 12 components, LCC=8975
+  A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+  Harris in network: 127
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 762, non-zero: 121
+    Max TOM: 0.4444
+    A3A max TOM: 0.2000, A3B max TOM: 0.4444
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B            PSME3    0.4444        4       no
+         A3B            SRSF2    0.4000        2       no
+         A3B            STUB1    0.3889        7       no
+         A3B             TCP1    0.3333        4       no
+         A3C          FAM120A    0.3333        3       no
+         A3C         HNRNPUL1    0.3333        3       no
+         A3G             PPIH    0.3333        1       no
+         A3G            PDIA3    0.3333        1       no
+         A3G           ZNF326    0.3333        1       no
+         A3G            CCT6A    0.3333        1       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=14, 1-hop=0, 2-hop=17, total Harris=17 (8 A3B-sp)
+    A3B: deg=272, 1-hop=1, 2-hop=83, total Harris=84 (28 A3B-sp)
+      1-hop Harris: TIMM8B
+    A3C: deg=8, 1-hop=0, 2-hop=16, total Harris=16 (6 A3B-sp)
+    A3D: deg=7, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3F: deg=3, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3G: deg=2, 1-hop=0, 2-hop=4, total Harris=4 (1 A3B-sp)
+    Total unique Harris reached: 88
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0006, max: 0.0001
+    A3B sum to Harris: 0.0217, max: 0.0060
+    Harris reached (comm > 1e-6): 115
+    Top communicability pairs:
+        A3B ->          TIMM8B  comm=0.005970
+        A3B ->          SRSF10  comm=0.000886
+        A3B ->           PDIA3  comm=0.000808
+        A3B ->            RALY  comm=0.000668
+        A3B ->          SNRPB2  comm=0.000551
+        A3B ->           PFDN2  comm=0.000521
+        A3B ->           YARS1  comm=0.000499
+        A3B ->          PGRMC1  comm=0.000405
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 70
+    A3 coreness: A3A=12, A3B=68, A3C=8, A3D=7, A3F=3, A3G=2
+    Harris max coreness: 70
+    Harris mean coreness: 27.4
+    A3 shares core levels with Harris: {2, 3, 68, 7, 8, 12}
+
+--------------------------------------------------------------------------------
+  Threshold 0.45
+--------------------------------------------------------------------------------
+  Network: 6769 nodes, 61109 edges, 57 components, LCC=6651
+  A3 in network: 5 (A3A, A3B, A3C, A3D, A3F)
+  Harris in network: 93
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 465, non-zero: 43
+    Max TOM: 0.3333
+    A3A max TOM: 0.3333, A3B max TOM: 0.3333
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A            PFDN2    0.3333        1       no
+         A3A            PDCD5    0.3333        1       no
+         A3B          TAX1BP1    0.3333        1       no
+         A3B            SRSF2    0.3333        1       no
+         A3B             POP7    0.3000        3       no
+         A3B           DNAJC7    0.2727        3       no
+         A3B            DNPEP    0.2500        2       no
+         A3B           ZNF326    0.2500        2       no
+         A3B            SF3B2    0.2381        5       no
+         A3B           RNF126    0.2333        7       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=2, 1-hop=0, 2-hop=2, total Harris=2 (2 A3B-sp)
+    A3B: deg=129, 1-hop=0, 2-hop=41, total Harris=41 (13 A3B-sp)
+    A3C: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3D: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3F: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 42
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0001, max: 0.0001
+    A3B sum to Harris: 0.0084, max: 0.0006
+    Harris reached (comm > 1e-6): 80
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000599
+        A3B ->          SRSF10  comm=0.000508
+        A3B ->           PDIA3  comm=0.000448
+        A3B ->          RNF126  comm=0.000381
+        A3B ->           PFDN2  comm=0.000373
+        A3B ->           YARS1  comm=0.000326
+        A3B ->            PPIH  comm=0.000311
+        A3B ->            MAP4  comm=0.000279
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 41
+    A3 coreness: A3A=2, A3B=32, A3C=1, A3D=2, A3F=1
+    Harris max coreness: 41
+    Harris mean coreness: 11.3
+    A3 shares core levels with Harris: {32, 1, 2}
+
+--------------------------------------------------------------------------------
+  Threshold 0.50
+--------------------------------------------------------------------------------
+  Network: 4510 nodes, 23816 edges, 57 components, LCC=4395
+  A3 in network: 3 (A3A, A3B, A3D)
+  Harris in network: 56
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 168, non-zero: 18
+    Max TOM: 0.5000
+    A3A max TOM: 0.0000, A3B max TOM: 0.5000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B           DNAJC7    0.5000        2       no
+         A3B            SF3B2    0.5000        3       no
+         A3B           ZNF326    0.5000        2       no
+         A3B             CDK4    0.4000        2       no
+         A3B          SYNCRIP    0.3333        1       no
+         A3B           SNRPB2    0.3333        2       no
+         A3B            YARS1    0.2857        2       no
+         A3B           TIMM8B    0.2000        1       no
+         A3B            DHX36    0.2000        1       no
+         A3B             OLA1    0.2000        1       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=62, 1-hop=0, 2-hop=18, total Harris=18 (6 A3B-sp)
+    A3D: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 18
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0050, max: 0.0004
+    Harris reached (comm > 1e-6): 48
+    Top communicability pairs:
+        A3B ->           SF3B2  comm=0.000420
+        A3B ->           PDIA3  comm=0.000315
+        A3B ->            RALY  comm=0.000295
+        A3B ->            CDK4  comm=0.000287
+        A3B ->          SRSF10  comm=0.000280
+        A3B ->           YARS1  comm=0.000275
+        A3B ->          ZNF326  comm=0.000273
+        A3B ->          DNAJC7  comm=0.000273
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 26
+    A3 coreness: A3A=1, A3B=16, A3D=1
+    Harris max coreness: 26
+    Harris mean coreness: 5.2
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.55
+--------------------------------------------------------------------------------
+  Network: 2781 nodes, 10129 edges, 68 components, LCC=2615
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 29
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 58, non-zero: 3
+    Max TOM: 0.3333
+    A3A max TOM: 0.0000, A3B max TOM: 0.3333
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3B           SNRPB2    0.3333        1       no
+         A3B           SRSF10    0.2500        1       no
+         A3B            PDIA3    0.0714        1       no
+         A3A             RPL5    0.0000        0       no
+         A3A            PFDN2    0.0000        0       no
+         A3A            PDIA3    0.0000        0       no
+         A3A         HNRNPUL1    0.0000        0       no
+         A3A             PPIH    0.0000        0       no
+         A3A            DHX36    0.0000        0       no
+         A3A            CCT6A    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=34, 1-hop=0, 2-hop=3, total Harris=3 (2 A3B-sp)
+    Total unique Harris reached: 3
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0019, max: 0.0003
+    Harris reached (comm > 1e-6): 25
+    Top communicability pairs:
+        A3B ->           PDIA3  comm=0.000338
+        A3B ->          SNRPB2  comm=0.000322
+        A3B ->          SRSF10  comm=0.000321
+        A3B ->            RALY  comm=0.000321
+        A3B ->           SRSF5  comm=0.000120
+        A3B ->        EBNA1BP2  comm=0.000069
+        A3B ->            PPIH  comm=0.000066
+        A3B ->           PFDN2  comm=0.000066
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 18
+    A3 coreness: A3A=1, A3B=10
+    Harris max coreness: 17
+    Harris mean coreness: 3.3
+    A3 shares core levels with Harris: {1, 10}
+
+--------------------------------------------------------------------------------
+  Threshold 0.60
+--------------------------------------------------------------------------------
+  Network: 1744 nodes, 4716 edges, 86 components, LCC=1481
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 11
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 22, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A            SRSF5    0.0000        0       no
+         A3A         EBNA1BP2    0.0000        0       no
+         A3A           DNAJB1    0.0000        0       no
+         A3A             PPIH    0.0000        0       no
+         A3A            DHX36    0.0000        0       no
+         A3A           SRSF10    0.0000        0       no
+         A3A            PDIA3    0.0000        0       no
+         A3A            DNPEP    0.0000        0       no
+         A3A         HNRNPUL1    0.0000        0       no
+         A3A            PLOD2    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=8, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0001, max: 0.0001
+    Harris reached (comm > 1e-6): 3
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000062
+        A3B ->           SRSF5  comm=0.000011
+        A3B ->           PDIA3  comm=0.000001
+        A3B ->            PPIH  comm=0.000001
+        A3A ->            RALY  comm=0.000001
+        A3B ->           DHX36  comm=0.000000
+        A3B ->           DNPEP  comm=0.000000
+        A3B ->          DNAJB1  comm=0.000000
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 16
+    A3 coreness: A3A=1, A3B=3
+    Harris max coreness: 12
+    Harris mean coreness: 2.4
+    A3 shares core levels with Harris: {1, 3}
+
+--------------------------------------------------------------------------------
+  Threshold 0.65
+--------------------------------------------------------------------------------
+  Network: 1105 nodes, 2384 edges, 97 components, LCC=792
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 2
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 4, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RALY    0.0000        0       no
+         A3A             PPIH    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+         A3B             PPIH    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+    Top communicability pairs:
+        A3B ->            RALY  comm=0.000000
+        A3B ->            PPIH  comm=0.000000
+        A3A ->            RALY  comm=0.000000
+        A3A ->            PPIH  comm=0.000000
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 14
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 5
+    Harris mean coreness: 3.0
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.70 <<<AUTO
+--------------------------------------------------------------------------------
+  Network: 772 nodes, 1349 edges, 115 components, LCC=219
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 2, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RALY    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 14
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 1
+    Harris mean coreness: 1.0
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.75
+--------------------------------------------------------------------------------
+  Network: 482 nodes, 705 edges, 103 components, LCC=121
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 1
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 2, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+    Top A3-Harris TOM pairs:
+          A3           Harris       TOM   Shared   Direct
+         A3A             RALY    0.0000        0       no
+         A3B             RALY    0.0000        0       no
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=2, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 10
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 1
+    Harris mean coreness: 1.0
+    A3 shares core levels with Harris: {1}
+
+--------------------------------------------------------------------------------
+  Threshold 0.80
+--------------------------------------------------------------------------------
+  Network: 362 nodes, 459 edges, 97 components, LCC=51
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 9
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.85
+--------------------------------------------------------------------------------
+  Network: 250 nodes, 263 edges, 84 components, LCC=20
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 6
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+--------------------------------------------------------------------------------
+  Threshold 0.90
+--------------------------------------------------------------------------------
+  Network: 191 nodes, 178 edges, 72 components, LCC=8
+  A3 in network: 2 (A3A, A3B)
+  Harris in network: 0
+
+  [TOM] Topological Overlap:
+    Pairs evaluated: 0, non-zero: 0
+    Max TOM: 0.0000
+    A3A max TOM: 0.0000, A3B max TOM: 0.0000
+
+  [REACH] 2-Hop Reachability:
+    A3A: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    A3B: deg=1, 1-hop=0, 2-hop=0, total Harris=0 (0 A3B-sp)
+    Total unique Harris reached: 0
+
+  [COMM] Communicability:
+    A3A sum to Harris: 0.0000, max: 0.0000
+    A3B sum to Harris: 0.0000, max: 0.0000
+    Harris reached (comm > 1e-6): 0
+
+  [KCORE] K-Core Decomposition:
+    Max coreness in network: 5
+    A3 coreness: A3A=1, A3B=1
+    Harris max coreness: 0
+    Harris mean coreness: 0.0
+
+================================================================================
+  CROSS-NETWORK SUMMARY
+================================================================================
+
+  SBS2_VS_CNV (auto=0.65):
+   Thresh   Nodes    LCC   TOM_B   Rch_A   Rch_B     Com_A     Com_B   Kc_A   Kc_B   HarNet
+    -----   -----    ---   -----   -----   -----    ------    ------   ----   ----   ------
+     0.30    7042   6962   0.500      19      45     0.001     0.003     11     46       46
+     0.35    4536   4480   0.286       1      20     0.000     0.002      2     22       20
+     0.40    3023   2969   0.231       0       6     0.000     0.001      2      8        6
+     0.45    2079   1999   0.333       0       3     0.000     0.001      1      4        3
+     0.50    1495   1336   0.250       0       2     0.000     0.001      1      2        2
+     0.55     984    676   0.000       0       0     0.000     0.000      1      1        0
+     0.60     705    443   0.000       0       0     0.000     0.000      1      1        0
+     0.65     471    145   0.000       0       0     0.000     0.000      1      1        0 <<<
+     0.70     351     89   0.000       0       0     0.000     0.000      1      1        0
+     0.75     179     48   0.000       0       0     0.000     0.000      0      0        0
+     0.80     122     15   0.000       0       0     0.000     0.000      0      0        0
+     0.85      98      7   0.000       0       0     0.000     0.000      0      0        0
+     0.90      75      7   0.000       0       0     0.000     0.000      0      0        0
+
+  SBS2_VS_NORMAL (auto=0.65):
+   Thresh   Nodes    LCC   TOM_B   Rch_A   Rch_B     Com_A     Com_B   Kc_A   Kc_B   HarNet
+    -----   -----    ---   -----   -----   -----    ------    ------   ----   ----   ------
+     0.30    8306   8306   0.282      89      90     0.016     0.021    119    120      101
+     0.35    8152   8152   0.333      44      46     0.006     0.006     48     46       65
+     0.40    6685   6610   0.125      13       9     0.003     0.002     19     12       18
+     0.45    4191   4004   0.500       2       2     0.001     0.001      8      1        4
+     0.50    2434   2265   0.000       0       0     0.000     0.000      4      1        0
+     0.55    1436   1266   0.000       0       0     0.000     0.000      1      0        0
+     0.60     934    676   0.000       0       0     0.000     0.000      1      0        0
+     0.65     604    188   0.000       0       0     0.000     0.000      0      0        0 <<<
+     0.70     443     82   0.000       0       0     0.000     0.000      0      0        0
+     0.75     229     23   0.000       0       0     0.000     0.000      0      0        0
+     0.80     174     14   0.000       0       0     0.000     0.000      0      0        0
+     0.85     124     14   0.000       0       0     0.000     0.000      0      0        0
+     0.90      93      9   0.000       0       0     0.000     0.000      0      0        0
+
+  CNV_VS_NORMAL (auto=0.7):
+   Thresh   Nodes    LCC   TOM_B   Rch_A   Rch_B     Com_A     Com_B   Kc_A   Kc_B   HarNet
+    -----   -----    ---   -----   -----   -----    ------    ------   ----   ----   ------
+     0.30    9843   9843   0.472     125     139     0.007     0.052    127    310      139
+     0.35    9798   9798   0.429      68     125     0.002     0.049     47    146      125
+     0.40    8997   8975   0.444      17      84     0.001     0.022     12     68       88
+     0.45    6769   6651   0.333       2      41     0.000     0.008      2     32       42
+     0.50    4510   4395   0.500       0      18     0.000     0.005      1     16       18
+     0.55    2781   2615   0.333       0       3     0.000     0.002      1     10        3
+     0.60    1744   1481   0.000       0       0     0.000     0.000      1      3        0
+     0.65    1105    792   0.000       0       0     0.000     0.000      1      1        0
+     0.70     772    219   0.000       0       0     0.000     0.000      1      1        0 <<<
+     0.75     482    121   0.000       0       0     0.000     0.000      1      1        0
+     0.80     362     51   0.000       0       0     0.000     0.000      1      1        0
+     0.85     250     20   0.000       0       0     0.000     0.000      1      1        0
+     0.90     191      8   0.000       0       0     0.000     0.000      1      1        0
+
+  [SAVE] Summary CSV -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_feature_sweep_summary.csv
+
+================================================================================
+  GENERATING PLOTS
+================================================================================
+  [SAVE] Plots -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_feature_sweep_plots.png
+  [SAVE] Composite plot -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_feature_sweep_composite.png
+  [SAVE] Report -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_feature_sweep_report.txt
+
+================================================================================
+  FEATURE SWEEP COMPLETE
+================================================================================
+  Elapsed: 0:03:05.459511
