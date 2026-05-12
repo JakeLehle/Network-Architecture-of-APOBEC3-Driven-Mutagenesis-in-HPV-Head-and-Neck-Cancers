@@ -6,18 +6,34 @@ Run Leiden community detection on the DIFF network across multiple
 resolutions. Evaluate stability (ARI/NMI across runs), merge small
 communities, and save community assignments + network visualizations.
 
+UPDATED: Now includes unified DIFF threshold auto-selection, identical
+to the single-cell Step03 criterion. Among thresholds where A3A and/or
+A3B (those passing DE at raw p < 0.05 without force-keeping) have
+degree >= 1, selects the threshold with the highest connected component
+count. Ties broken by the lower (more inclusive) threshold.
+
+The DIFF correlation matrix is loaded from Step04's pickle, and the
+graph is rebuilt at the auto-selected threshold. This replaces the
+previous approach of loading a pre-built graph at a hardcoded threshold.
+
+Resolution selection uses composite score = modularity x ARI x evenness
+(unchanged from previous version).
+
 Corresponds to original pipeline Step 15.
 
 Input:
-    05_correlation_networks/{cancer_type}/graph_objects/{ct}_G_diff_noiso.gpickle
+    05_correlation_networks/{cancer_type}/corr_matrices/{ct}_corr_DIFF.pkl
+    03_differential_expression/{cancer_type}/{ct}_diffexpr_stats.csv
     01_cleaned_expression/ensg_to_symbol.json
 
 Output (-> data/FIG_2/06_communities/{cancer_type}/):
-    sweep/                     — per-resolution community assignments + plots
-    {ct}_resolution_sweep.csv  — stability metrics across resolutions
-    {ct}_sweep_plots.png       — modularity/ARI/NMI curves
-    {ct}_best_partition.csv    — final community assignments (best resolution)
-    {ct}_community_gene_lists.csv  — genes per community
+    sweep/                     -- per-resolution community assignments + plots
+    {ct}_resolution_sweep.csv  -- stability metrics across resolutions
+    {ct}_sweep_diagnostics.png -- 6-panel diagnostic plots
+    {ct}_best_partition.csv    -- final community assignments (best resolution)
+    {ct}_community_gene_lists.csv  -- genes per community
+    {ct}_threshold_sweep.csv   -- threshold selection diagnostics
+    {ct}_selected_parameters.txt -- threshold + resolution + metrics
 
 Usage:
     python Step05_Community_Detection.py
@@ -41,9 +57,265 @@ from network_config import (
     COMMUNITY_METHOD, COMMUNITY_RESOLUTIONS, RUNS_PER_RESOLUTION,
     COMMUNITY_BASE_SEED, USE_LARGEST_COMPONENT,
     TARGET_BIG_COMMUNITIES, MIN_COMMUNITY_SIZE,
-    DIR_01_CLEANED, DIR_04_NETWORKS, DIR_05_COMMUNITIES,
+    DIFF_THRESHOLD, SWEEP_THRESHOLDS,
+    RAW_P_THRESHOLD,
+    DIR_01_CLEANED, DIR_03_DIFFEXPR, DIR_04_NETWORKS, DIR_05_COMMUNITIES,
     banner, log, ensure_dir
 )
+
+
+# =============================================================================
+# GRAPH CONSTRUCTION
+# =============================================================================
+
+def build_weighted_graph(corr_df, threshold):
+    """Build undirected weighted graph from correlation matrix with |corr| >= threshold."""
+    genes = list(corr_df.index)
+    G = nx.Graph()
+    G.add_nodes_from(genes)
+    n = len(genes)
+    for i in range(n):
+        for j in range(i + 1, n):
+            w = float(corr_df.iat[i, j])
+            if abs(w) >= threshold and abs(w) < 0.999999:
+                G.add_edge(genes[i], genes[j], weight=w, abs_weight=abs(w))
+    return G
+
+
+def remove_isolated(G):
+    """Return copy of G with degree-0 nodes removed."""
+    G2 = G.copy()
+    isolates = [n for n in G2.nodes() if G2.degree(n) == 0]
+    G2.remove_nodes_from(isolates)
+    return G2
+
+
+# =============================================================================
+# UNIFIED THRESHOLD SELECTION
+# =============================================================================
+
+def auto_select_threshold(corr_diff, a3_seeds, sweep_thresholds):
+    """
+    Unified DIFF threshold selection (identical logic for TCGA and SC).
+
+    Among all thresholds where every A3 seed gene has degree >= 1,
+    select the threshold with the highest connected component count.
+    Ties broken by the lower (more inclusive) threshold.
+
+    Parameters
+    ----------
+    corr_diff : pd.DataFrame
+        DIFF correlation matrix (genes x genes).
+    a3_seeds : list of str
+        Gene IDs (ENSG for TCGA, symbols for SC) that passed DE.
+        Only A3A and/or A3B.
+    sweep_thresholds : list of float
+        Thresholds to evaluate.
+
+    Returns
+    -------
+    selected_threshold : float or None
+        The selected threshold, or None if no threshold satisfies the criterion.
+    sweep_df : pd.DataFrame
+        Diagnostic table with per-threshold metrics.
+    """
+    matrix_genes = set(corr_diff.index)
+
+    # Verify which A3 seeds are actually in the matrix
+    seeds_in_matrix = [g for g in a3_seeds if g in matrix_genes]
+    seeds_missing = [g for g in a3_seeds if g not in matrix_genes]
+
+    log(f"  A3 seed genes for threshold selection:")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, g)
+        log(f"    {g} ({alias}) -- IN matrix")
+    for g in seeds_missing:
+        alias = A3_ID_TO_ALIAS.get(g, g)
+        log(f"    {g} ({alias}) -- MISSING from matrix")
+
+    if not seeds_in_matrix:
+        log("  WARNING: No A3 seed genes found in DIFF matrix. Cannot auto-select.")
+        return None, pd.DataFrame()
+
+    # Sweep thresholds
+    rows = []
+    for t in sorted(sweep_thresholds):
+        G = build_weighted_graph(corr_diff, t)
+        G_noiso = remove_isolated(G)
+
+        n_nodes = G_noiso.number_of_nodes()
+        n_edges = G_noiso.number_of_edges()
+
+        if n_nodes > 0:
+            components = list(nx.connected_components(G_noiso))
+            n_comp = len(components)
+            lcc_size = len(max(components, key=len))
+        else:
+            n_comp = 0
+            lcc_size = 0
+
+        # Check degree of each A3 seed
+        seed_degrees = {}
+        all_seeds_connected = True
+        for g in seeds_in_matrix:
+            deg = G_noiso.degree(g) if g in G_noiso else 0
+            seed_degrees[g] = deg
+            if deg < 1:
+                all_seeds_connected = False
+
+        rows.append({
+            "threshold": t,
+            "nodes": n_nodes,
+            "edges": n_edges,
+            "components": n_comp,
+            "lcc_size": lcc_size,
+            "all_seeds_connected": all_seeds_connected,
+            **{f"deg_{A3_ID_TO_ALIAS.get(g, g)}": d for g, d in seed_degrees.items()},
+        })
+
+    sweep_df = pd.DataFrame(rows)
+
+    # Log the sweep table
+    log(f"\n  {'Thresh':>7s}  {'Nodes':>6s}  {'Edges':>7s}  {'Comp':>5s}  "
+        f"{'LCC':>5s}  {'A3 OK':>5s}  ", end="")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, g)
+        log(f"{'deg_' + alias:>8s}  ", end="")
+    log("")
+    log(f"  {'-----':>7s}  {'-----':>6s}  {'-----':>7s}  {'----':>5s}  "
+        f"{'---':>5s}  {'-----':>5s}  ", end="")
+    for _ in seeds_in_matrix:
+        log(f"{'--------':>8s}  ", end="")
+    log("")
+
+    for _, row in sweep_df.iterrows():
+        marker = " <--" if row["all_seeds_connected"] else ""
+        log(f"  {row['threshold']:>7.2f}  {row['nodes']:>6.0f}  "
+            f"{row['edges']:>7.0f}  {row['components']:>5.0f}  "
+            f"{row['lcc_size']:>5.0f}  {'YES' if row['all_seeds_connected'] else 'no':>5s}  ",
+            end="")
+        for g in seeds_in_matrix:
+            alias = A3_ID_TO_ALIAS.get(g, g)
+            col = f"deg_{alias}"
+            log(f"{row[col]:>8.0f}  ", end="")
+        log(marker)
+
+    # Filter to A3-valid thresholds
+    valid = sweep_df[sweep_df["all_seeds_connected"]].copy()
+
+    if len(valid) == 0:
+        log("\n  WARNING: No threshold keeps all A3 seeds connected (degree >= 1).")
+        log("  Falling back to config DIFF_THRESHOLD.")
+        return None, sweep_df
+
+    # Among valid thresholds, find peak component count
+    max_comp = valid["components"].max()
+    peak_candidates = valid[valid["components"] == max_comp]
+
+    # Ties broken by lower (more inclusive) threshold
+    selected = float(peak_candidates["threshold"].min())
+
+    sel_row = sweep_df[sweep_df["threshold"] == selected].iloc[0]
+    log(f"\n  SELECTED threshold: {selected:.2f}")
+    log(f"    Reason: peak components ({int(sel_row['components'])}) among "
+        f"A3-valid thresholds")
+    log(f"    Nodes: {int(sel_row['nodes'])}, Edges: {int(sel_row['edges'])}, "
+        f"LCC: {int(sel_row['lcc_size'])}")
+    for g in seeds_in_matrix:
+        alias = A3_ID_TO_ALIAS.get(g, g)
+        col = f"deg_{alias}"
+        log(f"    {alias} degree: {int(sel_row[col])}")
+
+    return selected, sweep_df
+
+
+# =============================================================================
+# A3 SEED IDENTIFICATION
+# =============================================================================
+
+def identify_a3_seeds(de_dir, cancer_type):
+    """
+    Identify which of A3A and A3B pass DE at raw p < 0.05 without force-keeping.
+
+    For TCGA, genes are ENSG IDs. Looks for the DE stats file and checks
+    A3A (ENSG00000128383) and A3B (ENSG00000179750).
+
+    Parameters
+    ----------
+    de_dir : str
+        Path to DE results directory for this cancer type.
+    cancer_type : str
+        Cancer type label (e.g. "TCGA-HNSC").
+
+    Returns
+    -------
+    seeds : list of str
+        ENSG IDs for A3A and/or A3B that passed DE.
+    """
+    # Look for DE results file
+    de_candidates = [
+        os.path.join(de_dir, f"{cancer_type}_diffexpr_stats.csv"),
+        os.path.join(de_dir, f"{cancer_type}_diffexpr_stats.tsv"),
+    ]
+
+    de_path = None
+    for p in de_candidates:
+        if os.path.exists(p):
+            de_path = p
+            break
+
+    # A3A and A3B ENSG IDs
+    a3a_ensg = "ENSG00000128383"
+    a3b_ensg = "ENSG00000179750"
+
+    if de_path is None:
+        log(f"  WARNING: No DE results file found in {de_dir}")
+        log(f"  Defaulting to both A3A and A3B as seeds")
+        return [a3a_ensg, a3b_ensg]
+
+    log(f"  Loading DE results: {de_path}")
+    sep = "\t" if de_path.endswith(".tsv") else ","
+    de_df = pd.read_csv(de_path, sep=sep)
+
+    # Identify gene column
+    gene_col = None
+    for col in ["gene", "gene_symbol", "Gene", "gene_id"]:
+        if col in de_df.columns:
+            gene_col = col
+            break
+    if gene_col is None:
+        log(f"  WARNING: Cannot identify gene column. Columns: {list(de_df.columns)}")
+        return [a3a_ensg, a3b_ensg]
+
+    # Identify p-value column
+    pval_col = None
+    for col in ["p_value", "pvalue", "pval", "raw_p", "PValue"]:
+        if col in de_df.columns:
+            pval_col = col
+            break
+    if pval_col is None:
+        log(f"  WARNING: Cannot identify p-value column. Columns: {list(de_df.columns)}")
+        return [a3a_ensg, a3b_ensg]
+
+    # Check A3A and A3B
+    seeds = []
+    for ensg, label in [(a3a_ensg, "A3A"), (a3b_ensg, "A3B")]:
+        match = de_df[de_df[gene_col] == ensg]
+        if len(match) > 0:
+            row = match.iloc[0]
+            pval = float(row[pval_col])
+            if pval < RAW_P_THRESHOLD:
+                log(f"    {label} ({ensg}): PASSED DE (p={pval:.2e})")
+                seeds.append(ensg)
+            else:
+                log(f"    {label} ({ensg}): FAILED DE (p={pval:.2e})")
+        else:
+            log(f"    {label} ({ensg}): not found in DE results")
+
+    if not seeds:
+        log(f"  WARNING: Neither A3A nor A3B passed DE. Cannot anchor threshold.")
+
+    return seeds
 
 
 # =============================================================================
@@ -149,22 +421,99 @@ with open(symbol_path) as f:
 # =============================================================================
 for cancer_type in CANCER_TYPES:
 
-    banner(f"[STEP 15] Community Detection — {cancer_type}", char="=")
+    banner(f"[STEP 15] Community Detection -- {cancer_type}", char="=")
 
     cancer_dir = ensure_dir(os.path.join(DIR_05_COMMUNITIES, cancer_type))
     sweep_dir = ensure_dir(os.path.join(cancer_dir, "sweep"))
 
-    # ---- Load DIFF graph
-    pkl_path = os.path.join(DIR_04_NETWORKS, cancer_type, "graph_objects",
-                            f"{cancer_type}_G_diff_noiso.gpickle")
-    if not os.path.exists(pkl_path):
-        log(f"[SKIP] DIFF graph not found: {pkl_path}")
-        continue
+    # =========================================================================
+    # NEW: Identify A3 seeds and auto-select DIFF threshold
+    # =========================================================================
+    banner("[STEP 15.0] Unified DIFF threshold selection")
 
-    with open(pkl_path, "rb") as f:
-        G_diff_noiso = pickle.load(f)
+    # Identify A3 seeds from DE results
+    de_cancer_dir = os.path.join(DIR_03_DIFFEXPR, cancer_type)
+    a3_seeds = identify_a3_seeds(de_cancer_dir, cancer_type)
 
-    log(f"[STEP 15.0] Loaded DIFF graph: nodes={G_diff_noiso.number_of_nodes()}, edges={G_diff_noiso.number_of_edges()}")
+    if not a3_seeds:
+        log("WARNING: No A3 seed genes available. Falling back to config threshold.")
+        active_threshold = DIFF_THRESHOLD
+    else:
+        log(f"  A3 seeds: {a3_seeds}")
+
+        # Load DIFF correlation matrix
+        corr_path = os.path.join(DIR_04_NETWORKS, cancer_type, "corr_matrices",
+                                 f"{cancer_type}_corr_DIFF.pkl")
+        if not os.path.exists(corr_path):
+            log(f"  WARNING: DIFF correlation matrix not found: {corr_path}")
+            log(f"  Falling back to config threshold: {DIFF_THRESHOLD}")
+            active_threshold = DIFF_THRESHOLD
+        else:
+            log(f"  Loading DIFF matrix: {corr_path}")
+            with open(corr_path, "rb") as f:
+                corr_diff = pickle.load(f)
+            log(f"  DIFF matrix shape: {corr_diff.shape}")
+
+            selected_threshold, threshold_sweep_df = auto_select_threshold(
+                corr_diff, a3_seeds, SWEEP_THRESHOLDS
+            )
+
+            if selected_threshold is not None:
+                active_threshold = selected_threshold
+            else:
+                active_threshold = DIFF_THRESHOLD
+                log(f"  Using config fallback: {active_threshold}")
+
+            # Save threshold sweep diagnostics
+            if len(threshold_sweep_df) > 0:
+                thresh_csv = os.path.join(cancer_dir, f"{cancer_type}_threshold_sweep.csv")
+                threshold_sweep_df.to_csv(thresh_csv, index=False)
+                log(f"  [SAVE] Threshold sweep -> {thresh_csv}")
+
+    log(f"\n  Active DIFF threshold: {active_threshold}")
+
+    # =========================================================================
+    # Build DIFF graph at the selected threshold
+    # =========================================================================
+    banner("[STEP 15.0b] Build DIFF graph at selected threshold")
+
+    # Check if we already loaded the correlation matrix above
+    if 'corr_diff' not in dir():
+        # Load it now (fallback path where seeds failed but we still need the graph)
+        corr_path = os.path.join(DIR_04_NETWORKS, cancer_type, "corr_matrices",
+                                 f"{cancer_type}_corr_DIFF.pkl")
+        if not os.path.exists(corr_path):
+            # Last resort: try loading pre-built graph at original threshold
+            pkl_path = os.path.join(DIR_04_NETWORKS, cancer_type, "graph_objects",
+                                    f"{cancer_type}_G_diff_noiso.gpickle")
+            if not os.path.exists(pkl_path):
+                log(f"[SKIP] Neither DIFF matrix nor pre-built graph found for {cancer_type}")
+                continue
+            log(f"  Loading pre-built graph (legacy fallback): {pkl_path}")
+            with open(pkl_path, "rb") as f:
+                G_diff_noiso = pickle.load(f)
+        else:
+            with open(corr_path, "rb") as f:
+                corr_diff = pickle.load(f)
+
+    # Build graph from correlation matrix if we have it
+    if 'corr_diff' in dir():
+        log(f"  Building graph at |delta-rho| >= {active_threshold}")
+        G_diff = build_weighted_graph(corr_diff, active_threshold)
+        G_diff_noiso = remove_isolated(G_diff)
+
+        # Save rebuilt graph for downstream steps
+        graph_dir = ensure_dir(os.path.join(DIR_04_NETWORKS, cancer_type, "graph_objects"))
+        graph_save_path = os.path.join(graph_dir, f"{cancer_type}_G_diff_noiso.gpickle")
+        with open(graph_save_path, "wb") as f:
+            pickle.dump(G_diff_noiso, f)
+        log(f"  [SAVE] Updated DIFF graph -> {graph_save_path}")
+
+        # Clean up to free memory
+        del corr_diff
+
+    log(f"  DIFF graph: nodes={G_diff_noiso.number_of_nodes()}, "
+        f"edges={G_diff_noiso.number_of_edges()}")
 
     # ---- Prepare graph for community detection
     banner("[STEP 15.1] Prepare graph")
@@ -176,6 +525,13 @@ for cancer_type in CANCER_TYPES:
         log(f"[STEP 15.1] Before LCC: {G_comm.number_of_nodes()} nodes")
         log(f"[STEP 15.1] After LCC:  {G_comm_lcc.number_of_nodes()} nodes")
         G_comm = G_comm_lcc
+
+        # Report A3 seed status
+        for g in a3_seeds:
+            alias = A3_ID_TO_ALIAS.get(g, g)
+            in_lcc = g in G_comm
+            deg = G_diff_noiso.degree(g) if g in G_diff_noiso else 0
+            log(f"  {alias}: {'IN LCC' if in_lcc else 'NOT in LCC'} (degree={deg})")
 
     # Ensure abs_weight
     for u, v, d in G_comm.edges(data=True):
@@ -279,7 +635,7 @@ for cancer_type in CANCER_TYPES:
         pos = nx.spring_layout(G_comm, seed=COMMUNITY_BASE_SEED, weight="abs_weight")
 
         unique_comms = sorted(set(cm_merged.values()))
-        cmap = plt.cm.get_cmap("tab20", max(len(unique_comms), 1))
+        cmap = plt.colormaps["tab20"].resampled(max(len(unique_comms), 1))
         comm_colors = {c: cmap(i) for i, c in enumerate(unique_comms)}
 
         fig, ax = plt.subplots(figsize=(14, 12))
@@ -346,25 +702,16 @@ for cancer_type in CANCER_TYPES:
     # =========================================================================
     # Compute composite selection metrics
     # =========================================================================
-    # Evenness: 1 - (largest_community / total_genes)
-    # Penalizes degenerate solutions where one community absorbs everything
     sweep_df["evenness"] = 1.0 - (sweep_df["largest_community"] / sweep_df["n_total_genes"])
 
-    # Composite score: modularity × ARI × evenness
-    # - modularity rewards partition quality
-    # - ARI rewards reproducibility (but multiplied by modularity, so
-    #   stable trivial partitions score low since their modularity ≈ 0)
-    # - evenness penalizes one-giant-community solutions
     sweep_df["composite_score"] = (
         sweep_df["modularity_best"] *
         sweep_df["ARI_mean"] *
         sweep_df["evenness"]
     )
 
-    # Delta-modularity: marginal gain at each resolution step
     sweep_df["delta_modularity"] = sweep_df["modularity_best"].diff().fillna(0)
 
-    # Normalized delta: fraction of remaining possible gain captured at each step
     max_mod = sweep_df["modularity_best"].max()
     sweep_df["delta_normalized"] = sweep_df["delta_modularity"] / (max_mod + 1e-10)
 
@@ -373,7 +720,7 @@ for cancer_type in CANCER_TYPES:
 
     # ---- Log the full sweep table
     log("\n[STEP 15.8] Resolution sweep summary:")
-    log(f"{'Res':>5s} | {'Mod':>6s} | {'ARI':>5s} | {'Even':>5s} | {'Comp':>6s} | {'ΔMod':>6s} | {'Comms':>5s} | {'Largest':>7s}")
+    log(f"{'Res':>5s} | {'Mod':>6s} | {'ARI':>5s} | {'Even':>5s} | {'Comp':>6s} | {'dMod':>6s} | {'Comms':>5s} | {'Largest':>7s}")
     log("-" * 65)
     for _, row in sweep_df.iterrows():
         log(f"{row['resolution']:5.2f} | {row['modularity_best']:6.4f} | "
@@ -382,7 +729,7 @@ for cancer_type in CANCER_TYPES:
             f"{row['ncomms_mean']:5.1f} | {row['largest_community']:7.0f}")
 
     # =========================================================================
-    # Diagnostic sweep plots (5 panels)
+    # Diagnostic sweep plots (6 panels)
     # =========================================================================
     fig, axes = plt.subplots(2, 3, figsize=(22, 12))
 
@@ -410,29 +757,28 @@ for cancer_type in CANCER_TYPES:
     ax.set_title(f"{cancer_type} | Evenness (1 - largest/total)", fontsize=13)
     ax.set_ylim(-0.05, 1.05)
 
-    # Panel 4: COMPOSITE SCORE vs resolution (★ the selection criterion)
+    # Panel 4: Composite score
     ax = axes[1, 0]
     ax.plot(sweep_df["resolution"], sweep_df["composite_score"], "o-",
             color="darkorange", linewidth=2, markersize=8)
-    # Mark the best
     best_idx = sweep_df["composite_score"].idxmax()
     ax.scatter([sweep_df.loc[best_idx, "resolution"]],
               [sweep_df.loc[best_idx, "composite_score"]],
               s=200, c="red", zorder=5, edgecolors="black", linewidths=2)
     ax.set_xlabel("Resolution", fontsize=12)
-    ax.set_ylabel("Composite (Mod × ARI × Even)", fontsize=12)
-    ax.set_title(f"{cancer_type} | ★ Composite Score", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Composite (Mod x ARI x Even)", fontsize=12)
+    ax.set_title(f"{cancer_type} | Composite Score", fontsize=13, fontweight="bold")
 
-    # Panel 5: Delta-modularity (scree/elbow plot)
+    # Panel 5: Delta-modularity
     ax = axes[1, 1]
     ax.bar(sweep_df["resolution"], sweep_df["delta_modularity"],
            width=0.08, color="steelblue", edgecolor="black", linewidth=0.5)
     ax.axhline(0, color="black", lw=0.5)
     ax.set_xlabel("Resolution", fontsize=12)
-    ax.set_ylabel("Δ Modularity", fontsize=12)
+    ax.set_ylabel("Delta Modularity", fontsize=12)
     ax.set_title(f"{cancer_type} | Delta-Modularity (Elbow)", fontsize=13)
 
-    # Panel 6: Number of communities vs resolution
+    # Panel 6: Community count
     ax = axes[1, 2]
     ax.errorbar(sweep_df["resolution"], sweep_df["ncomms_mean"],
                 yerr=sweep_df["ncomms_std"], marker="o", capsize=3, color="purple")
@@ -440,7 +786,8 @@ for cancer_type in CANCER_TYPES:
     ax.set_ylabel("N Communities", fontsize=12)
     ax.set_title(f"{cancer_type} | Community Count", fontsize=13)
 
-    plt.suptitle(f"{cancer_type} — Resolution Selection Diagnostics", fontsize=16, fontweight="bold")
+    plt.suptitle(f"{cancer_type} -- Resolution Selection Diagnostics "
+                 f"(threshold={active_threshold})", fontsize=16, fontweight="bold")
     plt.tight_layout()
     sweep_plot = os.path.join(cancer_dir, f"{cancer_type}_sweep_diagnostics.png")
     plt.savefig(sweep_plot, dpi=300)
@@ -453,7 +800,7 @@ for cancer_type in CANCER_TYPES:
     best_row = sweep_df.loc[sweep_df["composite_score"].idxmax()]
     best_res = best_row["resolution"]
 
-    log(f"\n[STEP 15] ★ SELECTED RESOLUTION: {best_res:.2f}")
+    log(f"\n[STEP 15] SELECTED RESOLUTION: {best_res:.2f}")
     log(f"  Composite score: {best_row['composite_score']:.4f}")
     log(f"  Modularity: {best_row['modularity_best']:.4f}")
     log(f"  ARI: {best_row['ARI_mean']:.3f}")
@@ -478,12 +825,26 @@ for cancer_type in CANCER_TYPES:
             shutil.copy2(best_gene_csv, final_genes)
             log(f"[SAVE] Gene lists -> {final_genes}")
 
-    # Save the community graph itself
+    # Save the community graph
     comm_pkl = os.path.join(cancer_dir, f"{cancer_type}_G_comm.gpickle")
     with open(comm_pkl, "wb") as f:
         pickle.dump(G_comm, f)
     log(f"[SAVE] Community graph -> {comm_pkl}")
 
+    # Save selected parameters (new output)
+    params_path = os.path.join(cancer_dir, f"{cancer_type}_selected_parameters.txt")
+    with open(params_path, "w") as f:
+        f.write(f"DIFF_THRESHOLD={active_threshold}\n")
+        f.write(f"THRESHOLD_METHOD=unified_a3_connectivity_component_peak\n")
+        f.write(f"LEIDEN_RESOLUTION={best_res}\n")
+        f.write(f"RESOLUTION_METHOD=composite_score_mod_x_ari_x_evenness\n")
+        f.write(f"MODULARITY={best_row['modularity_best']:.4f}\n")
+        f.write(f"ARI={best_row['ARI_mean']:.4f}\n")
+        f.write(f"EVENNESS={best_row['evenness']:.4f}\n")
+        f.write(f"COMPOSITE_SCORE={best_row['composite_score']:.4f}\n")
+        f.write(f"A3_SEEDS={','.join(a3_seeds)}\n")
+    log(f"[SAVE] Selected parameters -> {params_path}")
+
     log(f"\n[STEP 15 COMPLETE for {cancer_type}]")
 
-banner("[STEP 06 COMPLETE — ALL CANCER TYPES]")
+banner("[STEP 05 COMPLETE -- ALL CANCER TYPES]")

@@ -171,7 +171,7 @@ LOGFC_THRESHOLD = 0               # No fold-change filter (bulk TCGA effect size
 FDR_THRESHOLD  = 0.05
 
 # Always retain A3 genes even if not significant
-FORCE_KEEP_A3 = True
+FORCE_KEEP_A3 = False
 
 # Legacy (kept for reference, no longer used in Step03)
 P_VALUE_THRESHOLD = 0.025
