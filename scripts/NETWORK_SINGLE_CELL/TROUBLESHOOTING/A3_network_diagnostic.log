@@ -1,0 +1,1869 @@
+
+================================================================================
+  DIAGNOSTIC: A3 Correlation Landscape Across Three Networks
+================================================================================
+  Start: 2026-05-09 14:57:49.496658
+  Output: /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT
+  Harris interactors (all): 174
+  Harris interactors (A3B-specific): 51
+
+********************************************************************************
+  NETWORK: SBS2_VS_CNV
+********************************************************************************
+  SBS2-HIGH vs CNV-HIGH (divergent fates)
+  Directory: /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/NETWORK_SBS2_VS_CNV
+  Auto-selected threshold: 0.65
+  DIFF matrix: (9342, 9342)
+
+================================================================================
+  PHASE 1: A3 Gene Correlation Profiles — SBS2_VS_CNV
+================================================================================
+  Matrix genes: 9342
+
+  A3A (APOBEC3A):
+    Max |delta-rho|: 0.7386
+    95th percentile: 0.1630
+    90th percentile: 0.1357
+    75th percentile: 0.0950
+    Median:          0.0565
+    Auto threshold:  0.65
+    INCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        11  
+        0.35         2  
+        0.40         2  
+        0.45         1  
+        0.50         1  
+        0.55         1  
+        0.60         1  
+        0.65         1  AUTO >>>
+        0.70         1  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                APOBEC3B        0.7386     +0.7386
+                 GPR15LG        0.4080     -0.4080
+                   IL2RG        0.3347     +0.3347
+                 NDUFAF8        0.3268     -0.3268
+                   NEAT1        0.3228     -0.3228
+                     MIF        0.3219     -0.3219
+                  S100A8        0.3130     -0.3130
+                  S100A2        0.3101     -0.3101
+                    CD44        0.3083     -0.3083
+                   PRRX1        0.3034     +0.3034
+
+  A3B (APOBEC3B):
+    Max |delta-rho|: 0.7386
+    95th percentile: 0.2096
+    90th percentile: 0.1712
+    75th percentile: 0.1169
+    Median:          0.0668
+    Auto threshold:  0.65
+    INCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        87  
+        0.35        33  
+        0.40        12  
+        0.45         5  
+        0.50         3  
+        0.55         2  
+        0.60         2  
+        0.65         1  AUTO >>>
+        0.70         1  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                APOBEC3A        0.7386     +0.7386
+                   PLAUR        0.6090     +0.6090
+                    MT1X        0.5122     +0.5122
+                  S100A8        0.4762     +0.4762
+                  TMSB10        0.4616     +0.4616
+                  SLC6A8        0.4380     +0.4380
+                  S100A9        0.4302     +0.4302
+                   VCAM1        0.4259     -0.4259
+                   KRT6A        0.4167     +0.4167
+                  NIBAN2        0.4158     +0.4158
+
+  A3C (APOBEC3C):
+    Max |delta-rho|: 0.2669
+    95th percentile: 0.1311
+    90th percentile: 0.1094
+    75th percentile: 0.0773
+    Median:          0.0454
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30         0  
+        0.35         0  
+        0.40         0  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                    XPOT        0.2669     +0.2669
+                   LSM10        0.2399     +0.2399
+                    ST20        0.2398     +0.2398
+                 ATP6V0C        0.2369     +0.2369
+                    LY96        0.2345     +0.2345
+                   CLCA4        0.2332     +0.2332
+                    PCCB        0.2290     +0.2290
+                    PATJ        0.2267     +0.2267
+                   ATG2A        0.2266     +0.2266
+                 SLC6A14        0.2183     +0.2183
+
+  A3D (APOBEC3D):
+    Max |delta-rho|: 0.4143
+    95th percentile: 0.1347
+    90th percentile: 0.1107
+    75th percentile: 0.0759
+    Median:          0.0405
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30         4  
+        0.35         1  
+        0.40         1  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+         ENSG00000274253        0.4143     +0.4143
+                   SMOC1        0.3131     +0.3131
+                     SLA        0.3081     -0.3081
+               IER5L-AS1        0.3023     +0.3023
+                    FLNC        0.2981     +0.2981
+               LINC00683        0.2916     +0.2916
+               FGF14-AS2        0.2910     +0.2910
+                   ACSF2        0.2815     +0.2815
+                    DMTN        0.2744     -0.2744
+                   THBS4        0.2734     +0.2734
+
+  A3F (APOBEC3F):
+    Max |delta-rho|: 0.2745
+    95th percentile: 0.1427
+    90th percentile: 0.1180
+    75th percentile: 0.0822
+    Median:          0.0471
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30         0  
+        0.35         0  
+        0.40         0  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                   CCNJL        0.2745     +0.2745
+                     FAP        0.2642     +0.2642
+                   EVA1A        0.2560     +0.2560
+                    SGTB        0.2558     +0.2558
+         ENSG00000290921        0.2475     +0.2475
+                    AMZ1        0.2449     +0.2449
+                 SLC38A2        0.2434     +0.2434
+                    HCST        0.2431     +0.2431
+                   MED22        0.2430     +0.2430
+                    TSFM        0.2421     +0.2421
+
+  A3G (APOBEC3G):
+    Max |delta-rho|: 0.3367
+    95th percentile: 0.1642
+    90th percentile: 0.1359
+    75th percentile: 0.0938
+    Median:          0.0542
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30         6  
+        0.35         0  
+        0.40         0  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                     FTL        0.3367     +0.3367
+                 SLC16A1        0.3277     +0.3277
+                   FBLN5        0.3267     -0.3267
+                   PLAUR        0.3157     +0.3157
+                 ST3GAL5        0.3021     +0.3021
+                   EFNA1        0.3005     +0.3005
+                     DST        0.2985     +0.2985
+                   FXYD2        0.2982     -0.2982
+                  TRIM28        0.2820     +0.2820
+                   RPS19        0.2809     +0.2809
+
+  A3H (APOBEC3H):
+    Max |delta-rho|: 0.4689
+    95th percentile: 0.1493
+    90th percentile: 0.1226
+    75th percentile: 0.0797
+    Median:          0.0431
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        27  
+        0.35        18  
+        0.40         6  
+        0.45         4  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                  STARD9        0.4689     +0.4689
+                     KIT        0.4655     +0.4655
+                PELP1-DT        0.4655     +0.4655
+         ENSG00000291095        0.4611     +0.4611
+                  ZBTB10        0.4167     +0.4167
+               LINC01615        0.4110     +0.4110
+                  MEGF10        0.3910     +0.3910
+                TMEM200A        0.3892     +0.3892
+                    VAV2        0.3886     +0.3886
+                 FAM171B        0.3853     +0.3853
+
+================================================================================
+  PHASE 2: Harris Interactor Landscape — SBS2_VS_CNV
+================================================================================
+  Harris interactors in DIFF matrix: 129 / 174
+  Harris A3B-specific in DIFF matrix: 32 / 51
+
+  Harris interactor connectivity across thresholds:
+    Thresh   Connected      Frac    A3B-sp    MedDeg    MaxDeg
+    ------  ----------      ----    ------    ------    ------
+      0.30          89     69.0%        24         8       743
+      0.35          50     38.8%        17         9       475
+      0.40          32     24.8%        12         4       322
+      0.45          23     17.8%         9         2       213
+      0.50           9      7.0%         2         5       144
+      0.55           4      3.1%         1         1        98
+      0.60           3      2.3%         0         1        66
+      0.65           1      0.8%         0        39        39  AUTO >>>
+      0.70           1      0.8%         0        21        21
+      0.75           1      0.8%         0        12        12
+      0.80           1      0.8%         0         6         6
+      0.85           1      0.8%         0         2         2
+      0.90           1      0.8%         0         2         2
+
+  A3-to-Harris DIFF correlations:
+
+    A3A -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.2715
+      95th pctl:       0.1478
+      90th pctl:       0.1416
+      75th pctl:       0.1006
+      Median:          0.0614
+      Mean:            0.0669
+      Top 5 interactors:
+                       LONP1  |rho|=0.2715  raw=-0.2715
+                       MEPCE  |rho|=0.1844  raw=-0.1844
+                        PUS7  |rho|=0.1686  raw=-0.1686
+                      DNAJC7  |rho|=0.1630  raw=+0.1630
+                       PDCL3  |rho|=0.1612  raw=+0.1612
+
+    A3B -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.2698
+      95th pctl:       0.2039
+      90th pctl:       0.1884
+      75th pctl:       0.1216
+      Median:          0.0663
+      Mean:            0.0856
+      Top 5 interactors:
+                       PLOD2  |rho|=0.2698  raw=+0.2698
+                        RALY  |rho|=0.2599  raw=+0.2599
+                     ZC3HAV1  |rho|=0.2445  raw=+0.2445
+                         CNP  |rho|=0.2350  raw=+0.2350
+                    EBNA1BP2  |rho|=0.2252  raw=+0.2252
+
+    A3C -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.1692
+      95th pctl:       0.1349
+      90th pctl:       0.1085
+      75th pctl:       0.0770
+      Median:          0.0537
+      Mean:            0.0555
+      Top 5 interactors:
+                       GRSF1  |rho|=0.1692  raw=+0.1692
+                        HAGH  |rho|=0.1600  raw=+0.1600 [A3B-sp]
+                        SNW1  |rho|=0.1544  raw=+0.1544
+                       SF3B2  |rho|=0.1475  raw=+0.1475 [A3B-sp]
+                       PFDN2  |rho|=0.1456  raw=+0.1456 [A3B-sp]
+
+    A3D -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.1583
+      95th pctl:       0.1197
+      90th pctl:       0.0984
+      75th pctl:       0.0738
+      Median:          0.0451
+      Mean:            0.0530
+      Top 5 interactors:
+                       TXLNA  |rho|=0.1583  raw=+0.1583
+                       FKBP5  |rho|=0.1577  raw=+0.1577
+                        PPIH  |rho|=0.1409  raw=+0.1409
+                       PPM1G  |rho|=0.1343  raw=+0.1343
+                      TIMM8A  |rho|=0.1307  raw=+0.1307
+
+    A3F -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.1914
+      95th pctl:       0.1252
+      90th pctl:       0.1156
+      75th pctl:       0.0888
+      Median:          0.0463
+      Mean:            0.0568
+      Top 5 interactors:
+                       PLOD1  |rho|=0.1914  raw=+0.1914 [A3B-sp]
+                       RRP1B  |rho|=0.1774  raw=+0.1774
+                         CNP  |rho|=0.1758  raw=+0.1758
+                       PFDN4  |rho|=0.1570  raw=+0.1570 [A3B-sp]
+                    EBNA1BP2  |rho|=0.1480  raw=+0.1480
+
+    A3G -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.2440
+      95th pctl:       0.1584
+      90th pctl:       0.1336
+      75th pctl:       0.0883
+      Median:          0.0532
+      Mean:            0.0638
+      Top 5 interactors:
+                       FUBP1  |rho|=0.2440  raw=+0.2440 [A3B-sp]
+                        CRKL  |rho|=0.1952  raw=+0.1952
+                        NXF1  |rho|=0.1942  raw=+0.1942
+                     FAM120A  |rho|=0.1852  raw=+0.1852 [A3B-sp]
+                       CASC3  |rho|=0.1796  raw=+0.1796
+
+    A3H -> Harris (129 interactors in matrix):
+      Max |delta-rho|: 0.1768
+      95th pctl:       0.1228
+      90th pctl:       0.1051
+      75th pctl:       0.0652
+      Median:          0.0359
+      Mean:            0.0466
+      Top 5 interactors:
+                       STUB1  |rho|=0.1768  raw=-0.1768
+                         SSB  |rho|=0.1534  raw=+0.1534
+                        MAP4  |rho|=0.1428  raw=+0.1428 [A3B-sp]
+                       SART3  |rho|=0.1418  raw=+0.1418
+                      DNAJA3  |rho|=0.1353  raw=+0.1353
+
+  Harris-to-Harris DIFF correlations:
+    Pairs: 8256
+    Max |delta-rho|: 0.4034
+    95th pctl:       0.1809
+    90th pctl:       0.1499
+    75th pctl:       0.1039
+    Median:          0.0611
+    Mean:            0.0731
+
+================================================================================
+  PHASE 3: Threshold Entry/Exit Tracking — SBS2_VS_CNV
+================================================================================
+
+  Threshold 0.30:
+    Network: 7042 nodes, 113118 edges, 41 components, LCC=6962
+    A3 in network: 5 (A3A, A3B, A3D, A3G, A3H)
+    A3 in LCC:     5 (A3A, A3B, A3D, A3G, A3H)
+    A3 degrees:    A3A=11, A3B=87, A3D=4, A3G=6, A3H=27
+    Harris in network: 89 / 129
+    Harris in LCC:     88 / 129
+
+  Threshold 0.35:
+    Network: 4536 nodes, 48307 edges, 29 components, LCC=4480
+    A3 in network: 4 (A3A, A3B, A3D, A3H)
+    A3 in LCC:     4 (A3A, A3B, A3D, A3H)
+    A3 degrees:    A3A=2, A3B=33, A3D=1, A3H=18
+    Harris in network: 50 / 129
+    Harris in LCC:     49 / 129
+
+  Threshold 0.40:
+    Network: 3023 nodes, 22240 edges, 24 components, LCC=2969
+    A3 in network: 4 (A3A, A3B, A3D, A3H)
+    A3 in LCC:     4 (A3A, A3B, A3D, A3H)
+    A3 degrees:    A3A=2, A3B=12, A3D=1, A3H=6
+    Harris in network: 32 / 129
+    Harris in LCC:     31 / 129
+
+  Threshold 0.45:
+    Network: 2079 nodes, 10657 edges, 36 components, LCC=1999
+    A3 in network: 3 (A3A, A3B, A3H)
+    A3 in LCC:     3 (A3A, A3B, A3H)
+    A3 degrees:    A3A=1, A3B=5, A3H=4
+    Harris in network: 23 / 129
+    Harris in LCC:     23 / 129
+
+  Threshold 0.50:
+    Network: 1495 nodes, 5373 edges, 57 components, LCC=1336
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=1, A3B=3
+    Harris in network: 9 / 129
+    Harris in LCC:     9 / 129
+
+  Threshold 0.55:
+    Network: 984 nodes, 2651 edges, 80 components, LCC=676
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=1, A3B=2
+    Harris in network: 4 / 129
+    Harris in LCC:     4 / 129
+
+  Threshold 0.60:
+    Network: 705 nodes, 1399 edges, 85 components, LCC=443
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=2
+    Harris in network: 3 / 129
+    Harris in LCC:     3 / 129
+
+  Threshold 0.65: <<<AUTO
+    Network: 471 nodes, 739 edges, 85 components, LCC=145
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=1
+    Harris in network: 1 / 129
+    Harris in LCC:     1 / 129
+
+  Threshold 0.70:
+    Network: 351 nodes, 427 edges, 70 components, LCC=89
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=1
+    Harris in network: 1 / 129
+    Harris in LCC:     1 / 129
+
+  Threshold 0.75:
+    Network: 179 nodes, 182 edges, 51 components, LCC=48
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 1 / 129
+    Harris in LCC:     1 / 129
+
+  Threshold 0.80:
+    Network: 122 nodes, 114 edges, 43 components, LCC=15
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 1 / 129
+    Harris in LCC:     1 / 129
+
+  Threshold 0.85:
+    Network: 98 nodes, 86 edges, 38 components, LCC=7
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 1 / 129
+    Harris in LCC:     0 / 129
+
+  Threshold 0.90:
+    Network: 75 nodes, 70 edges, 30 components, LCC=7
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 1 / 129
+    Harris in LCC:     0 / 129
+
+================================================================================
+  PHASE 4: A3-Centric Neighborhood — SBS2_VS_CNV
+================================================================================
+
+  A3A neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 77 additional genes (1 Harris)
+      Harris 2-hop: SRSF2
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+                     GPR15LG  |rho|=0.4080
+
+    Threshold 0.40:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 28 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+                     GPR15LG  |rho|=0.4080
+
+    Threshold 0.45:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 4 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+
+    Threshold 0.50:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 2 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+
+    Threshold 0.55:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+
+    Threshold 0.60:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+
+    Threshold 0.65: <<<AUTO
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 0 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=0.7386  [A3]
+
+  A3B neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 33 genes (0 Harris, 1 A3)
+      2-hop: 1109 additional genes (20 Harris)
+      Harris 2-hop: CCT6A, CDK4, DNAJB1, FKBP5, HNRNPA2B1, HNRNPA3, HSPD1, MAP4, NOP58, NSUN2...
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+                        MT1X  |rho|=0.5122
+                      S100A8  |rho|=0.4762
+                      TMSB10  |rho|=0.4616
+
+    Threshold 0.40:
+      1-hop: 12 genes (0 Harris, 1 A3)
+      2-hop: 258 additional genes (6 Harris)
+      Harris 2-hop: HNRNPA2B1, HSPD1, PDIA3, PTGES3, RALY, RPL5
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+                        MT1X  |rho|=0.5122
+                      S100A8  |rho|=0.4762
+                      TMSB10  |rho|=0.4616
+
+    Threshold 0.45:
+      1-hop: 5 genes (0 Harris, 1 A3)
+      2-hop: 96 additional genes (3 Harris)
+      Harris 2-hop: HSPD1, PDIA3, PTGES3
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+                        MT1X  |rho|=0.5122
+                      S100A8  |rho|=0.4762
+                      TMSB10  |rho|=0.4616
+
+    Threshold 0.50:
+      1-hop: 3 genes (0 Harris, 1 A3)
+      2-hop: 40 additional genes (2 Harris)
+      Harris 2-hop: HSPD1, PTGES3
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+                        MT1X  |rho|=0.5122
+
+    Threshold 0.55:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+
+    Threshold 0.60:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 0 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+                       PLAUR  |rho|=0.6090
+
+    Threshold 0.65: <<<AUTO
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 0 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=0.7386  [A3]
+
+********************************************************************************
+  NETWORK: SBS2_VS_NORMAL
+********************************************************************************
+  SBS2-HIGH vs NORMAL (mutagenic program entry)
+  Directory: /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/NETWORK_SBS2_VS_NORMAL
+  Auto-selected threshold: 0.65
+  DIFF matrix: (8307, 8307)
+
+================================================================================
+  PHASE 1: A3 Gene Correlation Profiles — SBS2_VS_NORMAL
+================================================================================
+  Matrix genes: 8307
+
+  A3A (APOBEC3A):
+    Max |delta-rho|: 0.6091
+    95th percentile: 0.2902
+    90th percentile: 0.2404
+    75th percentile: 0.1630
+    Median:          0.0939
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30       351  
+        0.35       154  
+        0.40        61  
+        0.45        17  
+        0.50         7  
+        0.55         2  
+        0.60         1  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                    GLTP        0.6091     -0.6091
+                     AK1        0.5537     -0.5537
+                   PITX1        0.5241     -0.5241
+                    CYBA        0.5224     -0.5224
+                    GPX1        0.5167     -0.5167
+                     SCD        0.5118     -0.5118
+               TMPRSS11A        0.5007     -0.5007
+                SERPINB2        0.4999     -0.4999
+                 NDUFAF3        0.4779     -0.4779
+                  ATP5MG        0.4745     -0.4745
+
+  A3B (APOBEC3B):
+    Max |delta-rho|: 0.5018
+    95th percentile: 0.2695
+    90th percentile: 0.2327
+    75th percentile: 0.1731
+    Median:          0.1049
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30       226  
+        0.35        72  
+        0.40        19  
+        0.45         1  
+        0.50         1  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                  MT-CO1        0.5018     -0.5018
+                  MT-CO3        0.4493     -0.4493
+                    LYST        0.4391     -0.4391
+                   LMTK3        0.4381     -0.4381
+                    BIN1        0.4321     -0.4321
+                  MT-CO2        0.4270     -0.4270
+                    UBR4        0.4194     -0.4194
+                   SNHG3        0.4194     -0.4194
+                    GRB2        0.4157     -0.4157
+                   MZT2A        0.4138     -0.4138
+
+  A3C (APOBEC3C):
+    Max |delta-rho|: 0.3878
+    95th percentile: 0.2246
+    90th percentile: 0.1938
+    75th percentile: 0.1421
+    Median:          0.0871
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        39  
+        0.35         4  
+        0.40         0  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                  UBE2V2        0.3878     -0.3878
+                  UBE2E3        0.3779     -0.3779
+                   LIME1        0.3587     -0.3587
+                    POMP        0.3559     -0.3559
+                   FBLN1        0.3441     -0.3441
+                   ATG12        0.3419     -0.3419
+                    CCT7        0.3382     -0.3382
+                   CXADR        0.3382     -0.3382
+                   VPS51        0.3337     -0.3337
+                    GPD2        0.3325     -0.3325
+
+  A3D (APOBEC3D):
+    Max |delta-rho|: 0.4785
+    95th percentile: 0.1657
+    90th percentile: 0.1350
+    75th percentile: 0.0921
+    Median:          0.0507
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        18  
+        0.35         8  
+        0.40         3  
+        0.45         1  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+         ENSG00000287263        0.4785     -0.4785
+         ENSG00000289838        0.4446     -0.4446
+                   IGFL1        0.4049     -0.4049
+         ENSG00000287569        0.3951     -0.3951
+                  PXYLP1        0.3889     -0.3889
+                  DUOXA2        0.3782     -0.3782
+             B4GALT4-AS1        0.3645     -0.3645
+                    CCN4        0.3583     -0.3583
+                  MFSD12        0.3431     -0.3431
+                   ARL11        0.3303     -0.3303
+
+  A3F (APOBEC3F):
+    Max |delta-rho|: 0.4070
+    95th percentile: 0.2008
+    90th percentile: 0.1716
+    75th percentile: 0.1258
+    Median:          0.0757
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        25  
+        0.35         6  
+        0.40         2  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                   DNAH7        0.4070     -0.4070
+                    TMC8        0.4018     -0.4018
+                RAB3GAP2        0.3935     -0.3935
+                    NAB2        0.3761     -0.3761
+                   NCOA6        0.3657     -0.3657
+                   XYLT2        0.3586     -0.3586
+                 SLC16A5        0.3458     -0.3458
+                 TBC1D2B        0.3372     -0.3372
+                 TUBGCP3        0.3294     -0.3294
+                MARVELD3        0.3288     -0.3288
+
+  A3G (APOBEC3G):
+    Max |delta-rho|: 0.3916
+    95th percentile: 0.1893
+    90th percentile: 0.1591
+    75th percentile: 0.1113
+    Median:          0.0663
+    Auto threshold:  0.65
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        14  
+        0.35         3  
+        0.40         0  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  AUTO >>>
+        0.70         0  
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                  TOM1L2        0.3916     -0.3916
+                RORA-AS1        0.3762     -0.3762
+                    LGI3        0.3651     -0.3651
+                   KLK10        0.3370     -0.3370
+                  ZSWIM8        0.3354     -0.3354
+                 CASTOR1        0.3325     -0.3325
+                      HR        0.3251     -0.3251
+            SLC25A21-AS1        0.3239     -0.3239
+                   ICAM4        0.3183     -0.3183
+                  AKAP11        0.3178     -0.3178
+
+  A3H: NOT in DIFF matrix
+
+================================================================================
+  PHASE 2: Harris Interactor Landscape — SBS2_VS_NORMAL
+================================================================================
+  Harris interactors in DIFF matrix: 105 / 174
+  Harris A3B-specific in DIFF matrix: 29 / 51
+
+  Harris interactor connectivity across thresholds:
+    Thresh   Connected      Frac    A3B-sp    MedDeg    MaxDeg
+    ------  ----------      ----    ------    ------    ------
+      0.30         105    100.0%        29        91       511
+      0.35         103     98.1%        29        17       206
+      0.40          81     77.1%        25         4        84
+      0.45          37     35.2%        10         2        34
+      0.50          11     10.5%         4         1        12
+      0.55           3      2.9%         1         2         2
+      0.60           2      1.9%         1         2         2
+      0.65           1      1.0%         0         1         1  AUTO >>>
+      0.70           0      0.0%         0         0         0
+      0.75           0      0.0%         0         0         0
+      0.80           0      0.0%         0         0         0
+      0.85           0      0.0%         0         0         0
+      0.90           0      0.0%         0         0         0
+
+  A3-to-Harris DIFF correlations:
+
+    A3A -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.3135
+      95th pctl:       0.2525
+      90th pctl:       0.2202
+      75th pctl:       0.1814
+      Median:          0.1249
+      Mean:            0.1225
+      Top 5 interactors:
+                        SCO2  |rho|=0.3135  raw=-0.3135
+                       DHX30  |rho|=0.3066  raw=-0.3066
+                       STRBP  |rho|=0.2610  raw=-0.2610
+                        RCC2  |rho|=0.2585  raw=-0.2585 [A3B-sp]
+                       PPM1G  |rho|=0.2550  raw=-0.2550
+
+    A3B -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.3135
+      95th pctl:       0.2408
+      90th pctl:       0.2272
+      75th pctl:       0.1688
+      Median:          0.1220
+      Mean:            0.1213
+      Top 5 interactors:
+                       PPM1G  |rho|=0.3135  raw=-0.3135
+                       HUWE1  |rho|=0.3110  raw=-0.3110 [A3B-sp]
+                      RAD23B  |rho|=0.3080  raw=-0.3080 [A3B-sp]
+                       PFDN1  |rho|=0.2553  raw=-0.2553 [A3B-sp]
+                        RCC2  |rho|=0.2426  raw=-0.2426 [A3B-sp]
+
+    A3C -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.3382
+      95th pctl:       0.2508
+      90th pctl:       0.2277
+      75th pctl:       0.1889
+      Median:          0.1272
+      Mean:            0.1300
+      Top 5 interactors:
+                        CCT7  |rho|=0.3382  raw=-0.3382
+                       SRSF4  |rho|=0.3191  raw=-0.3191
+                      ZNF326  |rho|=0.2945  raw=-0.2945 [A3B-sp]
+                        PDCL  |rho|=0.2889  raw=-0.2889
+                         SSB  |rho|=0.2608  raw=-0.2608
+
+    A3D -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.1989
+      95th pctl:       0.1359
+      90th pctl:       0.1099
+      75th pctl:       0.0845
+      Median:          0.0461
+      Mean:            0.0587
+      Top 5 interactors:
+                      CACTIN  |rho|=0.1989  raw=-0.1989
+                     C8orf33  |rho|=0.1687  raw=-0.1687
+                      TRMT1L  |rho|=0.1653  raw=-0.1653 [A3B-sp]
+                       PPP6C  |rho|=0.1558  raw=-0.1558
+                       SRSF5  |rho|=0.1541  raw=-0.1541
+
+    A3F -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.2116
+      95th pctl:       0.1878
+      90th pctl:       0.1621
+      75th pctl:       0.1280
+      Median:          0.0823
+      Mean:            0.0876
+      Top 5 interactors:
+                       TMA16  |rho|=0.2116  raw=-0.2116
+                        PUS7  |rho|=0.2022  raw=-0.2022
+                        UPF1  |rho|=0.1985  raw=-0.1985
+                       SART3  |rho|=0.1929  raw=-0.1929
+                        POP7  |rho|=0.1924  raw=-0.1924
+
+    A3G -> Harris (105 interactors in matrix):
+      Max |delta-rho|: 0.3020
+      95th pctl:       0.1963
+      90th pctl:       0.1762
+      75th pctl:       0.1281
+      Median:          0.0757
+      Mean:            0.0881
+      Top 5 interactors:
+                       TMA16  |rho|=0.3020  raw=-0.3020
+                      ZNF326  |rho|=0.2157  raw=-0.2157 [A3B-sp]
+                       IFIT5  |rho|=0.2145  raw=-0.2145
+                       SEL1L  |rho|=0.2059  raw=-0.2059
+                       SART3  |rho|=0.2008  raw=-0.2008
+
+  Harris-to-Harris DIFF correlations:
+    Pairs: 5460
+    Max |delta-rho|: 0.4377
+    95th pctl:       0.2548
+    90th pctl:       0.2254
+    75th pctl:       0.1730
+    Median:          0.1159
+    Mean:            0.1216
+
+================================================================================
+  PHASE 3: Threshold Entry/Exit Tracking — SBS2_VS_NORMAL
+================================================================================
+
+  Threshold 0.30:
+    Network: 8306 nodes, 450474 edges, 1 components, LCC=8306
+    A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 in LCC:     6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 degrees:    A3A=351, A3B=226, A3C=39, A3D=18, A3F=25, A3G=14
+    Harris in network: 105 / 105
+    Harris in LCC:     105 / 105
+
+  Threshold 0.35:
+    Network: 8152 nodes, 139644 edges, 1 components, LCC=8152
+    A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 in LCC:     6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 degrees:    A3A=154, A3B=72, A3C=4, A3D=8, A3F=6, A3G=3
+    Harris in network: 103 / 105
+    Harris in LCC:     103 / 105
+
+  Threshold 0.40:
+    Network: 6685 nodes, 43988 edges, 37 components, LCC=6610
+    A3 in network: 4 (A3A, A3B, A3D, A3F)
+    A3 in LCC:     4 (A3A, A3B, A3D, A3F)
+    A3 degrees:    A3A=61, A3B=19, A3D=3, A3F=2
+    Harris in network: 81 / 105
+    Harris in LCC:     81 / 105
+
+  Threshold 0.45:
+    Network: 4191 nodes, 15326 edges, 89 components, LCC=4004
+    A3 in network: 3 (A3A, A3B, A3D)
+    A3 in LCC:     3 (A3A, A3B, A3D)
+    A3 degrees:    A3A=17, A3B=1, A3D=1
+    Harris in network: 37 / 105
+    Harris in LCC:     33 / 105
+
+  Threshold 0.50:
+    Network: 2434 nodes, 6282 edges, 76 components, LCC=2265
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=7, A3B=1
+    Harris in network: 11 / 105
+    Harris in LCC:     10 / 105
+
+  Threshold 0.55:
+    Network: 1436 nodes, 2766 edges, 70 components, LCC=1266
+    A3 in network: 1 (A3A)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=2
+    Harris in network: 3 / 105
+    Harris in LCC:     3 / 105
+
+  Threshold 0.60:
+    Network: 934 nodes, 1397 edges, 84 components, LCC=676
+    A3 in network: 1 (A3A)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1
+    Harris in network: 2 / 105
+    Harris in LCC:     2 / 105
+
+  Threshold 0.65: <<<AUTO
+    Network: 604 nodes, 729 edges, 110 components, LCC=188
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 1 / 105
+    Harris in LCC:     0 / 105
+
+  Threshold 0.70:
+    Network: 443 nodes, 490 edges, 98 components, LCC=82
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 0 / 105
+    Harris in LCC:     0 / 105
+
+  Threshold 0.75:
+    Network: 229 nodes, 229 edges, 69 components, LCC=23
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 0 / 105
+    Harris in LCC:     0 / 105
+
+  Threshold 0.80:
+    Network: 174 nodes, 164 edges, 58 components, LCC=14
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 0 / 105
+    Harris in LCC:     0 / 105
+
+  Threshold 0.85:
+    Network: 124 nodes, 112 edges, 42 components, LCC=14
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 0 / 105
+    Harris in LCC:     0 / 105
+
+  Threshold 0.90:
+    Network: 93 nodes, 74 edges, 35 components, LCC=9
+    A3 in network: 0 (none)
+    A3 in LCC:     0 (none)
+    Harris in network: 0 / 105
+    Harris in LCC:     0 / 105
+
+================================================================================
+  PHASE 4: A3-Centric Neighborhood — SBS2_VS_NORMAL
+================================================================================
+
+  A3A neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 154 genes (0 Harris, 0 A3)
+      2-hop: 2864 additional genes (44 Harris)
+      Harris 2-hop: CDKN2AIP, CNP, DHX36, DIS3L2, DNAJB1, EIF4B, ELAC2, GEMIN5, HECTD1, HNRNPA2B1...
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+                         AK1  |rho|=0.5537
+                       PITX1  |rho|=0.5241
+                        CYBA  |rho|=0.5224
+                        GPX1  |rho|=0.5167
+
+    Threshold 0.40:
+      1-hop: 61 genes (0 Harris, 0 A3)
+      2-hop: 1056 additional genes (13 Harris)
+      Harris 2-hop: CDKN2AIP, DHX36, HNRNPA2B1, PFDN2, PFDN4, POP7, PSME3, RALY, RNF126, RPL3...
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+                         AK1  |rho|=0.5537
+                       PITX1  |rho|=0.5241
+                        CYBA  |rho|=0.5224
+                        GPX1  |rho|=0.5167
+
+    Threshold 0.45:
+      1-hop: 17 genes (0 Harris, 0 A3)
+      2-hop: 189 additional genes (2 Harris)
+      Harris 2-hop: HNRNPA2B1, RPL3
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+                         AK1  |rho|=0.5537
+                       PITX1  |rho|=0.5241
+                        CYBA  |rho|=0.5224
+                        GPX1  |rho|=0.5167
+
+    Threshold 0.50:
+      1-hop: 7 genes (0 Harris, 0 A3)
+      2-hop: 58 additional genes (0 Harris)
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+                         AK1  |rho|=0.5537
+                       PITX1  |rho|=0.5241
+                        CYBA  |rho|=0.5224
+                        GPX1  |rho|=0.5167
+
+    Threshold 0.55:
+      1-hop: 2 genes (0 Harris, 0 A3)
+      2-hop: 2 additional genes (0 Harris)
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+                         AK1  |rho|=0.5537
+
+    Threshold 0.60:
+      1-hop: 1 genes (0 Harris, 0 A3)
+      2-hop: 0 additional genes (0 Harris)
+      Top 1-hop partners:
+                        GLTP  |rho|=0.6091
+
+    Threshold 0.65: <<<AUTO
+      1-hop: 0 genes (0 Harris, 0 A3)
+      2-hop: 0 additional genes (0 Harris)
+
+  A3B neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 72 genes (0 Harris, 0 A3)
+      2-hop: 2777 additional genes (46 Harris)
+      Harris 2-hop: ADAR, C8orf33, CCT6A, CNP, DHX30, DHX36, DIMT1, DNAJB1, HECTD1, HNRNPUL1...
+      Top 1-hop partners:
+                      MT-CO1  |rho|=0.5018
+                      MT-CO3  |rho|=0.4493
+                        LYST  |rho|=0.4391
+                       LMTK3  |rho|=0.4381
+                        BIN1  |rho|=0.4321
+
+    Threshold 0.40:
+      1-hop: 19 genes (0 Harris, 0 A3)
+      2-hop: 890 additional genes (9 Harris)
+      Harris 2-hop: DHX36, PDIA3, PFDN2, PFDN4, PLOD2, POP7, RPA3, SCO2, SNRNP200
+      Top 1-hop partners:
+                      MT-CO1  |rho|=0.5018
+                      MT-CO3  |rho|=0.4493
+                        LYST  |rho|=0.4391
+                       LMTK3  |rho|=0.4381
+                        BIN1  |rho|=0.4321
+
+    Threshold 0.45:
+      1-hop: 1 genes (0 Harris, 0 A3)
+      2-hop: 220 additional genes (2 Harris)
+      Harris 2-hop: PFDN2, SNRNP200
+      Top 1-hop partners:
+                      MT-CO1  |rho|=0.5018
+
+    Threshold 0.50:
+      1-hop: 1 genes (0 Harris, 0 A3)
+      2-hop: 72 additional genes (0 Harris)
+      Top 1-hop partners:
+                      MT-CO1  |rho|=0.5018
+
+    Threshold 0.55:
+      1-hop: 0 genes (0 Harris, 0 A3)
+      2-hop: 0 additional genes (0 Harris)
+
+    Threshold 0.60:
+      1-hop: 0 genes (0 Harris, 0 A3)
+      2-hop: 0 additional genes (0 Harris)
+
+    Threshold 0.65: <<<AUTO
+      1-hop: 0 genes (0 Harris, 0 A3)
+      2-hop: 0 additional genes (0 Harris)
+
+********************************************************************************
+  NETWORK: CNV_VS_NORMAL
+********************************************************************************
+  CNV-HIGH vs NORMAL (productive infection entry)
+  Directory: /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/NETWORK_CNV_VS_NORMAL
+  Auto-selected threshold: 0.7
+  DIFF matrix: (9843, 9843)
+
+================================================================================
+  PHASE 1: A3 Gene Correlation Profiles — CNV_VS_NORMAL
+================================================================================
+  Matrix genes: 9843
+
+  A3A (APOBEC3A):
+    Max |delta-rho|: 1.0079
+    95th percentile: 0.2439
+    90th percentile: 0.2043
+    75th percentile: 0.1415
+    Median:          0.0822
+    Auto threshold:  0.7
+    INCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30       151  
+        0.35        55  
+        0.40        14  
+        0.45         2  
+        0.50         1  
+        0.55         1  
+        0.60         1  
+        0.65         1  
+        0.70         1  AUTO >>>
+        0.75         1  
+        0.80         1  
+        0.85         1  
+        0.90         1  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                APOBEC3B        1.0079     -1.0079
+                    ODC1        0.4659     -0.4659
+                   CCL20        0.4461     -0.4461
+                  SLC9A2        0.4436     -0.4436
+                   EPHX3        0.4313     -0.4313
+                    IL1B        0.4286     -0.4286
+                   TNIP2        0.4255     -0.4255
+                   RTKN2        0.4234     -0.4234
+                 TMEM147        0.4224     -0.4224
+                  DYNLT1        0.4221     -0.4221
+
+  A3B (APOBEC3B):
+    Max |delta-rho|: 1.0079
+    95th percentile: 0.3625
+    90th percentile: 0.3106
+    75th percentile: 0.2282
+    Median:          0.1468
+    Auto threshold:  0.7
+    INCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30      1120  
+        0.35       593  
+        0.40       272  
+        0.45       129  
+        0.50        62  
+        0.55        34  
+        0.60         8  
+        0.65         2  
+        0.70         2  AUTO >>>
+        0.75         2  
+        0.80         1  
+        0.85         1  
+        0.90         1  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                APOBEC3A        1.0079     -1.0079
+                   PLAUR        0.7585     -0.7585
+                   TMCC3        0.6433     -0.6433
+                  NOTCH3        0.6411     -0.6411
+                   ITPKC        0.6245     -0.6245
+                   NDRG1        0.6158     -0.6158
+                  TMSB10        0.6021     -0.6021
+                   KRT6A        0.6013     -0.6013
+                  SLC2A1        0.5971     -0.5971
+                  LRRC8A        0.5957     -0.5957
+
+  A3C (APOBEC3C):
+    Max |delta-rho|: 0.4612
+    95th percentile: 0.2515
+    90th percentile: 0.2189
+    75th percentile: 0.1666
+    Median:          0.1047
+    Auto threshold:  0.7
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30       139  
+        0.35        35  
+        0.40         8  
+        0.45         1  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  
+        0.70         0  AUTO >>>
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                   CENPN        0.4612     -0.4612
+                 TMEM208        0.4128     -0.4128
+                     MAX        0.4116     -0.4116
+                   PSMC1        0.4062     -0.4062
+                   ZNRD2        0.4053     -0.4053
+                   DECR1        0.4022     -0.4022
+                   HAUS4        0.4015     -0.4015
+                   GTF2B        0.4011     -0.4011
+                  METTL5        0.3973     -0.3973
+                   PSMA1        0.3888     -0.3888
+
+  A3D (APOBEC3D):
+    Max |delta-rho|: 0.5065
+    95th percentile: 0.1573
+    90th percentile: 0.1288
+    75th percentile: 0.0886
+    Median:          0.0474
+    Auto threshold:  0.7
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        22  
+        0.35        15  
+        0.40         7  
+        0.45         2  
+        0.50         1  
+        0.55         0  
+        0.60         0  
+        0.65         0  
+        0.70         0  AUTO >>>
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                   KRT75        0.5065     -0.5065
+         ENSG00000287263        0.4685     -0.4685
+                     C8G        0.4470     -0.4470
+                   MEIOC        0.4275     -0.4275
+                  RASAL3        0.4268     +0.4268
+                  PXYLP1        0.4215     -0.4215
+               LINC02323        0.4004     -0.4004
+                 AFAP1L1        0.3851     -0.3851
+                   PTPRD        0.3726     +0.3726
+                   PRRT3        0.3672     -0.3672
+
+  A3F (APOBEC3F):
+    Max |delta-rho|: 0.4659
+    95th percentile: 0.2225
+    90th percentile: 0.1921
+    75th percentile: 0.1420
+    Median:          0.0879
+    Auto threshold:  0.7
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        69  
+        0.35        15  
+        0.40         3  
+        0.45         1  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  
+        0.70         0  AUTO >>>
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                   PKDCC        0.4659     -0.4659
+                  CHST11        0.4112     -0.4112
+         ENSG00000250509        0.4109     -0.4109
+                    LCP2        0.3756     -0.3756
+                    TLL1        0.3751     -0.3751
+                    TMC8        0.3675     -0.3675
+                  LMBRD2        0.3651     -0.3651
+               RAP2C-AS1        0.3648     -0.3648
+         ENSG00000291202        0.3642     -0.3642
+                   NCOA6        0.3610     -0.3610
+
+  A3G (APOBEC3G):
+    Max |delta-rho|: 0.4300
+    95th percentile: 0.2242
+    90th percentile: 0.1900
+    75th percentile: 0.1377
+    Median:          0.0810
+    Auto threshold:  0.7
+    EXCLUDED at auto threshold
+
+    Degree at each threshold:
+      Thresh    Degree      Status
+      ------    ------      ------
+        0.30        61  
+        0.35        11  
+        0.40         2  
+        0.45         0  
+        0.50         0  
+        0.55         0  
+        0.60         0  
+        0.65         0  
+        0.70         0  AUTO >>>
+        0.75         0  
+        0.80         0  
+        0.85         0  
+        0.90         0  
+
+    Top 10 DIFF partners:
+                    Gene   |delta-rho|   raw delta
+    --------------------  ------------  ----------
+                  TRIM28        0.4300     -0.4300
+                  APCDD1        0.4181     -0.4181
+                   POC1A        0.3958     -0.3958
+                     LBR        0.3833     -0.3833
+            SLC25A21-AS1        0.3797     -0.3797
+                    AGRN        0.3790     -0.3790
+                    GLI2        0.3676     -0.3676
+                TMEM170A        0.3628     -0.3628
+                    FLNB        0.3560     -0.3560
+                    CHML        0.3527     -0.3527
+
+  A3H: NOT in DIFF matrix
+
+================================================================================
+  PHASE 2: Harris Interactor Landscape — CNV_VS_NORMAL
+================================================================================
+  Harris interactors in DIFF matrix: 139 / 174
+  Harris A3B-specific in DIFF matrix: 39 / 51
+
+  Harris interactor connectivity across thresholds:
+    Thresh   Connected      Frac    A3B-sp    MedDeg    MaxDeg
+    ------  ----------      ----    ------    ------    ------
+      0.30         139    100.0%        39       308      1611
+      0.35         138     99.3%        39        83       746
+      0.40         127     91.4%        37        21       415
+      0.45          93     66.9%        27         8       215
+      0.50          56     40.3%        18         3       118
+      0.55          29     20.9%        11         2        61
+      0.60          11      7.9%         2         1        28
+      0.65           2      1.4%         0         4         7
+      0.70           1      0.7%         0         1         1  AUTO >>>
+      0.75           1      0.7%         0         1         1
+      0.80           0      0.0%         0         0         0
+      0.85           0      0.0%         0         0         0
+      0.90           0      0.0%         0         0         0
+
+  A3-to-Harris DIFF correlations:
+
+    A3A -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.3207
+      95th pctl:       0.2674
+      90th pctl:       0.2165
+      75th pctl:       0.1495
+      Median:          0.1068
+      Mean:            0.1129
+      Top 5 interactors:
+                      DNAJB1  |rho|=0.3207  raw=+0.3207
+                      TIMM8B  |rho|=0.3182  raw=-0.3182
+                    CDKN2AIP  |rho|=0.3120  raw=-0.3120
+                     SYNCRIP  |rho|=0.2995  raw=-0.2995
+                       STUB1  |rho|=0.2892  raw=-0.2892
+
+    A3B -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.4195
+      95th pctl:       0.3565
+      90th pctl:       0.3116
+      75th pctl:       0.2468
+      Median:          0.1771
+      Mean:            0.1783
+      Top 5 interactors:
+                      TIMM8B  |rho|=0.4195  raw=-0.4195
+                        MAP4  |rho|=0.3989  raw=-0.3989 [A3B-sp]
+                       HUWE1  |rho|=0.3752  raw=-0.3752 [A3B-sp]
+                      RAD23B  |rho|=0.3704  raw=-0.3704 [A3B-sp]
+                        RCC2  |rho|=0.3679  raw=-0.3679 [A3B-sp]
+
+    A3C -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.3601
+      95th pctl:       0.2957
+      90th pctl:       0.2737
+      75th pctl:       0.2105
+      Median:          0.1499
+      Mean:            0.1516
+      Top 5 interactors:
+                       GRSF1  |rho|=0.3601  raw=-0.3601
+                     FAM120A  |rho|=0.3566  raw=-0.3566 [A3B-sp]
+                       PFDN2  |rho|=0.3369  raw=-0.3369 [A3B-sp]
+                       TRMT6  |rho|=0.3142  raw=-0.3142
+                       PPP6C  |rho|=0.3035  raw=-0.3035
+
+    A3D -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.2362
+      95th pctl:       0.1596
+      90th pctl:       0.1200
+      75th pctl:       0.0921
+      Median:          0.0523
+      Mean:            0.0637
+      Top 5 interactors:
+                      CACTIN  |rho|=0.2362  raw=-0.2362
+                        RPA2  |rho|=0.2102  raw=-0.2102
+                       PPP6C  |rho|=0.1901  raw=-0.1901
+                      VCPIP1  |rho|=0.1768  raw=-0.1768
+                        PPIH  |rho|=0.1748  raw=-0.1748
+
+    A3F -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.3201
+      95th pctl:       0.2180
+      90th pctl:       0.1915
+      75th pctl:       0.1528
+      Median:          0.0975
+      Mean:            0.1059
+      Top 5 interactors:
+                        PPIH  |rho|=0.3201  raw=-0.3201
+                      PGRMC1  |rho|=0.2560  raw=-0.2560
+                        MAP4  |rho|=0.2468  raw=-0.2468 [A3B-sp]
+                        POP7  |rho|=0.2438  raw=-0.2438
+                     FAM120A  |rho|=0.2302  raw=-0.2302 [A3B-sp]
+
+    A3G -> Harris (139 interactors in matrix):
+      Max |delta-rho|: 0.3381
+      95th pctl:       0.2205
+      90th pctl:       0.1965
+      75th pctl:       0.1416
+      Median:          0.0882
+      Mean:            0.0999
+      Top 5 interactors:
+                       CTPS1  |rho|=0.3381  raw=-0.3381
+                       PFDN6  |rho|=0.2939  raw=-0.2939 [A3B-sp]
+                       LONP1  |rho|=0.2869  raw=-0.2869
+                        SCO2  |rho|=0.2700  raw=-0.2700
+                       GRWD1  |rho|=0.2430  raw=-0.2430
+
+  Harris-to-Harris DIFF correlations:
+    Pairs: 9591
+    Max |delta-rho|: 0.5285
+    95th pctl:       0.3140
+    90th pctl:       0.2774
+    75th pctl:       0.2183
+    Median:          0.1517
+    Mean:            0.1565
+
+================================================================================
+  PHASE 3: Threshold Entry/Exit Tracking — CNV_VS_NORMAL
+================================================================================
+
+  Threshold 0.30:
+    Network: 9843 nodes, 1295635 edges, 1 components, LCC=9843
+    A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 in LCC:     6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 degrees:    A3A=151, A3B=1120, A3C=139, A3D=22, A3F=69, A3G=61
+    Harris in network: 139 / 139
+    Harris in LCC:     139 / 139
+
+  Threshold 0.35:
+    Network: 9798 nodes, 479608 edges, 1 components, LCC=9798
+    A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 in LCC:     6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 degrees:    A3A=55, A3B=593, A3C=35, A3D=15, A3F=15, A3G=11
+    Harris in network: 138 / 139
+    Harris in LCC:     138 / 139
+
+  Threshold 0.40:
+    Network: 8997 nodes, 169286 edges, 12 components, LCC=8975
+    A3 in network: 6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 in LCC:     6 (A3A, A3B, A3C, A3D, A3F, A3G)
+    A3 degrees:    A3A=14, A3B=272, A3C=8, A3D=7, A3F=3, A3G=2
+    Harris in network: 127 / 139
+    Harris in LCC:     127 / 139
+
+  Threshold 0.45:
+    Network: 6769 nodes, 61109 edges, 57 components, LCC=6651
+    A3 in network: 5 (A3A, A3B, A3C, A3D, A3F)
+    A3 in LCC:     5 (A3A, A3B, A3C, A3D, A3F)
+    A3 degrees:    A3A=2, A3B=129, A3C=1, A3D=2, A3F=1
+    Harris in network: 93 / 139
+    Harris in LCC:     93 / 139
+
+  Threshold 0.50:
+    Network: 4510 nodes, 23816 edges, 57 components, LCC=4395
+    A3 in network: 3 (A3A, A3B, A3D)
+    A3 in LCC:     3 (A3A, A3B, A3D)
+    A3 degrees:    A3A=1, A3B=62, A3D=1
+    Harris in network: 56 / 139
+    Harris in LCC:     56 / 139
+
+  Threshold 0.55:
+    Network: 2781 nodes, 10129 edges, 68 components, LCC=2615
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=1, A3B=34
+    Harris in network: 29 / 139
+    Harris in LCC:     29 / 139
+
+  Threshold 0.60:
+    Network: 1744 nodes, 4716 edges, 86 components, LCC=1481
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=1, A3B=8
+    Harris in network: 11 / 139
+    Harris in LCC:     11 / 139
+
+  Threshold 0.65:
+    Network: 1105 nodes, 2384 edges, 97 components, LCC=792
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     2 (A3A, A3B)
+    A3 degrees:    A3A=1, A3B=2
+    Harris in network: 2 / 139
+    Harris in LCC:     2 / 139
+
+  Threshold 0.70: <<<AUTO
+    Network: 772 nodes, 1349 edges, 115 components, LCC=219
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=2
+    Harris in network: 1 / 139
+    Harris in LCC:     1 / 139
+
+  Threshold 0.75:
+    Network: 482 nodes, 705 edges, 103 components, LCC=121
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=2
+    Harris in network: 1 / 139
+    Harris in LCC:     0 / 139
+
+  Threshold 0.80:
+    Network: 362 nodes, 459 edges, 97 components, LCC=51
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=1
+    Harris in network: 0 / 139
+    Harris in LCC:     0 / 139
+
+  Threshold 0.85:
+    Network: 250 nodes, 263 edges, 84 components, LCC=20
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=1
+    Harris in network: 0 / 139
+    Harris in LCC:     0 / 139
+
+  Threshold 0.90:
+    Network: 191 nodes, 178 edges, 72 components, LCC=8
+    A3 in network: 2 (A3A, A3B)
+    A3 in LCC:     0 (none)
+    A3 degrees:    A3A=1, A3B=1
+    Harris in network: 0 / 139
+    Harris in LCC:     0 / 139
+
+================================================================================
+  PHASE 4: A3-Centric Neighborhood — CNV_VS_NORMAL
+================================================================================
+
+  A3A neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 55 genes (0 Harris, 1 A3)
+      2-hop: 3478 additional genes (68 Harris)
+      Harris 2-hop: AHCYL1, BCLAF1, CCT7, CDKN2AIP, CNP, CRKL, CTPS1, DHX36, DIS3L2, DNAJA3...
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+                        ODC1  |rho|=0.4659
+                       CCL20  |rho|=0.4461
+                      SLC9A2  |rho|=0.4436
+                       EPHX3  |rho|=0.4313
+
+    Threshold 0.40:
+      1-hop: 14 genes (0 Harris, 1 A3)
+      2-hop: 910 additional genes (17 Harris)
+      Harris 2-hop: CNP, DHX36, EBNA1BP2, HNRNPUL1, MAP4, NSUN2, PDCD5, PFDN2, PLOD1, PPM1G...
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+                        ODC1  |rho|=0.4659
+                       CCL20  |rho|=0.4461
+                      SLC9A2  |rho|=0.4436
+                       EPHX3  |rho|=0.4313
+
+    Threshold 0.45:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 168 additional genes (2 Harris)
+      Harris 2-hop: PDCD5, PFDN2
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+                        ODC1  |rho|=0.4659
+
+    Threshold 0.50:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 61 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+
+    Threshold 0.55:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 33 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+
+    Threshold 0.65:
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+
+    Threshold 0.70: <<<AUTO
+      1-hop: 1 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3B  |rho|=1.0079  [A3]
+
+  A3B neighborhood analysis:
+
+    Threshold 0.35:
+      1-hop: 593 genes (9 Harris, 2 A3)
+      2-hop: 5915 additional genes (116 Harris)
+      Harris 1-hop: HUWE1, LONP1, MAP4, PPM1G, RAD23B, RCC2, SCO2, SNRNP200, TIMM8B
+      Harris 2-hop: ADAR, AHCYL1, AIP, BAG2, BCLAF1, C8orf33, CASC3, CCT6A, CCT7, CDK4...
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+                       TMCC3  |rho|=0.6433
+                      NOTCH3  |rho|=0.6411
+                       ITPKC  |rho|=0.6245
+
+    Threshold 0.40:
+      1-hop: 272 genes (1 Harris, 1 A3)
+      2-hop: 3600 additional genes (83 Harris)
+      Harris 1-hop: TIMM8B
+      Harris 2-hop: AIP, BCLAF1, CCT6A, CCT7, CDK4, CDKN2AIP, CTPS1, DHX36, DIAPH3, DNAJB1...
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+                       TMCC3  |rho|=0.6433
+                      NOTCH3  |rho|=0.6411
+                       ITPKC  |rho|=0.6245
+
+    Threshold 0.45:
+      1-hop: 129 genes (0 Harris, 1 A3)
+      2-hop: 1845 additional genes (41 Harris)
+      Harris 2-hop: BCLAF1, CCT6A, CDK4, CDKN2AIP, DHX36, DNAJB1, DNAJC7, DNPEP, GRSF1, HECTD1...
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+                       TMCC3  |rho|=0.6433
+                      NOTCH3  |rho|=0.6411
+                       ITPKC  |rho|=0.6245
+
+    Threshold 0.50:
+      1-hop: 62 genes (0 Harris, 1 A3)
+      2-hop: 851 additional genes (18 Harris)
+      Harris 2-hop: CCT6A, CDK4, DHX36, DNAJC7, DNPEP, OLA1, PDIA3, PGRMC1, PPIH, RNF126...
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+                       TMCC3  |rho|=0.6433
+                      NOTCH3  |rho|=0.6411
+                       ITPKC  |rho|=0.6245
+
+    Threshold 0.55:
+      1-hop: 34 genes (0 Harris, 1 A3)
+      2-hop: 243 additional genes (3 Harris)
+      Harris 2-hop: PDIA3, SNRPB2, SRSF10
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+                       TMCC3  |rho|=0.6433
+                      NOTCH3  |rho|=0.6411
+                       ITPKC  |rho|=0.6245
+
+    Threshold 0.65:
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 1 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+
+    Threshold 0.70: <<<AUTO
+      1-hop: 2 genes (0 Harris, 1 A3)
+      2-hop: 0 additional genes (0 Harris)
+      Top 1-hop partners:
+                    APOBEC3A  |rho|=1.0079  [A3]
+                       PLAUR  |rho|=0.7585
+
+================================================================================
+  GENERATING DIAGNOSTIC PLOTS
+================================================================================
+  [SAVE] Plots -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_correlation_landscape_plots.png
+
+  [SAVE] Tracking CSV -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_threshold_entry_tracking.csv
+  [SAVE] Report -> /master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_4/DIAGNOSTIC_AUDIT/A3_correlation_landscape_report.txt
+
+================================================================================
+  DIAGNOSTIC COMPLETE
+================================================================================
+  Elapsed: 0:02:31.207302
