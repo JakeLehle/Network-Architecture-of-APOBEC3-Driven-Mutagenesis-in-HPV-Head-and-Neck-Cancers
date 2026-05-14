@@ -58,7 +58,7 @@ from network_config import (
     COMMUNITY_BASE_SEED, USE_LARGEST_COMPONENT,
     TARGET_BIG_COMMUNITIES, MIN_COMMUNITY_SIZE,
     DIFF_THRESHOLD, SWEEP_THRESHOLDS,
-    RAW_P_THRESHOLD,
+    RAW_P_THRESHOLD, FORCE_KEEP_A3,
     DIR_01_CLEANED, DIR_03_DIFFEXPR, DIR_04_NETWORKS, DIR_05_COMMUNITIES,
     banner, log, ensure_dir
 )
@@ -176,29 +176,27 @@ def auto_select_threshold(corr_diff, a3_seeds, sweep_thresholds):
     sweep_df = pd.DataFrame(rows)
 
     # Log the sweep table
-    log(f"\n  {'Thresh':>7s}  {'Nodes':>6s}  {'Edges':>7s}  {'Comp':>5s}  "
-        f"{'LCC':>5s}  {'A3 OK':>5s}  ", end="")
+    header = (f"\n  {'Thresh':>7s}  {'Nodes':>6s}  {'Edges':>7s}  {'Comp':>5s}  "
+              f"{'LCC':>5s}  {'A3 OK':>5s}  ")
+    sep_line = (f"  {'-----':>7s}  {'-----':>6s}  {'-----':>7s}  {'----':>5s}  "
+                f"{'---':>5s}  {'-----':>5s}  ")
     for g in seeds_in_matrix:
         alias = A3_ID_TO_ALIAS.get(g, g)
-        log(f"{'deg_' + alias:>8s}  ", end="")
-    log("")
-    log(f"  {'-----':>7s}  {'-----':>6s}  {'-----':>7s}  {'----':>5s}  "
-        f"{'---':>5s}  {'-----':>5s}  ", end="")
-    for _ in seeds_in_matrix:
-        log(f"{'--------':>8s}  ", end="")
-    log("")
+        header += f"{'deg_' + alias:>8s}  "
+        sep_line += f"{'--------':>8s}  "
+    log(header)
+    log(sep_line)
 
     for _, row in sweep_df.iterrows():
         marker = " <--" if row["all_seeds_connected"] else ""
-        log(f"  {row['threshold']:>7.2f}  {row['nodes']:>6.0f}  "
-            f"{row['edges']:>7.0f}  {row['components']:>5.0f}  "
-            f"{row['lcc_size']:>5.0f}  {'YES' if row['all_seeds_connected'] else 'no':>5s}  ",
-            end="")
+        line = (f"  {row['threshold']:>7.2f}  {row['nodes']:>6.0f}  "
+                f"{row['edges']:>7.0f}  {row['components']:>5.0f}  "
+                f"{row['lcc_size']:>5.0f}  {'YES' if row['all_seeds_connected'] else 'no':>5s}  ")
         for g in seeds_in_matrix:
             alias = A3_ID_TO_ALIAS.get(g, g)
             col = f"deg_{alias}"
-            log(f"{row[col]:>8.0f}  ", end="")
-        log(marker)
+            line += f"{row[col]:>8.0f}  "
+        log(line + marker)
 
     # Filter to A3-valid thresholds
     valid = sweep_df[sweep_df["all_seeds_connected"]].copy()
@@ -233,9 +231,16 @@ def auto_select_threshold(corr_diff, a3_seeds, sweep_thresholds):
 # A3 SEED IDENTIFICATION
 # =============================================================================
 
-def identify_a3_seeds(de_dir, cancer_type):
+def identify_a3_seeds(de_dir, cancer_type, force_keep=False):
     """
-    Identify which of A3A and A3B pass DE at raw p < 0.05 without force-keeping.
+    Identify which of A3A and A3B should be used as seed genes for threshold
+    selection.
+
+    Two modes:
+      - force_keep=False: only A3 genes passing DE at raw p < 0.05 are seeds
+      - force_keep=True: A3A and A3B are seeds if they exist in the DE results
+        (regardless of p-value), because FORCE_KEEP_A3 guarantees they are in
+        the gene list and correlation matrix
 
     For TCGA, genes are ENSG IDs. Looks for the DE stats file and checks
     A3A (ENSG00000128383) and A3B (ENSG00000179750).
@@ -246,11 +251,13 @@ def identify_a3_seeds(de_dir, cancer_type):
         Path to DE results directory for this cancer type.
     cancer_type : str
         Cancer type label (e.g. "TCGA-HNSC").
+    force_keep : bool
+        If True, include A3A/A3B as seeds even if they fail DE.
 
     Returns
     -------
     seeds : list of str
-        ENSG IDs for A3A and/or A3B that passed DE.
+        ENSG IDs for A3A and/or A3B to use as threshold anchors.
     """
     # Look for DE results file
     de_candidates = [
@@ -274,6 +281,8 @@ def identify_a3_seeds(de_dir, cancer_type):
         return [a3a_ensg, a3b_ensg]
 
     log(f"  Loading DE results: {de_path}")
+    if force_keep:
+        log(f"  FORCE_KEEP_A3 is ON: A3A/A3B will be used as seeds regardless of DE status")
     sep = "\t" if de_path.endswith(".tsv") else ","
     de_df = pd.read_csv(de_path, sep=sep)
 
@@ -307,13 +316,16 @@ def identify_a3_seeds(de_dir, cancer_type):
             if pval < RAW_P_THRESHOLD:
                 log(f"    {label} ({ensg}): PASSED DE (p={pval:.2e})")
                 seeds.append(ensg)
+            elif force_keep:
+                log(f"    {label} ({ensg}): FAILED DE (p={pval:.2e}) -- included via FORCE_KEEP")
+                seeds.append(ensg)
             else:
                 log(f"    {label} ({ensg}): FAILED DE (p={pval:.2e})")
         else:
             log(f"    {label} ({ensg}): not found in DE results")
 
     if not seeds:
-        log(f"  WARNING: Neither A3A nor A3B passed DE. Cannot anchor threshold.")
+        log(f"  WARNING: Neither A3A nor A3B available as seeds.")
 
     return seeds
 
@@ -433,7 +445,7 @@ for cancer_type in CANCER_TYPES:
 
     # Identify A3 seeds from DE results
     de_cancer_dir = os.path.join(DIR_03_DIFFEXPR, cancer_type)
-    a3_seeds = identify_a3_seeds(de_cancer_dir, cancer_type)
+    a3_seeds = identify_a3_seeds(de_cancer_dir, cancer_type, force_keep=FORCE_KEEP_A3)
 
     if not a3_seeds:
         log("WARNING: No A3 seed genes available. Falling back to config threshold.")
