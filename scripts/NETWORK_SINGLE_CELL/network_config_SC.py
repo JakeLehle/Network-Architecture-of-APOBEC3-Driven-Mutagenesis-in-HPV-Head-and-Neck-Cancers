@@ -231,3 +231,93 @@ def convert_tcga_genes_to_symbols(gene_list, ensg_to_symbol):
         else:
             converted.append(g)
     return converted
+
+
+def load_harris_interactors(path=None, a3b_only=False):
+    """
+    Load Harris et al. A3 interactor gene list.
+
+    Parameters
+    ----------
+    path : str or None
+        Path to interactor file. If None, uses HARRIS_ALL_PATH or HARRIS_A3B_PATH.
+    a3b_only : bool
+        If True and path is None, loads A3B-specific interactors (52 genes).
+        If False and path is None, loads all A3 interactors (175 genes).
+
+    Returns
+    -------
+    list of str
+        Gene symbols of Harris interactors.
+    """
+    import pandas as pd
+    if path is None:
+        path = HARRIS_A3B_PATH if a3b_only else HARRIS_ALL_PATH
+
+    if not os.path.exists(path):
+        log(f"  WARNING: Harris interactors file not found: {path}")
+        return []
+
+    df = pd.read_csv(path, sep="\t")
+
+    # Identify gene column
+    gene_col = None
+    for col in ["gene_symbol", "gene", "Gene", "symbol", "Gene_Symbol"]:
+        if col in df.columns:
+            gene_col = col
+            break
+
+    if gene_col is None:
+        # Try first column as fallback
+        gene_col = df.columns[0]
+        log(f"  WARNING: No standard gene column found, using '{gene_col}'")
+
+    genes = df[gene_col].dropna().astype(str).tolist()
+    log(f"  Loaded {len(genes)} Harris interactors from {os.path.basename(path)}")
+    return genes
+
+
+def load_tcga_bulk_communities(cancer_type="TCGA-HNSC"):
+    """
+    Load TCGA bulk community assignments from Figure 2 for cross-reference.
+
+    Parameters
+    ----------
+    cancer_type : str
+        Cancer type label (default "TCGA-HNSC").
+
+    Returns
+    -------
+    dict
+        {gene_ensg: community_id} mapping, or empty dict if file not found.
+    """
+    import pandas as pd
+    comm_dir = os.path.join(FIG2_COMMUNITIES, cancer_type)
+    comm_path = os.path.join(comm_dir, f"{cancer_type}_best_partition.csv")
+
+    if not os.path.exists(comm_path):
+        log(f"  WARNING: TCGA bulk partition not found: {comm_path}")
+        return {}
+
+    df = pd.read_csv(comm_path)
+
+    # Identify gene and community columns
+    gene_col = None
+    for col in ["gene", "gene_symbol", "Gene"]:
+        if col in df.columns:
+            gene_col = col
+            break
+    if gene_col is None:
+        gene_col = df.columns[0]
+
+    comm_col = None
+    for col in ["community", "Community", "comm"]:
+        if col in df.columns:
+            comm_col = col
+            break
+    if comm_col is None:
+        comm_col = df.columns[-1]
+
+    result = dict(zip(df[gene_col].astype(str), df[comm_col].astype(int)))
+    log(f"  Loaded {len(result)} TCGA bulk community assignments from {cancer_type}")
+    return result

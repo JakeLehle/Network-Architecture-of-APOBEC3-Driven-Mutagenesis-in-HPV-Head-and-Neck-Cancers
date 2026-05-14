@@ -171,7 +171,7 @@ LOGFC_THRESHOLD = 0               # No fold-change filter (bulk TCGA effect size
 FDR_THRESHOLD  = 0.05
 
 # Always retain A3 genes even if not significant
-FORCE_KEEP_A3 = False
+FORCE_KEEP_A3 = True
 
 # Legacy (kept for reference, no longer used in Step03)
 P_VALUE_THRESHOLD = 0.025
@@ -196,12 +196,13 @@ CORR_THRESHOLD     = 0.80    # |rho| threshold for TOP/BOTTOM network edges
 DIFF_THRESHOLD     = 0.70    # |diff| threshold for DIFF network edges
                               # Selected via sweep: 2195 nodes, 8364 edges,
                               # avg degree 7.6, modularity 0.44 at res=1.0
+SWEEP_THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90]
 
 # =============================================================================
 # STEP 05 — COMMUNITY DETECTION PARAMETERS
 # =============================================================================
 COMMUNITY_METHOD    = "leiden"
-COMMUNITY_RESOLUTIONS = [0.2, 0.4, 0.6, 0.8, 0.1]   # Single resolution (selected via sweep)
+COMMUNITY_RESOLUTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]   # Single resolution (selected via sweep)
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
 USE_LARGEST_COMPONENT = True
