@@ -81,6 +81,7 @@ RAW_P_THRESHOLD     = 0.05
 LOGFC_THRESHOLD     = 0
 FORCE_KEEP_A3       = False      # Let A3 genes pass/fail DE on their own merit
 FILTER_PROTEIN_CODING = False    # SC data already ~20K protein-coding genes
+FDR_THRESHOLD  = 0.05
 
 # =============================================================================
 # STEP 02 -- CORRELATION NETWORK PARAMETERS
@@ -110,7 +111,7 @@ COMMUNITY_METHOD    = "leiden"
 COMMUNITY_RESOLUTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
-USE_LARGEST_COMPONENT = True
+USE_LARGEST_COMPONENT = False
 TARGET_BIG_COMMUNITIES = 14
 MIN_COMMUNITY_SIZE     = 10
 
