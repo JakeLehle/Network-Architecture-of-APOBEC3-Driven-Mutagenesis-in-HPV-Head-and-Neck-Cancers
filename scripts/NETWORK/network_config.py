@@ -165,9 +165,6 @@ SBS2_LOW_PERCENTILE  = 0.25   # bottom 25% of SBS2 within high-A3 = SBS2-LOW gro
 # NOTE: When adapting the single-cell pipeline, switch to the same raw p approach
 RAW_P_THRESHOLD = 0.05            # raw Wilcoxon p-value
 LOGFC_THRESHOLD = 0               # No fold-change filter (bulk TCGA effect sizes too small)
-                                   # NOTE: Match this in the single-cell pipeline
-
-# Legacy FDR threshold (kept for reference, not used in selection)
 FDR_THRESHOLD  = 0.05
 
 # Always retain A3 genes even if not significant
@@ -205,7 +202,7 @@ COMMUNITY_METHOD    = "leiden"
 COMMUNITY_RESOLUTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]   # Single resolution (selected via sweep)
 RUNS_PER_RESOLUTION = 15
 COMMUNITY_BASE_SEED = 42
-USE_LARGEST_COMPONENT = True
+USE_LARGEST_COMPONENT = False
 TARGET_BIG_COMMUNITIES = 14   # merge to top K + Other
 MIN_COMMUNITY_SIZE     = 10   # smaller communities get merged
 
