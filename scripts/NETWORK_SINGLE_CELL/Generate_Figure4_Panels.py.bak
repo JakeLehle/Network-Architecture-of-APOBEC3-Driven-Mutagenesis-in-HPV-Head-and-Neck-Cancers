@@ -40,7 +40,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
 import matplotlib.gridspec as gridspec
-from scipy.stats import spearmanr
 
 # =============================================================================
 # CONFIGURATION
@@ -154,7 +153,7 @@ def draw_labels_with_boxes(ax, pos, label_pos, labels, font_sizes,
         offset = np.linalg.norm(lxy - nxy)
         kwargs = dict(
             fontsize=fs, fontweight="bold", color=col,
-            ha="center", va="center", zorder=9,
+            ha="center", va="center",
             bbox=dict(boxstyle="round,pad=0.15",
                       fc="white", ec="none", alpha=LABEL_BG_ALPHA))
         if offset > char_w * 2.5:
@@ -337,13 +336,12 @@ def generate_umap_panel(adata, groups_df):
 # A3 COMMUNITY ZOOM (DE-colored, Harris-ringed, density-aware)
 # =============================================================================
 
-
 def generate_a3_zoom(net_data, harris_genes):
-    """Generate chain-only subgraph plot (no background community).
+    """Generate A3 community zoom for one normal-comparison network.
 
-    Extracts just the concordant chain nodes + A3 genes, lays them out
-    independently so they fill the plot space naturally.
-    Full community plot generated separately as supplement.
+    Node coloring: DE log2FC direction (up in tumor / up in normal)
+    Special rings: Harris A3 interactors in mustard yellow
+    Labels: A3 genes + Harris interactors in community + top N hubs
     """
     name = net_data["name"]
     label = net_data["label"]
@@ -353,7 +351,7 @@ def generate_a3_zoom(net_data, harris_genes):
     node_intra = net_data["node_intra"]
     de_log2fc = net_data.get("de_log2fc", {})
 
-    banner(f"[A3 CHAINS] {name}: {label}")
+    banner(f"[A3 ZOOM] {name}: {label}")
 
     if G_comm is None:
         log("  [SKIP] No community graph"); return
@@ -361,6 +359,12 @@ def generate_a3_zoom(net_data, harris_genes):
     def get_intra(n):
         return node_intra.get(n, 0.1)
 
+    # Find A3 genes in graph
+    a3_in_graph = [g for g in A3_SYMBOLS if g in G_comm.nodes()]
+    if not a3_in_graph:
+        log("  [SKIP] No A3 genes in graph"); return
+
+    # Get the community containing A3A or A3B
     a3_comm = None
     for g in ["APOBEC3A", "APOBEC3B"]:
         if g in gene_to_comm:
@@ -369,328 +373,245 @@ def generate_a3_zoom(net_data, harris_genes):
     if a3_comm is None:
         log("  [SKIP] A3A/A3B not in partition"); return
 
+    # Get community nodes and subgraph
     comm_nodes = [g for g, c in gene_to_comm.items() if c == a3_comm]
     G_sub = G_comm.subgraph(comm_nodes).copy()
+
+    # Remove isolates
     isolates = [n for n in G_sub.nodes() if G_sub.degree(n) == 0]
     G_sub.remove_nodes_from(isolates)
+
     n_nodes = G_sub.number_of_nodes()
     n_edges = G_sub.number_of_edges()
     log(f"  A3 community: C{a3_comm}, {n_nodes} nodes, {n_edges} edges")
+
     if n_nodes == 0:
-        log("  [SKIP] Empty"); return
+        log("  [SKIP] Empty after isolate removal"); return
 
-    a3_here = [n for n in G_sub.nodes() if n in A3_SYMBOLS]
-    a3_set = set(a3_here)
-    harris_in_comm = set(n for n in G_sub.nodes()
-                         if n in harris_genes and n not in A3_SYMBOLS)
+    # Identify Harris interactors in this community
+    harris_in_comm = set(G_sub.nodes()) & harris_genes
+    log(f"  Harris A3 interactors in community: {len(harris_in_comm)}")
+    if harris_in_comm:
+        harris_list = sorted(harris_in_comm)
+        log(f"    {', '.join(harris_list[:10])}"
+            f"{'...' if len(harris_list) > 10 else ''}")
 
-    # Build concordance subgraphs
-    def build_conc(mode):
-        a3_nodes = set(n for n in G_sub.nodes() if n in A3_SYMBOLS)
-        G_conc = nx.Graph()
-        if mode == "activator":
-            eligible = set(n for n in G_sub.nodes()
-                           if de_log2fc.get(n, 0) > 0) | a3_nodes
-            for u, v, d in G_sub.edges(data=True):
-                w = d.get("weight", 0)
-                if w > 0 and u in eligible and v in eligible:
-                    G_conc.add_edge(u, v, weight=w)
-        else:
-            eligible = set(n for n in G_sub.nodes()
-                           if de_log2fc.get(n, 0) <= 0) | a3_nodes
-            for u, v, d in G_sub.edges(data=True):
-                w = d.get("weight", 0)
-                if w < 0 and u in eligible and v in eligible:
-                    G_conc.add_edge(u, v, weight=w)
-        return G_conc
-
-    G_act = build_conc("activator")
-    G_rep = build_conc("repressor")
-
-    # Find chain nodes
-    activator_chain_nodes = set()
-    repressor_chain_nodes = set()
-    for gene in harris_in_comm:
-        if de_log2fc.get(gene, 0) > 0 and gene in G_act and G_act.degree(gene) > 0:
-            activator_chain_nodes |= set(nx.node_connected_component(G_act, gene))
-        if de_log2fc.get(gene, 0) <= 0 and gene in G_rep and G_rep.degree(gene) > 0:
-            repressor_chain_nodes |= set(nx.node_connected_component(G_rep, gene))
-
-    # Boundary gene chains
-    for a3g in a3_here:
-        for nb in G_sub.neighbors(a3g):
-            if nb in A3_SYMBOLS: continue
-            nb_fc = de_log2fc.get(nb, 0)
-            for nn in G_sub.neighbors(nb):
-                if nn == a3g or nn in A3_SYMBOLS: continue
-                nn_w = G_sub[nb][nn].get("weight", 0)
-                nn_fc = de_log2fc.get(nn, 0)
-                if nb_fc > 0 and nn_fc > 0 and nn_w > 0:
-                    if nb in G_act and G_act.degree(nb) > 0:
-                        activator_chain_nodes |= set(nx.node_connected_component(G_act, nb))
-                    break
-                elif nb_fc <= 0 and nn_fc <= 0 and nn_w < 0:
-                    if nb in G_rep and G_rep.degree(nb) > 0:
-                        repressor_chain_nodes |= set(nx.node_connected_component(G_rep, nb))
-                    break
-
-    activator_chain_nodes -= a3_set
-    repressor_chain_nodes -= a3_set
-    all_chain_nodes = activator_chain_nodes | repressor_chain_nodes
-    featured = all_chain_nodes | a3_set
-    harris_in_chains = harris_in_comm & all_chain_nodes
-
-    log(f"  Activating: {len(activator_chain_nodes)}, Inhibiting: {len(repressor_chain_nodes)}")
-    log(f"  Harris in chains: {len(harris_in_chains)}")
-
-    # Wall and bridge edges
-    wall_edges = []
-    concordant_bridge_edges = []
-    for a3g in a3_here:
-        for nb in G_sub.neighbors(a3g):
-            if nb not in all_chain_nodes: continue
-            w = G_sub[a3g][nb].get("weight", 0)
-            nb_fc = de_log2fc.get(nb, 0)
-            if (nb_fc > 0 and w > 0) or (nb_fc <= 0 and w < 0):
-                concordant_bridge_edges.append((nb, a3g, w))
-            else:
-                wall_edges.append((nb, a3g, w))
-
-    log(f"  Wall edges: {len(wall_edges)}, Bridge edges: {len(concordant_bridge_edges)}")
-
-    # ===== EXTRACT CHAIN-ONLY SUBGRAPH =====
-    G_chain = G_sub.subgraph(featured).copy()
-    chain_iso = [n for n in G_chain.nodes() if G_chain.degree(n) == 0]
-    G_chain.remove_nodes_from(chain_iso)
-    n_chain = G_chain.number_of_nodes()
-    e_chain = G_chain.number_of_edges()
-    log(f"  Chain subgraph: {n_chain} nodes, {e_chain} edges")
-    if n_chain == 0:
-        log("  [SKIP] No chain nodes with edges"); return
-
-    # Layout on JUST the chain subgraph
-    if n_chain <= 10:
-        pos = nx.spring_layout(G_chain, seed=42, k=3.0, iterations=500, scale=3.0)
-    elif n_chain <= 50:
-        pos = nx.spring_layout(G_chain, seed=42, weight="abs_weight",
-                               k=5.0/np.sqrt(n_chain), iterations=800, scale=4.0)
+    # -----------------------------------------------------------------
+    # Layout: aggressive spacing for dense communities
+    # -----------------------------------------------------------------
+    if n_nodes <= 5:
+        pos = nx.spring_layout(G_sub, seed=COMMUNITY_BASE_SEED,
+                               k=2.0, iterations=200, scale=1.0)
+    elif n_nodes <= 100:
+        pos = nx.spring_layout(
+            G_sub, seed=COMMUNITY_BASE_SEED, weight="abs_weight",
+            k=6.0 / np.sqrt(max(n_nodes, 1)),
+            iterations=500, scale=3.0)
     else:
-        pos = nx.spring_layout(G_chain, seed=42, weight="abs_weight",
-                               k=8.0/np.sqrt(n_chain), iterations=1000, scale=6.0)
+        # Large community: very aggressive spacing
+        pos = nx.spring_layout(
+            G_sub, seed=COMMUNITY_BASE_SEED, weight="abs_weight",
+            k=12.0 / np.sqrt(max(n_nodes, 1)),
+            iterations=800, scale=5.0)
 
-    def ns_c(n): return 600 + 4000 * get_intra(n)
-    def ns_h(n): return 800 + 5000 * get_intra(n)
-    def ns_a(n): return max(2000, 1200 + 6000 * get_intra(n))
-    def lfs(n): return 16 + 16 * get_intra(n)
+    # -----------------------------------------------------------------
+    # Node coloring by DE direction
+    # -----------------------------------------------------------------
+    node_colors = {}
+    for n in G_sub.nodes():
+        if n in A3_SYMBOLS:
+            node_colors[n] = COLOR_A3
+        elif n in de_log2fc:
+            if de_log2fc[n] > 0:
+                node_colors[n] = COLOR_UP_TUMOR   # #fcad61
+            else:
+                node_colors[n] = COLOR_UP_NORMAL   # #aadda4
+        else:
+            node_colors[n] = "#d0d0d0"  # no DE data
 
-    fig, ax = plt.subplots(figsize=(28, 26))
+    # Count up/down for logging
+    n_up = sum(1 for n in G_sub.nodes()
+               if n not in A3_SYMBOLS and de_log2fc.get(n, 0) > 0)
+    n_down = sum(1 for n in G_sub.nodes()
+                 if n not in A3_SYMBOLS and de_log2fc.get(n, 0) < 0)
+    n_a3 = sum(1 for n in G_sub.nodes() if n in A3_SYMBOLS)
+    log(f"  Node coloring: {n_up} up in tumor, {n_down} up in normal, "
+        f"{n_a3} A3")
 
-    wall_set = set((min(u,v), max(u,v)) for u,v,_ in wall_edges)
-    bridge_set = set((min(u,v), max(u,v)) for u,v,_ in concordant_bridge_edges)
+    # -----------------------------------------------------------------
+    # Sizing: scale by community size
+    # -----------------------------------------------------------------
+    if n_nodes <= 10:
+        def ns(n): return 2000 + 6000 * get_intra(n)
+        def fs(n): return 22 + 20 * get_intra(n)
+        base_label_fs = 18
+    elif n_nodes <= 200:
+        def ns(n): return 400 + 3000 * get_intra(n)
+        def fs(n): return 14 + 18 * get_intra(n)
+        base_label_fs = 14
+    else:
+        # Very large community: small dots, only hubs visible
+        def ns(n): return 30 + 800 * get_intra(n)
+        def fs(n): return 10 + 16 * get_intra(n)
+        base_label_fs = 10
 
-    # zorder 1: chain edges
-    for u, v, d in G_chain.edges(data=True):
-        ek = (min(u,v), max(u,v))
-        if ek in wall_set or ek in bridge_set: continue
+    fig, ax = plt.subplots(figsize=(24, 22))
+
+    # -----------------------------------------------------------------
+    # Edges
+    # -----------------------------------------------------------------
+    for u, v, d in G_sub.edges(data=True):
         w = d.get("weight", 0)
         color = COLOR_EDGE_POS if w > 0 else COLOR_EDGE_NEG
-        width = 2.5 + 10.0 * abs(w)
-        alpha = min(0.75, 0.30 + 0.40 * abs(w))
+        if n_nodes > 200:
+            # Thin, transparent edges for dense networks
+            width = 0.3 + 2.0 * abs(w)
+            alpha = min(0.25, 0.05 + 0.15 * abs(w))
+        else:
+            width = 2.0 + 10.0 * abs(w)
+            alpha = min(0.6, 0.20 + 0.35 * abs(w))
         ax.plot([pos[u][0], pos[v][0]], [pos[u][1], pos[v][1]],
                 color=color, alpha=alpha, linewidth=width, zorder=1)
 
-    # zorder 2: wall edges (dashed) and bridge edges
-    for u, v, w in wall_edges:
-        if u not in pos or v not in pos: continue
-        color = COLOR_EDGE_POS if w > 0 else COLOR_EDGE_NEG
-        width = 3.5 + 10.0 * abs(w)
-        ax.plot([pos[u][0], pos[v][0]], [pos[u][1], pos[v][1]],
-                color=color, alpha=0.85, linewidth=width, linestyle="--", zorder=2)
-    for u, v, w in concordant_bridge_edges:
-        if u not in pos or v not in pos: continue
-        color = COLOR_EDGE_POS if w > 0 else COLOR_EDGE_NEG
-        width = 3.5 + 10.0 * abs(w)
-        ax.plot([pos[u][0], pos[v][0]], [pos[u][1], pos[v][1]],
-                color=color, alpha=0.85, linewidth=width, zorder=2)
+    # -----------------------------------------------------------------
+    # Nodes: regular first, then Harris rings, then A3 on top
+    # -----------------------------------------------------------------
+    a3_here = [n for n in G_sub.nodes() if n in A3_SYMBOLS]
+    harris_here = [n for n in G_sub.nodes()
+                   if n in harris_genes and n not in A3_SYMBOLS]
+    regular = [n for n in G_sub.nodes()
+               if n not in A3_SYMBOLS and n not in harris_genes]
 
-    # zorder 3: chain nodes
-    act_plot = sorted(activator_chain_nodes & set(G_chain.nodes()) - harris_in_chains)
-    if act_plot:
-        ax.scatter([pos[n][0] for n in act_plot], [pos[n][1] for n in act_plot],
-                   s=[ns_c(n) for n in act_plot], c=COLOR_UP_TUMOR,
-                   alpha=0.95, edgecolors="#000000", linewidths=1.0, zorder=3)
-    rep_plot = sorted(repressor_chain_nodes & set(G_chain.nodes()) - harris_in_chains)
-    if rep_plot:
-        ax.scatter([pos[n][0] for n in rep_plot], [pos[n][1] for n in rep_plot],
-                   s=[ns_c(n) for n in rep_plot], c=COLOR_UP_NORMAL,
-                   alpha=0.95, edgecolors="#000000", linewidths=1.0, zorder=3)
+    # Regular nodes
+    if regular:
+        r_colors = [node_colors[n] for n in regular]
+        r_sizes = [ns(n) for n in regular]
+        nx.draw_networkx_nodes(G_sub, pos, nodelist=regular, ax=ax,
+                               node_size=r_sizes, node_color=r_colors,
+                               alpha=0.85, edgecolors="#000000",
+                               linewidths=0.5)
 
-    # zorder 4: Harris interactors
-    h_list = sorted(harris_in_chains & set(G_chain.nodes()))
-    if h_list:
-        hc = [COLOR_UP_TUMOR if n in activator_chain_nodes else COLOR_UP_NORMAL for n in h_list]
-        hs = [ns_h(n) for n in h_list]
-        rs = [s * 2.2 for s in hs]
-        ax.scatter([pos[n][0] for n in h_list], [pos[n][1] for n in h_list],
-                   s=rs, facecolors="none", edgecolors=COLOR_HARRIS, linewidths=4.5, alpha=1.0, zorder=4)
-        ax.scatter([pos[n][0] for n in h_list], [pos[n][1] for n in h_list],
-                   s=hs, c=hc, alpha=0.95, edgecolors="#000000", linewidths=1.2, zorder=4)
+    # Harris interactor nodes (with mustard ring)
+    if harris_here:
+        h_colors = [node_colors[n] for n in harris_here]
+        h_sizes = [ns(n) * 1.3 for n in harris_here]
+        # Mustard ring behind
+        ring_sizes = [s * 2.2 for s in h_sizes]
+        nx.draw_networkx_nodes(G_sub, pos, nodelist=harris_here, ax=ax,
+                               node_size=ring_sizes, node_color="none",
+                               edgecolors=COLOR_HARRIS, linewidths=4.0,
+                               alpha=1.0)
+        # Filled node on top
+        nx.draw_networkx_nodes(G_sub, pos, nodelist=harris_here, ax=ax,
+                               node_size=h_sizes, node_color=h_colors,
+                               alpha=0.95, edgecolors="#000000",
+                               linewidths=1.0)
 
-    # zorder 5: A3 genes
-    a3_c = [n for n in a3_here if n in G_chain.nodes()]
-    if a3_c:
-        asizes = [ns_a(n) for n in a3_c]
-        rsizes = [s * 2.0 for s in asizes]
-        ax.scatter([pos[n][0] for n in a3_c], [pos[n][1] for n in a3_c],
-                   s=rsizes, facecolors="none", edgecolors=COLOR_A3, linewidths=5.0, alpha=1.0, zorder=5)
-        ax.scatter([pos[n][0] for n in a3_c], [pos[n][1] for n in a3_c],
-                   s=asizes, c=COLOR_A3, alpha=1.0, edgecolors="#000000", linewidths=2.5, zorder=5)
+    # A3 family nodes (largest, with emphasis ring)
+    if a3_here:
+        if n_nodes <= 10:
+            a3_sizes = [ns(n) * 1.5 for n in a3_here]
+        else:
+            # Make A3 nodes prominent even in dense networks
+            a3_sizes = [max(ns(n) * 2.0, 1200) for n in a3_here]
+        # Emphasis ring
+        ring_sizes = [s * 2.0 for s in a3_sizes]
+        nx.draw_networkx_nodes(G_sub, pos, nodelist=a3_here, ax=ax,
+                               node_size=ring_sizes, node_color="none",
+                               edgecolors=COLOR_A3, linewidths=5.0,
+                               alpha=1.0)
+        # Filled A3 nodes
+        nx.draw_networkx_nodes(G_sub, pos, nodelist=a3_here, ax=ax,
+                               node_size=a3_sizes, node_color=COLOR_A3,
+                               alpha=1.0, edgecolors="#000000",
+                               linewidths=2.5)
 
-    # zorder 6: Labels
-    labels = {}; fsd = {}; fcd = {}
-    for n in a3_c:
-        labels[n] = A3_ALIAS.get(n, n); fsd[n] = FONT_AXIS; fcd[n] = COLOR_A3_TEXT
-    for n in h_list:
-        labels[n] = n; fsd[n] = max(lfs(n), 16); fcd[n] = "#5a4a00"
-    for n in set(G_chain.nodes()) - a3_set - harris_in_chains:
-        labels[n] = n; fsd[n] = max(lfs(n), 14)
-        fcd[n] = "#8b4513" if n in activator_chain_nodes else "#2e6e2e"
+    # -----------------------------------------------------------------
+    # Labels: A3 genes + Harris interactors + top N hubs
+    # -----------------------------------------------------------------
+    labels = {}
+    font_sizes = {}
+    font_colors = {}
+
+    # Always label A3 genes
+    for n in a3_here:
+        alias = A3_ALIAS.get(n, n)
+        labels[n] = alias
+        font_sizes[n] = FONT_AXIS
+        font_colors[n] = COLOR_A3_TEXT
+
+    # Label Harris interactors in the community
+    for n in harris_here:
+        if n not in labels:
+            labels[n] = n
+            font_sizes[n] = max(fs(n), base_label_fs + 2)
+            font_colors[n] = "#5a4a00"  # dark mustard for Harris labels
+
+    # Fill remaining label slots with top hubs by intra_score
+    n_remaining = max(0, TOP_N_LABELS - len(labels))
+    if n_remaining > 0:
+        scored = [(n, get_intra(n)) for n in G_sub.nodes()
+                  if n not in labels]
+        scored.sort(key=lambda x: -x[1])
+        for n, sc in scored[:n_remaining]:
+            labels[n] = n
+            font_sizes[n] = fs(n)
+            font_colors[n] = "#000000"
+
+    log(f"  Labels: {len(labels)} total "
+        f"({len(a3_here)} A3, {len(harris_here)} Harris in comm, "
+        f"rest are top hubs)")
 
     if labels:
-        lp = repel_labels(pos, labels, data_range=8.0, n_iters=500, push_strength=0.08)
-        draw_labels_with_boxes(ax, pos, lp, labels, fsd, fcd, char_w=0.05)
+        dr = 5.0 if n_nodes <= 10 else (8.0 if n_nodes <= 200 else 12.0)
+        n_iter = 250 if n_nodes <= 200 else 400
+        lp = repel_labels(pos, labels, data_range=dr,
+                          n_iters=n_iter, push_strength=0.07)
+        draw_labels_with_boxes(ax, pos, lp, labels,
+                               font_sizes, font_colors, char_w=0.05)
 
-    n_act = len(activator_chain_nodes & set(G_chain.nodes()))
-    n_rep = len(repressor_chain_nodes & set(G_chain.nodes()))
+    # -----------------------------------------------------------------
+    # Legend
+    # -----------------------------------------------------------------
     legend_handles = [
         Patch(fc=COLOR_A3, ec="#000000", lw=2, label="APOBEC3"),
-        Patch(fc=COLOR_UP_TUMOR, ec="#000000", lw=0.5, label=f"A3 Activating ({n_act})"),
-        Patch(fc=COLOR_UP_NORMAL, ec="#000000", lw=0.5, label=f"A3 Inhibiting ({n_rep})"),
-        Patch(fc="white", ec=COLOR_HARRIS, lw=3, label=f"A3 interactor ({len(h_list)})"),
-        Patch(fc=COLOR_EDGE_POS, ec="none", alpha=0.6, label="Gained co-expression"),
-        Patch(fc=COLOR_EDGE_NEG, ec="none", alpha=0.6, label="Lost co-expression"),
+        Patch(fc=COLOR_UP_TUMOR, ec="#000000", lw=0.5,
+              label="Up in tumor"),
+        Patch(fc=COLOR_UP_NORMAL, ec="#000000", lw=0.5,
+              label="Up in normal"),
+        Patch(fc="white", ec=COLOR_HARRIS, lw=3,
+              label=f"Harris A3 interactor ({len(harris_in_comm)})"),
+        Patch(fc=COLOR_EDGE_POS, ec="none", alpha=0.5,
+              label="Gained co-expression"),
+        Patch(fc=COLOR_EDGE_NEG, ec="none", alpha=0.5,
+              label="Lost co-expression"),
     ]
-    ax.legend(handles=legend_handles, loc="upper left", fontsize=FONT_LEGEND-2, framealpha=0.9)
+    ax.legend(handles=legend_handles, loc="upper left",
+              fontsize=FONT_LEGEND - 2, framealpha=0.9)
 
     thresh = net_data["params"].get("DIFF_THRESHOLD", "?")
     ax.set_title(f"{label} ({short})\n"
-                 f"Concordant Chain Subnetwork: {n_chain} genes, {e_chain} edges | "
-                 f"threshold={thresh}\n"
-                 f"Activating: {n_act}, Inhibiting: {n_rep}, Wall edges: {len(wall_edges)}",
-                 fontsize=FONT_TITLE-2, pad=15)
+                 f"A3 Community C{a3_comm}: "
+                 f"{n_nodes} genes, {n_edges} edges | "
+                 f"threshold={thresh}",
+                 fontsize=FONT_TITLE - 2, pad=15)
     ax.axis("off")
     plt.tight_layout()
+
     for ext in ["pdf", "png"]:
-        plt.savefig(os.path.join(FIG_DIR, f"Panel_{name}_A3_chains.{ext}"),
+        plt.savefig(os.path.join(FIG_DIR,
+                    f"Panel_{name}_A3_zoom.{ext}"),
                     dpi=300, bbox_inches="tight")
     plt.close()
-    log(f"  [SAVE] {name} chain panel -> {FIG_DIR}")
-
-
-
-# =============================================================================
-# PANEL 4: SBS2_VS_CNV CHAIN VALIDATION HEATMAP
-# =============================================================================
-
-def identify_chain_genes(net_dir, harris_genes):
-    """Identify activator and repressor chain genes from one network.
-    Same logic as generate_a3_zoom chain detection."""
-    part_df = pd.read_csv(
-        os.path.join(net_dir, "04_communities/SC_best_partition.csv"))
-    gene_to_comm = dict(zip(part_df["gene"], part_df["community"]))
-
-    with open(os.path.join(net_dir,
-              "04_communities/SC_G_comm.gpickle"), "rb") as f:
-        G_comm = pickle.load(f)
-
-    de_df = pd.read_csv(
-        os.path.join(net_dir,
-                     "02_differential_expression/SC_diffexpr_stats.csv"))
-    de_log2fc = dict(zip(de_df["gene"], de_df["log2FC"]))
-
-    a3_comm = None
-    for g in ["APOBEC3A", "APOBEC3B"]:
-        if g in gene_to_comm:
-            a3_comm = gene_to_comm[g]
-            break
-    if a3_comm is None:
-        return set(), set()
-
-    comm_nodes = [g for g, c in gene_to_comm.items() if c == a3_comm]
-    G_sub = G_comm.subgraph(comm_nodes).copy()
-    isolates = [n for n in G_sub.nodes() if G_sub.degree(n) == 0]
-    G_sub.remove_nodes_from(isolates)
-
-    a3_set = set(n for n in G_sub.nodes() if n in A3_SYMBOLS)
-    harris_in_comm = set(n for n in G_sub.nodes()
-                         if n in harris_genes and n not in A3_SYMBOLS)
-
-    def build_conc(mode):
-        a3_nodes = set(n for n in G_sub.nodes() if n in A3_SYMBOLS)
-        G_conc = nx.Graph()
-        if mode == "activator":
-            eligible = set(n for n in G_sub.nodes()
-                           if de_log2fc.get(n, 0) > 0) | a3_nodes
-            for u, v, d in G_sub.edges(data=True):
-                w = d.get("weight", 0)
-                if w > 0 and u in eligible and v in eligible:
-                    G_conc.add_edge(u, v, weight=w)
-        else:
-            eligible = set(n for n in G_sub.nodes()
-                           if de_log2fc.get(n, 0) <= 0) | a3_nodes
-            for u, v, d in G_sub.edges(data=True):
-                w = d.get("weight", 0)
-                if w < 0 and u in eligible and v in eligible:
-                    G_conc.add_edge(u, v, weight=w)
-        return G_conc
-
-    G_act = build_conc("activator")
-    G_rep = build_conc("repressor")
-
-    activator_nodes = set()
-    repressor_nodes = set()
-
-    for gene in harris_in_comm:
-        if de_log2fc.get(gene, 0) > 0 and gene in G_act and \
-           G_act.degree(gene) > 0:
-            activator_nodes |= set(nx.node_connected_component(G_act, gene))
-        if de_log2fc.get(gene, 0) <= 0 and gene in G_rep and \
-           G_rep.degree(gene) > 0:
-            repressor_nodes |= set(nx.node_connected_component(G_rep, gene))
-
-    # Add boundary gene chains
-    for a3g in (a3_set & set(G_sub.nodes())):
-        for nb in G_sub.neighbors(a3g):
-            if nb in A3_SYMBOLS:
-                continue
-            nb_fc = de_log2fc.get(nb, 0)
-            for nn in G_sub.neighbors(nb):
-                if nn == a3g or nn in A3_SYMBOLS:
-                    continue
-                nn_w = G_sub[nb][nn].get("weight", 0)
-                nn_fc = de_log2fc.get(nn, 0)
-                if nb_fc > 0 and nn_fc > 0 and nn_w > 0:
-                    if nb in G_act and G_act.degree(nb) > 0:
-                        activator_nodes |= set(
-                            nx.node_connected_component(G_act, nb))
-                    break
-                elif nb_fc <= 0 and nn_fc <= 0 and nn_w < 0:
-                    if nb in G_rep and G_rep.degree(nb) > 0:
-                        repressor_nodes |= set(
-                            nx.node_connected_component(G_rep, nb))
-                    break
-
-    activator_nodes -= a3_set
-    repressor_nodes -= a3_set
-    return activator_nodes, repressor_nodes
+    log(f"  [SAVE] {name} A3 zoom -> {FIG_DIR}")
 
 
 # =============================================================================
-# COMPOSITE FIGURE (UMAP + 2 chain plots + heatmap)
+# COMPOSITE FIGURE (UMAP + 2 zooms)
 # =============================================================================
 
 def generate_composite():
-    """Assemble composite figure with all four panels."""
+    """Assemble composite figure with UMAP and 2 normal-comparison zooms."""
     banner("[COMPOSITE] Assembling Figure 4")
 
     umap_path = os.path.join(FIG_DIR, "Panel_UMAP_three_pop.png")
@@ -709,8 +630,8 @@ def generate_composite():
     ax_umap.set_title("a", fontsize=36, fontweight="bold",
                       loc="left", pad=10)
 
-    # Top right: SBS2_VS_NORMAL A3 chains
-    sbs2_path = os.path.join(FIG_DIR, "Panel_SBS2_VS_NORMAL_A3_chains.png")
+    # Top right: SBS2_VS_NORMAL zoom
+    sbs2_path = os.path.join(FIG_DIR, "Panel_SBS2_VS_NORMAL_A3_zoom.png")
     if os.path.exists(sbs2_path):
         ax = fig.add_subplot(gs[0, 1])
         img = plt.imread(sbs2_path)
@@ -719,10 +640,10 @@ def generate_composite():
         ax.set_title("b", fontsize=36, fontweight="bold",
                      loc="left", pad=10)
     else:
-        log("  [SKIP] SBS2_VS_NORMAL chains panel not found")
+        log("  [SKIP] SBS2_VS_NORMAL zoom not found")
 
-    # Bottom left: CNV_VS_NORMAL chains
-    cnv_path = os.path.join(FIG_DIR, "Panel_CNV_VS_NORMAL_A3_chains.png")
+    # Bottom left: CNV_VS_NORMAL zoom
+    cnv_path = os.path.join(FIG_DIR, "Panel_CNV_VS_NORMAL_A3_zoom.png")
     if os.path.exists(cnv_path):
         ax = fig.add_subplot(gs[1, 0])
         img = plt.imread(cnv_path)
@@ -731,20 +652,18 @@ def generate_composite():
         ax.set_title("c", fontsize=36, fontweight="bold",
                      loc="left", pad=10)
     else:
-        log("  [SKIP] CNV_VS_NORMAL chains panel not found")
+        log("  [SKIP] CNV_VS_NORMAL zoom not found")
 
-    # Bottom right: SBS2_VS_CNV dot plot
-    heatmap_path = os.path.join(FIG_DIR,
-                                "Panel_D_option_C_dotplot.png")
-    if os.path.exists(heatmap_path):
-        ax = fig.add_subplot(gs[1, 1])
-        img = plt.imread(heatmap_path)
-        ax.imshow(img)
-        ax.axis("off")
-        ax.set_title("d", fontsize=36, fontweight="bold",
-                     loc="left", pad=10)
-    else:
-        log("  [SKIP] SBS2_VS_CNV dot plot not found")
+    # Bottom right: reserved for SBS2_VS_CNV or annotation panel
+    ax_placeholder = fig.add_subplot(gs[1, 1])
+    ax_placeholder.text(
+        0.5, 0.5,
+        "SBS2-HIGH vs CNV-HIGH\n(diagnostic in progress)",
+        ha="center", va="center", fontsize=FONT_AXIS,
+        color="#999999", transform=ax_placeholder.transAxes)
+    ax_placeholder.axis("off")
+    ax_placeholder.set_title("d", fontsize=36, fontweight="bold",
+                             loc="left", pad=10)
 
     for ext in ["pdf", "png"]:
         plt.savefig(os.path.join(FIG_DIR, f"Figure4_composite.{ext}"),
@@ -917,9 +836,6 @@ def main():
     # Panel 2+3: A3 community zooms (normal comparisons only)
     for net_data in all_net_data:
         generate_a3_zoom(net_data, harris_genes)
-
-    # Panel 4: SBS2_VS_CNV chain validation heatmap
-    # Panel 4: run Generate_Panel_D_Options.py separately
 
     # Composite figure
     generate_composite()
