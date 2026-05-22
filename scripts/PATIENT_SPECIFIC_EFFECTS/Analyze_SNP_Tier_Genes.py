@@ -8,12 +8,14 @@ map variants to genes and check:
   1. Is the gene in the SC differential co-expression network (Figure 4)?
   2. Is it a known A3 interactor (Harris/McCann/Jang)?
   3. Is it an A3 enzyme?
-  4. GSEA (KEGG) on the gene list per tier
-  5. Cross-reference with neoantigen databases (if provided)
+  4. Is it in the activating or inhibiting concordant chains (Figure 4)?
+  5. GSEA (KEGG) on the gene list per tier
+  6. Cross-reference with neoantigen databases (if provided)
 
 Requires a GTF file to map variant positions to genes. Set GTF_PATH below.
 
-This script is designed to be reusable for Figure 6 (high-CNV population).
+Updated May 2026: aligned with V4 pipeline, adds activating/inhibiting
+chain cross-referencing from Figure 4 concordance analysis.
 
 Usage:
   conda run -n NETWORK python Analyze_SNP_Tier_Genes.py
@@ -28,37 +30,39 @@ import gseapy as gp
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from patient_config import *
+from patient_config import (
+    DIR_02_SNP, FIGURE_5_PANELS, COMMUNITIES_DIR,
+    HARRIS_ALL_PATH, HARRIS_A3B_PATH,
+    A3_GENES_SYMBOLS, A3_INTERACTOR_ANCHORS,
+    ACTIVATING_CHAIN_GENES, INHIBITING_CHAIN_ANCHORS,
+    banner, log, ensure_dir, load_harris_interactors,
+)
 
 # =============================================================================
-# CONFIGURATION — SET THESE PATHS
+# CONFIGURATION
 # =============================================================================
 
 # Cell Ranger reference GTF (GRCh38)
-# Common locations — update to match your cluster setup
 GTF_CANDIDATES = [
     "/master/jlehle/WORKING/SC/ref/GRCh38/genes/genes_unzipped.gtf"
 ]
 
-# Variant sharing tiers (output from Generate_Supplemental script)
+# Variant sharing tiers (output from Generate_Supplemental script v4)
 TIER_FILE = os.path.join(FIGURE_5_PANELS, "variant_sharing_tiers.tsv")
 
-# SC network community genes
+# SC network community genes (V4: SBS2_VS_NORMAL)
 SC_PARTITION_FILE = os.path.join(COMMUNITIES_DIR, "SC_best_partition.csv")
 
-# Neoantigen databases (optional — set to None if not available)
-TSNADB_PATH = None   # e.g., "/path/to/TSNAdb_v2.0.tsv"
-NEPDB_PATH  = None   # e.g., "/path/to/NEPdb.tsv"
+# Neoantigen databases (optional)
+TSNADB_PATH = None
+NEPDB_PATH  = None
 
 # Tiers to analyze (skip patient-specific and partially shared)
 TIERS_TO_ANALYZE = ['Universal', 'Broadly shared', 'HC-exclusive']
 
 
 def parse_gtf(gtf_path):
-    """
-    Parse a GTF file into a dict of chrom -> list of (start, end, gene_name).
-    Handles both .gtf and .gtf.gz files.
-    """
+    """Parse a GTF file into a dict of chrom -> list of (start, end, gene_name)."""
     banner("PARSING GTF")
     log(f"  File: {gtf_path}")
 
@@ -77,14 +81,12 @@ def parse_gtf(gtf_path):
                 continue
 
             chrom = fields[0]
-            # Ensure chr prefix
             if not chrom.startswith('chr'):
                 chrom = 'chr' + chrom
 
             start = int(fields[3])
             end = int(fields[4])
 
-            # Parse gene_name from attributes
             attrs = fields[8]
             gene_name = None
             for attr in attrs.split(';'):
@@ -97,7 +99,6 @@ def parse_gtf(gtf_path):
                 gene_coords[chrom].append((start, end, gene_name))
                 n_genes += 1
 
-    # Sort each chromosome's genes by start position for binary search
     for chrom in gene_coords:
         gene_coords[chrom].sort(key=lambda x: x[0])
 
@@ -111,7 +112,7 @@ def map_variant_to_gene(chrom, pos, gene_coords):
         return []
     genes = []
     for start, end, name in gene_coords[chrom]:
-        if start > pos + 10000:  # past our position with buffer
+        if start > pos + 10000:
             break
         if start <= pos <= end:
             genes.append(name)
@@ -129,12 +130,14 @@ def map_all_variants(tier_df, gene_coords):
     for i, row in tier_df.iterrows():
         parts = row['variant_id'].split(':')
         if len(parts) < 2:
-            gene_lists.append([]); continue
+            gene_lists.append([])
+            continue
         chrom = parts[0]
         try:
             pos = int(parts[1])
         except ValueError:
-            gene_lists.append([]); continue
+            gene_lists.append([])
+            continue
 
         genes = map_variant_to_gene(chrom, pos, gene_coords)
         gene_lists.append(genes)
@@ -145,14 +148,22 @@ def map_all_variants(tier_df, gene_coords):
             log(f"  Processed {i+1:,}/{n_total:,}...")
 
     tier_df['genes'] = gene_lists
-    tier_df['gene_str'] = tier_df['genes'].apply(lambda x: ','.join(x) if x else '')
-    log(f"  Mapped {n_mapped:,}/{n_total:,} variants to genes ({100*n_mapped/n_total:.1f}%)")
+    tier_df['gene_str'] = tier_df['genes'].apply(
+        lambda x: ','.join(x) if x else '')
+    log(f"  Mapped {n_mapped:,}/{n_total:,} variants to genes "
+        f"({100 * n_mapped / n_total:.1f}%)")
     return tier_df
 
 
-def cross_reference_analysis(tier_df, sc_network_genes, harris_all, harris_a3b, a3_genes):
-    """Cross-reference per-tier gene lists against network, interactors, A3 enzymes."""
+def cross_reference_analysis(tier_df, sc_network_genes, harris_all,
+                              harris_a3b, a3_genes,
+                              activating_genes, inhibiting_genes,
+                              anchor_genes):
+    """Cross-reference per-tier gene lists against network, interactors,
+    A3 enzymes, and concordant chain genes."""
     banner("CROSS-REFERENCE ANALYSIS")
+
+    tier_summaries = {}
 
     for tier in TIERS_TO_ANALYZE:
         sub = tier_df[tier_df['tier'] == tier]
@@ -161,35 +172,77 @@ def cross_reference_analysis(tier_df, sc_network_genes, harris_all, harris_a3b, 
             tier_genes.update(gl)
 
         if len(tier_genes) == 0:
-            log(f"\n  {tier}: no genes mapped"); continue
+            log(f"\n  {tier}: no genes mapped")
+            continue
 
-        # Cross-reference
+        # Cross-reference against all gene sets
         in_network = tier_genes & sc_network_genes
         in_harris = tier_genes & harris_all
         in_harris_a3b = tier_genes & harris_a3b
         in_a3 = tier_genes & a3_genes
+        in_activating = tier_genes & activating_genes
+        in_inhibiting = tier_genes & inhibiting_genes
+        in_anchors = tier_genes & anchor_genes
 
-        log(f"\n  === {tier} ({len(sub)} variants, {len(tier_genes)} unique genes) ===")
+        log(f"\n  === {tier} ({len(sub)} variants, "
+            f"{len(tier_genes)} unique genes) ===")
+
         log(f"    In SC network (Fig 4): {len(in_network)} genes")
         if in_network:
             for g in sorted(in_network)[:20]:
                 log(f"      {g}")
             if len(in_network) > 20:
-                log(f"      ... and {len(in_network)-20} more")
+                log(f"      ... and {len(in_network) - 20} more")
 
         log(f"    Known A3 interactors (Harris): {len(in_harris)} genes")
         if in_harris:
-            for g in sorted(in_harris): log(f"      {g}")
+            for g in sorted(in_harris):
+                log(f"      {g}")
 
         log(f"    A3B-specific interactors: {len(in_harris_a3b)} genes")
         if in_harris_a3b:
-            for g in sorted(in_harris_a3b): log(f"      {g}")
+            for g in sorted(in_harris_a3b):
+                log(f"      {g}")
 
         log(f"    A3 enzymes: {len(in_a3)} genes")
         if in_a3:
-            for g in sorted(in_a3): log(f"      {g}")
+            for g in sorted(in_a3):
+                log(f"      {g}")
 
-    return tier_df
+        log(f"    Activating chain genes (Fig 4): {len(in_activating)} / "
+            f"{len(activating_genes)}")
+        if in_activating:
+            for g in sorted(in_activating):
+                log(f"      {g}")
+
+        log(f"    Inhibiting chain anchors (Fig 4): {len(in_inhibiting)} / "
+            f"{len(inhibiting_genes)}")
+        if in_inhibiting:
+            for g in sorted(in_inhibiting):
+                log(f"      {g}")
+
+        log(f"    A3 interactor anchors (RALY/HNRNPA2B1): "
+            f"{len(in_anchors)} / {len(anchor_genes)}")
+        if in_anchors:
+            for g in sorted(in_anchors):
+                log(f"      {g}")
+
+        tier_summaries[tier] = {
+            'n_variants': len(sub),
+            'n_genes': len(tier_genes),
+            'in_network': len(in_network),
+            'in_harris': len(in_harris),
+            'in_harris_a3b': len(in_harris_a3b),
+            'in_a3': len(in_a3),
+            'in_activating_chain': len(in_activating),
+            'in_inhibiting_chain': len(in_inhibiting),
+            'in_anchors': len(in_anchors),
+            'activating_genes_hit': sorted(in_activating),
+            'inhibiting_genes_hit': sorted(in_inhibiting),
+            'a3_genes_hit': sorted(in_a3),
+        }
+
+    return tier_summaries
 
 
 def run_gsea_per_tier(tier_df, out_dir):
@@ -205,7 +258,8 @@ def run_gsea_per_tier(tier_df, out_dir):
 
         tier_genes = sorted(tier_genes)
         if len(tier_genes) < 5:
-            log(f"  {tier}: only {len(tier_genes)} genes, skipping GSEA"); continue
+            log(f"  {tier}: only {len(tier_genes)} genes, skipping GSEA")
+            continue
 
         log(f"  {tier}: running enrichr on {len(tier_genes)} genes...")
 
@@ -220,7 +274,8 @@ def run_gsea_per_tier(tier_df, out_dir):
             res['tier'] = tier
 
             sig = res[res['Adjusted P-value'] < 0.05]
-            log(f"    {len(res)} pathways tested, {len(sig)} significant (adj.p < 0.05)")
+            log(f"    {len(res)} pathways tested, "
+                f"{len(sig)} significant (adj.p < 0.05)")
 
             if len(sig) > 0:
                 top = sig.sort_values('Adjusted P-value').head(10)
@@ -229,8 +284,9 @@ def run_gsea_per_tier(tier_df, out_dir):
                         f"genes={r['Overlap']}")
 
             gsea_results[tier] = res
-            res.to_csv(os.path.join(out_dir, f"SNP_tier_{tier.replace(' ','_')}_KEGG.tsv"),
-                      sep='\t', index=False)
+            res.to_csv(os.path.join(
+                out_dir, f"SNP_tier_{tier.replace(' ', '_')}_KEGG.tsv"),
+                sep='\t', index=False)
 
         except Exception as e:
             log(f"    ERROR: {e}")
@@ -253,26 +309,21 @@ def neoantigen_cross_reference(tier_df, out_dir):
             db = pd.read_csv(path, sep='\t')
             log(f"    Shape: {db.shape}")
             log(f"    Columns: {list(db.columns)[:10]}")
+            log(f"    NOTE: Cross-reference logic needs customization "
+                f"for {name} format.")
 
-            # The cross-reference logic depends on database format
-            # Typical fields: gene, mutation, chromosome, position
-            # Implement specific matching once database format is confirmed
-            log(f"    NOTE: Cross-reference logic needs customization for {name} format.")
-            log(f"    Saving gene overlap for manual inspection.")
-
-            # Basic gene-level overlap
             for tier in TIERS_TO_ANALYZE:
                 sub = tier_df[tier_df['tier'] == tier]
                 tier_genes = set()
                 for gl in sub['genes']:
                     tier_genes.update(gl)
 
-                # Try common gene column names
                 for gene_col in ['gene', 'Gene', 'gene_name', 'Hugo_Symbol']:
                     if gene_col in db.columns:
                         db_genes = set(db[gene_col].dropna().unique())
                         overlap = tier_genes & db_genes
-                        log(f"    {tier}: {len(overlap)} genes overlap with {name}")
+                        log(f"    {tier}: {len(overlap)} genes overlap "
+                            f"with {name}")
                         if overlap:
                             for g in sorted(overlap)[:10]:
                                 log(f"      {g}")
@@ -281,34 +332,41 @@ def neoantigen_cross_reference(tier_df, out_dir):
             log(f"    ERROR loading {name}: {e}")
 
 
-def generate_report(tier_df, gsea_results, out_dir):
+def generate_report(tier_df, gsea_results, tier_summaries, out_dir):
     """Save comprehensive report TSV."""
     banner("GENERATING REPORT")
 
-    # Per-tier summary
     summary_rows = []
     for tier in TIERS_TO_ANALYZE:
-        sub = tier_df[tier_df['tier'] == tier]
-        tier_genes = set()
-        for gl in sub['genes']:
-            tier_genes.update(gl)
-
+        if tier not in tier_summaries:
+            continue
+        ts = tier_summaries[tier]
         row = {
             'tier': tier,
-            'n_variants': len(sub),
-            'n_genes': len(tier_genes),
-            'top_genes': ','.join(sorted(tier_genes)[:20]),
+            'n_variants': ts['n_variants'],
+            'n_genes': ts['n_genes'],
+            'in_sc_network': ts['in_network'],
+            'in_harris_interactors': ts['in_harris'],
+            'in_harris_a3b': ts['in_harris_a3b'],
+            'in_a3_enzymes': ts['in_a3'],
+            'in_activating_chain': ts['in_activating_chain'],
+            'in_inhibiting_chain': ts['in_inhibiting_chain'],
+            'in_anchors_RALY_HNRNPA2B1': ts['in_anchors'],
+            'activating_genes': ','.join(ts['activating_genes_hit']),
+            'a3_genes': ','.join(ts['a3_genes_hit']),
         }
 
-        # Add top GSEA pathway if available
         if tier in gsea_results:
-            sig = gsea_results[tier][gsea_results[tier]['Adjusted P-value'] < 0.05]
+            sig = gsea_results[tier][
+                gsea_results[tier]['Adjusted P-value'] < 0.05]
             if len(sig) > 0:
                 row['top_kegg'] = sig.iloc[0]['Term']
                 row['top_kegg_pval'] = sig.iloc[0]['Adjusted P-value']
                 row['n_sig_kegg'] = len(sig)
             else:
-                row['top_kegg'] = 'none'; row['top_kegg_pval'] = 1.0; row['n_sig_kegg'] = 0
+                row['top_kegg'] = 'none'
+                row['top_kegg_pval'] = 1.0
+                row['n_sig_kegg'] = 0
         summary_rows.append(row)
 
     summary_df = pd.DataFrame(summary_rows)
@@ -330,22 +388,23 @@ def main():
     # ── Load tier assignments ────────────────────────────────────────────
     if not os.path.exists(TIER_FILE):
         log(f"  ERROR: Tier file not found: {TIER_FILE}")
-        log(f"  Run Generate_Supplemental_Patient_Effects_v3.py first.")
+        log(f"  Run Generate_Supplemental_Patient_Effects_v4.py first.")
         sys.exit(1)
 
     tier_df = pd.read_csv(TIER_FILE, sep='\t')
     log(f"  Loaded {len(tier_df):,} variants with tier assignments")
     for t in TIERS_TO_ANALYZE:
-        log(f"    {t}: {(tier_df['tier']==t).sum():,}")
+        log(f"    {t}: {(tier_df['tier'] == t).sum():,}")
 
     # ── Find and parse GTF ───────────────────────────────────────────────
     gtf_path = None
     for candidate in GTF_CANDIDATES:
         if os.path.exists(candidate):
-            gtf_path = candidate; break
-        # Also check .gz version
+            gtf_path = candidate
+            break
         if os.path.exists(candidate + '.gz'):
-            gtf_path = candidate + '.gz'; break
+            gtf_path = candidate + '.gz'
+            break
 
     if gtf_path is None:
         log("  WARNING: GTF file not found at any candidate path:")
@@ -363,7 +422,7 @@ def main():
     # ── Load reference gene sets ─────────────────────────────────────────
     banner("LOADING REFERENCE GENE SETS")
 
-    # SC network genes
+    # SC network genes (V4: SBS2_VS_NORMAL partition)
     sc_network_genes = set()
     if os.path.exists(SC_PARTITION_FILE):
         sc_df = pd.read_csv(SC_PARTITION_FILE)
@@ -373,27 +432,28 @@ def main():
     else:
         log(f"  SC partition file not found: {SC_PARTITION_FILE}")
 
-    # Harris interactors
-    harris_all_genes = set()
-    if os.path.exists(HARRIS_ALL_PATH):
-        with open(HARRIS_ALL_PATH) as f:
-            harris_all_genes = {line.strip().split('\t')[0] for line in f
-                                if line.strip() and not line.startswith('#')}
-        log(f"  Harris ALL interactors: {len(harris_all_genes)}")
+    # Harris interactors (via config utility)
+    harris_all, harris_a3b = load_harris_interactors()
 
-    harris_a3b_genes = set()
-    if os.path.exists(HARRIS_A3B_PATH):
-        with open(HARRIS_A3B_PATH) as f:
-            harris_a3b_genes = {line.strip().split('\t')[0] for line in f
-                                if line.strip() and not line.startswith('#')}
-        log(f"  Harris A3B interactors: {len(harris_a3b_genes)}")
-
+    # A3 enzymes
     a3_gene_set = set(A3_GENES_SYMBOLS)
     log(f"  A3 enzymes: {len(a3_gene_set)}")
 
+    # Concordant chain genes from Figure 4
+    activating_set = set(ACTIVATING_CHAIN_GENES)
+    inhibiting_set = set(INHIBITING_CHAIN_ANCHORS)
+    anchor_set = set(A3_INTERACTOR_ANCHORS)
+    log(f"  Activating chain genes: {len(activating_set)} "
+        f"({', '.join(sorted(activating_set))})")
+    log(f"  Inhibiting chain anchors: {len(inhibiting_set)} "
+        f"({', '.join(sorted(inhibiting_set))})")
+    log(f"  A3 interactor anchors: {len(anchor_set)} "
+        f"({', '.join(sorted(anchor_set))})")
+
     # ── Cross-reference ──────────────────────────────────────────────────
-    cross_reference_analysis(tier_df, sc_network_genes, harris_all_genes,
-                            harris_a3b_genes, a3_gene_set)
+    tier_summaries = cross_reference_analysis(
+        tier_df, sc_network_genes, harris_all, harris_a3b, a3_gene_set,
+        activating_set, inhibiting_set, anchor_set)
 
     # ── GSEA per tier ────────────────────────────────────────────────────
     gsea_results = run_gsea_per_tier(tier_df, out_dir)
@@ -402,7 +462,7 @@ def main():
     neoantigen_cross_reference(tier_df, out_dir)
 
     # ── Report ───────────────────────────────────────────────────────────
-    generate_report(tier_df, gsea_results, out_dir)
+    generate_report(tier_df, gsea_results, tier_summaries, out_dir)
 
     log("\nSNP tier gene analysis complete.")
 

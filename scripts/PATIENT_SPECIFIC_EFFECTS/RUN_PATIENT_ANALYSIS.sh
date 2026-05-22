@@ -12,6 +12,11 @@
 # =============================================================================
 # Runs all three tiers of analysis overnight.
 #
+# Updated May 2026: aligned with V4 three-group pipeline.
+#   - Group assignments from three_group_assignments.tsv
+#   - LOPO targets SBS2_VS_NORMAL network
+#   - Removes excluded patient from both SBS2-HIGH and NORMAL
+#
 # Usage:
 #   cd /master/jlehle/WORKING/2026_NMF_PAPER/scripts/PATIENT_SPECIFIC_EFFECTS/
 #   sbatch RUN_PATIENT_ANALYSIS.sh
@@ -83,9 +88,17 @@ echo "============================================================"
 BASE="/master/jlehle/WORKING/2026_NMF_PAPER"
 REQUIRED_FILES=(
     "${BASE}/data/FIG_4/00_input/adata_final.h5ad"
-    "${BASE}/data/FIG_4/01_group_selection/SC_Basal_group_assignments.tsv"
+    "${BASE}/data/FIG_4/01_group_selection/three_group_assignments.tsv"
+    "${BASE}/data/FIG_4/00_input/signature_weights_per_cell.txt"
+    "${BASE}/data/FIG_4/00_input/Harris_A3_interactors.txt"
     "${BASE}/data/FIG_5/00_diagnostics/patient_enrichment_SBS2_HIGH_v2.tsv"
     "/master/jlehle/WORKING/SC/fastq/Head_and_neck_cancer/results_NMF_v0.1.1/all_samples.single_cell_genotype.filtered.tsv"
+)
+
+# Optional: full analysis outputs for LOPO comparison
+OPTIONAL_FILES=(
+    "${BASE}/data/FIG_4/NETWORK_SBS2_VS_NORMAL/04_communities/SC_best_partition.csv"
+    "${BASE}/data/FIG_4/NETWORK_SBS2_VS_NORMAL/04_communities/SC_selected_parameters.txt"
 )
 
 ALL_FOUND=true
@@ -99,8 +112,20 @@ for f in "${REQUIRED_FILES[@]}"; do
     fi
 done
 
+echo ""
+echo "Optional (for LOPO comparison to full analysis):"
+for f in "${OPTIONAL_FILES[@]}"; do
+    if [ -f "$f" ]; then
+        SIZE=$(du -h "$f" | cut -f1)
+        echo "  OK  $(basename $f) (${SIZE})"
+    else
+        echo "  NOT FOUND: $(basename $f) (LOPO will skip overlap metrics)"
+    fi
+done
+
 if [ "$ALL_FOUND" = false ]; then
-    echo "WARNING: Some input files missing. Continuing anyway (scripts will handle errors)."
+    echo ""
+    echo "WARNING: Some required input files missing. Continuing anyway (scripts will handle errors)."
 fi
 
 # =============================================================================
@@ -166,24 +191,19 @@ echo "Started: $(date)"
 echo "============================================================"
 
 echo ""
-echo "--- Tier 3A: LOPO — Exclude SC029 (33.5% of HIGH) ---"
+echo "--- Tier 3A: LOPO — Exclude SC029 (33.5% of SBS2-HIGH) ---"
 conda run -n NETWORK python Tier3A_Leave_One_Patient_Out.py --exclude "Patient SC029"
 echo "LOPO SC029 finished: $(date)"
 
 echo ""
-echo "--- Tier 3A: LOPO — Exclude SC013 (23.1% of HIGH) ---"
+echo "--- Tier 3A: LOPO — Exclude SC013 (23.1% of SBS2-HIGH) ---"
 conda run -n NETWORK python Tier3A_Leave_One_Patient_Out.py --exclude "Patient SC013"
 echo "LOPO SC013 finished: $(date)"
 
 echo ""
-echo "--- Tier 3A: LOPO — Exclude SC001 (11.0% of HIGH) ---"
+echo "--- Tier 3A: LOPO — Exclude SC001 (11.0% of SBS2-HIGH) ---"
 conda run -n NETWORK python Tier3A_Leave_One_Patient_Out.py --exclude "Patient SC001"
 echo "LOPO SC001 finished: $(date)"
-
-echo ""
-echo "--- Tier 3B: Tumor-Only Sensitivity ---"
-conda run -n NETWORK python Tier3B_Tumor_Only_Sensitivity.py
-echo "Tier 3B finished: $(date)"
 
 echo ""
 echo "============================================================"
@@ -204,4 +224,9 @@ echo "  Tier 1 (expression): ${BASE}/data/FIG_5/01_patient_expression/"
 echo "  Tier 2 (SNP/haplo):  ${BASE}/data/FIG_5/02_snp_haplotype/"
 echo "  Tier 3 (sensitivity): ${BASE}/data/FIG_5/03_sensitivity/"
 echo ""
-echo "Check SLURM output for per-tier summaries."
+echo "LOPO runs:"
+echo "  ${BASE}/data/FIG_5/03_sensitivity/LOPO_SC029/"
+echo "  ${BASE}/data/FIG_5/03_sensitivity/LOPO_SC013/"
+echo "  ${BASE}/data/FIG_5/03_sensitivity/LOPO_SC001/"
+echo ""
+echo "Check SLURM output for per-tier summaries and LOPO sensitivity assessments."
