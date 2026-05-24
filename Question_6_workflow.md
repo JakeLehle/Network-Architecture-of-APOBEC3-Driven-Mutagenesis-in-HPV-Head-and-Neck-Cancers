@@ -8,6 +8,8 @@ Figures 3-4 established that epithelial cells bifurcate into two populations wit
 
 This question addresses a gap in the HPV field: while HPV lifecycle stages are well characterized in stratified epithelium (Doorbar et al., 2012; Moody and Laimins, 2010; McBride and Warburton, 2017), the relationship between viral lifecycle phase and APOBEC mutational outcomes has not been resolved at single-cell resolution. The central finding is that **SBS2-HIGH cells carry HPV16 in E2-regulated maintenance while CNV-HIGH cells carry HPV16 in ATM-dependent productive infection**, and this lifecycle distinction organizes the entire host response including which APOBEC enzyme is active (A3A vs A3B), which class of genomic damage accumulates (SBS2 vs CNV), and whether the cell is immunologically visible or engaged in viral replication. HPV gene expression was normalized as fractions of total viral reads per cell to control for the approximately two-fold higher viral load in CNV-HIGH cells (reflecting episomal amplification during productive infection). A panel of 53 host marker genes drawn from the Doorbar, Laimins, and McBride laboratories validated predictions from established HPV biology, including ATM/CHK2-dependent G2/M arrest for productive replication (Moody and Laimins, 2009), elevated antigen presentation in maintenance-phase cells, and functional p53 signaling consistent with intact E2 suppression of E6/E7.
 
+**Note:** The neoantigen analysis (formerly Phase 5B) has been refactored into a standalone six-step pipeline in `scripts/NEOANTIGEN/`. See `scripts/NEOANTIGEN/NEOANTIGEN_WALKTHROUGH.md` for that pipeline's documentation.
+
 ---
 
 ## Directory Structure
@@ -16,34 +18,21 @@ This question addresses a gap in the HPV field: while HPV lifecycle stages are w
 scripts/HPV_ANALYSIS/
 ├── Phase1_HPV16_Data_Inventory.py           # Phase 1: per-cell HPV16 data consolidation
 ├── Phase1_HPV16_Data_Inventory_v2.py        # Phase 1 (v2): updated inventory
+├── Phase1_5_Index_Diagnostic.py             # Phase 1.5: index alignment diagnostic
 ├── Phase2_Raw_HPV16_Counts.py               # Phase 2: raw UMI count recovery from Kraken2
 ├── Phase3_HPV16_Populations_and_Genome.py   # Phase 3: HPV16 threshold, population definition, genome probing
 ├── Phase4_HPV16_Genome_Alignment.py         # Phase 4: minimap2 alignment to HPV16, per-cell gene counts
-├── Phase5A_Population_Consolidation.py      # Phase 5A: multi-axis population profiling (v1)
-├── Phase5A_Revised_Population_Discovery.py  # Phase 5A: data-driven population selection (v2)
-├── Phase5A_v2_DEG_Analysis.py               # Phase 5A: DE and GSEA between populations
-├── Phase5B_Neoantigen_Pipeline.py           # Phase 5B: neoantigen detection (Figure 7)
-├── Phase5B_Prep_Neoantigen_Inputs.py        # Phase 5B: VCF/BAM preparation for neoantigen
-├── Phase5B_STAR_Chimeric_Pipeline.py        # Phase 5B: STAR chimeric read detection
-├── Phase5B_v2_SnpEff_Neoantigen.py          # Phase 5B: SnpEff annotation + MHC binding
-├── Generate_Figure6_Lifecycle_Panels.py     # Figure 6 panel generation
+├── Phase5A_Population_Consolidation.py      # Phase 5A: multi-axis population profiling (v1, superseded)
+├── Phase5A_Revised_Population_Discovery.py  # Phase 5A: data-driven population selection (v2, superseded)
+├── Phase5A_v2_DEG_Analysis.py               # Phase 5A: DE and GSEA between populations (superseded)
+├── Generate_Figure6_Lifecycle_Panels.py     # Figure 6 panel generation (current)
+├── Generate_Figure6_Panels.py               # Figure 6 panel generation (pre-lifecycle reframe, archived)
 ├── parse_chimeric_junctions.py              # Chimeric junction parsing utility
 ├── sample_list.txt                          # Sample manifest (31 GSE173468 samples)
-├── RUN_HPV_ANALYSIS.sh                      # SLURM master runner
-├── RUN_PHASE_1.sh                           # Phase 1 SLURM script
-├── RUN_STAR_ARRAY.sh                        # STAR alignment array job
-├── run_star_chimeric.sh                     # STAR chimeric alignment runner
-├── RUN_STAR_SUMMARY.sh                      # STAR summary aggregation
+├── RUN_HPV_ANALYSIS.sh                      # SLURM master runner (Phases 1-4)
 │
 └── TROUBLESHOOTING/
-    ├── Diagnostic_HPV_Lifecycle_Markers.py  # Lifecycle marker diagnostic (3 analyses)
-    ├── Diagnostic_Fusion_GSEA.py            # Fusion gene GSEA diagnostic
-    ├── Generate_Figure6_Panels.py           # Old figure generation (pre-lifecycle reframe)
-    ├── Generate_Figure7_Panels.py           # Neoantigen figure panels
-    ├── Diagnose_chimeric_junctions.py       # Chimeric junction troubleshooting
-    ├── Troubleshoot_5B.py                   # Phase 5B debugging
-    ├── Troubleshoot_MHCflurry_STAR.py       # MHCflurry integration debugging
-    └── Troubleshoot_SnpEff_STAR.sh          # SnpEff pipeline debugging
+    └── Diagnostic_HPV_Lifecycle_Markers.py  # Lifecycle marker diagnostic (3 analyses)
 ```
 
 ---
@@ -65,12 +54,12 @@ scripts/HPV_ANALYSIS/
 
 ## Pipeline Overview
 
-The pipeline has six phases. Phases 1-4 extract and process per-cell viral data (population-independent). Phase 5A defines and profiles populations (now superseded by Figure 4 Step00B three-group selection). Phase 5B prepares neoantigen inputs (Figure 7). The lifecycle diagnostic and figure generation scripts use the Phase 4 output combined with the Figure 4 population definitions.
+The pipeline has five phases. Phases 1-4 extract and process per-cell viral data (population-independent). Phase 5A defined the original two-population model and is now superseded by the Figure 4 three-group selection. The lifecycle diagnostic and figure generation scripts use Phase 4 output combined with the Figure 4 population definitions.
 
 ```
-Phase 1 ─► Phase 2 ─► Phase 3 ─► Phase 4 ─────────────────────────┐
-(inventory)  (raw UMI)  (threshold)  (genome alignment)             │
-                                                                     ▼
+Phase 1 ─► Phase 1.5 ─► Phase 2 ─► Phase 3 ─► Phase 4 ──────────────┐
+(inventory)  (index dx)   (raw UMI)  (threshold)  (genome alignment)   │
+                                                                        ▼
 Figure 4 populations ──► Diagnostic_HPV_Lifecycle_Markers.py ──► Generate_Figure6_Lifecycle_Panels.py
 (three_group_assignments.tsv)     (marker profiling)                    (figure panels)
 ```
@@ -99,11 +88,17 @@ conda run -n NETWORK python Generate_Figure6_Lifecycle_Panels.py
 
 **`Phase1_HPV16_Data_Inventory.py`** consolidates all per-cell measurements into a master table for downstream analysis. Loads `adata_final.h5ad` and merges HPV16 status from the viral detection object, SBS2 weights from signature refitting, CNV scores, CytoTRACE2 stemness, and cell annotations. Outputs cross-tabulations of HPV16 status against SBS2 group, cancer cell status, and cnv_leiden clusters.
 
+**`Phase1_HPV16_Data_Inventory_v2.py`** is the updated version with revised column mappings and additional diagnostic outputs.
+
 | Output | Description |
 |--------|-------------|
 | `basal_cell_master_table.tsv` | One row per epithelial cell, all measurements |
 | `diagnostic_report.txt` | Comprehensive profiling report |
 | `HPV16_distribution_by_patient.tsv` | Per-patient HPV16 counts |
+
+### Phase 1.5: Index Alignment Diagnostic
+
+**`Phase1_5_Index_Diagnostic.py`** runs alignment diagnostics between the Kraken2 viral detection indices and the main single-cell object to verify barcode mapping integrity before proceeding to raw count extraction in Phase 2.
 
 ### Phase 2: Raw HPV16 Count Recovery
 
@@ -146,19 +141,9 @@ HPV16 gene regions follow standard annotations: E6 (83-559), E7 (562-858), E1 (8
 
 ### Phase 5A: Population Profiling (Superseded)
 
-**`Phase5A_Population_Consolidation.py`** and **`Phase5A_Revised_Population_Discovery.py`** defined the original two-population model ("Pop1_Mutagenic" / "Pop2_Stealth") using multi-axis concordance scoring across A3A dominance, HPV lifecycle stage, CNV status, and differentiation. These scripts are superseded by the three-group selection in Figure 4 Step00B, which defines SBS2-HIGH, CNV-HIGH, and NORMAL populations using composite scores optimized for the network analysis.
+**`Phase5A_Population_Consolidation.py`** and **`Phase5A_Revised_Population_Discovery.py`** defined the original two-population model ("Pop1_Mutagenic" / "Pop2_Stealth") using multi-axis concordance scoring across A3A dominance, HPV lifecycle stage, CNV status, and differentiation. These scripts are superseded by the three-group selection in Figure 4 Step00B, which defines SBS2-HIGH, CNV-HIGH, and NORMAL populations using composite scores optimized for the network analysis. Scripts are retained for provenance.
 
 **`Phase5A_v2_DEG_Analysis.py`** performed differential expression and KEGG GSEA between the old two-population model. Key findings (spliceosome enrichment in CNV-HIGH, immune/allograft pathways in SBS2-HIGH) are consistent with the updated lifecycle analysis.
-
-### Phase 5B: Neoantigen Preparation (Figure 7)
-
-**`Phase5B_Prep_Neoantigen_Inputs.py`** prepares VCF files, BAM manifests, and barcode lists for neoantigen prediction. SComatic variant calls are split by population and converted to VCF format.
-
-**`Phase5B_STAR_Chimeric_Pipeline.py`** runs STAR in chimeric detection mode across all samples to identify RNA fusion events and potential HPV integration junctions.
-
-**`Phase5B_v2_SnpEff_Neoantigen.py`** annotates somatic variants with SnpEff, identifies protein-altering mutations, and predicts MHC class I binding affinities using MHCflurry. These outputs feed into Figure 7 (neoantigen landscape).
-
-**`Phase5B_Neoantigen_Pipeline.py`** orchestrates the full neoantigen detection workflow from variant calling through peptide-MHC binding prediction.
 
 ### Lifecycle Diagnostic
 
@@ -172,7 +157,7 @@ HPV16 gene regions follow standard annotations: E6 (83-559), E7 (562-858), E1 (8
 
 ### Figure Generation
 
-**`Generate_Figure6_Lifecycle_Panels.py`** produces the four main figure panels:
+**`Generate_Figure6_Lifecycle_Panels.py`** produces the four main Figure 6 panels:
 
 | Panel | Content |
 |-------|---------|
@@ -180,6 +165,16 @@ HPV16 gene regions follow standard annotations: E6 (83-559), E7 (562-858), E1 (8
 | B | Grouped bar chart of normalized HPV16 gene fractions by lifecycle phase across three populations |
 | C | Dot plot of host marker genes: ATM/productive replication (left) vs immune/differentiation (right) |
 | D | Violin + box plots of A3A and A3B expression by population |
+
+**`Generate_Figure6_Panels.py`** is the pre-lifecycle reframe version of the figure generation script. Retained for reference but superseded by the lifecycle panels script above.
+
+### Utility Scripts
+
+**`parse_chimeric_junctions.py`** parses STAR chimeric junction output files. Used by the fusion analysis pipeline in `scripts/NEOANTIGEN/Step05_Fusion_Analysis.py`.
+
+**`sample_list.txt`** contains the 31 GSE173468 sample accessions used across all phases.
+
+**`RUN_HPV_ANALYSIS.sh`** is the SLURM master runner for Phases 1-4.
 
 ---
 
@@ -200,11 +195,6 @@ data/FIG_6/
 │   ├── per_cell_hpv16_gene_counts.tsv   ← PRIMARY OUTPUT (76,978 cells)
 │   ├── HPV16_NC_001526.4.fa
 │   └── per_sample_alignment_summary.tsv
-├── 05_neoantigen/                    # Phase 5B: neoantigen inputs (Figure 7)
-│   ├── inputs/
-│   ├── vep_annotation/
-│   ├── mhc_binding/
-│   └── fusion_detection/
 ├── DIAGNOSTIC_LIFECYCLE_MARKERS/     # Lifecycle diagnostic outputs
 │   ├── diagnostic_lifecycle_report.txt
 │   ├── hpv16_gene_by_phase_and_population.tsv
@@ -244,21 +234,6 @@ SBS2 and CNV represent sequential consequences of HPV lifecycle progression. Dur
 
 ---
 
-## Troubleshooting Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `Diagnostic_HPV_Lifecycle_Markers.py` | Three-part lifecycle diagnostic (HPV fractions, integration proxy, host markers) |
-| `Diagnostic_Fusion_GSEA.py` | Gene set enrichment of RNA fusion events |
-| `Generate_Figure6_Panels.py` | Old figure generation (pre-lifecycle reframe, archived) |
-| `Generate_Figure7_Panels.py` | Neoantigen figure panels (Figure 7) |
-| `Diagnose_chimeric_junctions.py` | Chimeric read quality assessment |
-| `Troubleshoot_5B.py` | Phase 5B neoantigen pipeline debugging |
-| `Troubleshoot_MHCflurry_STAR.py` | MHCflurry + STAR integration debugging |
-| `Troubleshoot_SnpEff_STAR.sh` | SnpEff annotation pipeline debugging |
-
----
-
 ## Dependencies
 
 | Tool | Version | Purpose |
@@ -267,8 +242,16 @@ SBS2 and CNV represent sequential consequences of HPV lifecycle progression. Dur
 | pysam | 0.22+ | BAM file manipulation and CB tag extraction |
 | scanpy | 1.9.6 | Differential expression, gene extraction |
 | gseapy | 1.1.1 | KEGG gene set enrichment |
-| STAR | 2.7.11b | Chimeric read detection (Phase 5B) |
-| SnpEff | 5.2+ | Variant annotation (Phase 5B) |
-| MHCflurry | 2.1+ | MHC binding prediction (Phase 5B) |
 
 Conda environment: `NETWORK` (shared with Figure 4 network analysis)
+
+---
+
+## Related Pipelines
+
+The neoantigen analysis (formerly Phase 5B in this directory) has been refactored into a standalone six-step pipeline:
+
+- Location: `scripts/NEOANTIGEN/`
+- Documentation: `scripts/NEOANTIGEN/NEOANTIGEN_WALKTHROUGH.md`
+- Pipeline: Step01 (prep) through Step06 (integration) plus figure generation
+- Produces: Figure 7 (neoantigen landscape)
