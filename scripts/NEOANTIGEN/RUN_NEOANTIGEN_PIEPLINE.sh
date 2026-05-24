@@ -15,6 +15,8 @@ echo "Date: $(date)"
 echo "=============================================="
 echo ""
 
+source ~/anaconda3/bin/activate
+
 # Navigate to project
 cd /master/jlehle/WORKING/2026_NMF_PAPER
 SCRIPT_DIR="scripts/NEOANTIGEN"
@@ -63,7 +65,7 @@ conda run -n NEOANTIGEN bash -c "snpEff -version 2>&1 | head -1" || echo "  snpE
 
 echo ""
 echo "--- Reference proteome check ---"
-PROTEOME="data/reference/Homo_sapiens.GRCh38.pep.canonical.fa"
+PROTEOME="data/reference/Homo_sapiens.GRCh38.pep.all.fa"
 if [ -f "${PROTEOME}" ]; then
     echo "  Proteome FASTA: OK ($(wc -l < ${PROTEOME}) lines)"
 elif [ -f "${PROTEOME}.gz" ]; then
@@ -73,8 +75,8 @@ else
     echo "  Step03 will fail. Download with:"
     echo "    mkdir -p data/reference"
     echo "    cd data/reference"
-    echo "    wget https://ftp.ensembl.org/pub/release-112/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.canonical.fa.gz"
-    echo "    gunzip Homo_sapiens.GRCh38.pep.canonical.fa.gz"
+    echo "    wget https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.all.fa.gz"
+    echo "    gunzip Homo_sapiens.GRCh38.pep.all.fa.gz"
 fi
 
 echo ""
@@ -118,6 +120,12 @@ run_step "NETWORK" "${SCRIPT_DIR}/Step05_Fusion_Analysis.py" \
     "Step 05: RNA Fusion Analysis"
 
 # ==============================================================================
+# STEP 06: Integrated Neoantigen Analysis (NETWORK env)
+# ==============================================================================
+run_step "NETWORK" "${SCRIPT_DIR}/Step06_Integrated_Neoantigen_Analysis.py" \
+    "Step 06: Integrated Neoantigen Analysis"
+
+# ==============================================================================
 # DONE
 # ==============================================================================
 echo ""
@@ -139,4 +147,6 @@ echo "  data/FIG_7/02_snpeff_annotation/step02_annotation_report.txt"
 echo "  data/FIG_7/03_mhc_binding/step03_binding_report.txt"
 echo "  data/FIG_7/03_mhc_binding/step04_ranking_report.txt"
 echo "  data/FIG_7/04_fusion_analysis/step05_fusion_report.txt"
+echo "  data/FIG_7/05_summary/step06_integrated_report.txt"
+echo "  data/FIG_7/05_summary/vaccine_target_scores.tsv"
 echo "=============================================="

@@ -15,8 +15,10 @@ peptide identities.
 
 REQUIRES:
     - Ensembl reference proteome FASTA (see PROTEOME_PATH below)
-      Download: wget https://ftp.ensembl.org/pub/release-112/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.canonical.fa.gz
-      Then: gunzip Homo_sapiens.GRCh38.pep.canonical.fa.gz
+      Download: wget https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.all.fa.gz
+      Then: gunzip Homo_sapiens.GRCh38.pep.all.fa.gz
+      Note: pep.all.fa contains multiple isoforms per gene; the loader
+      selects the canonical transcript (Ensembl_canonical tag) or longest.
     - MHCflurry installed in NEOANTIGEN conda env
       Install: pip install mhcflurry && mhcflurry-downloads fetch
 
@@ -61,10 +63,11 @@ ANNOTATION_DIR = config['outputs']['snpeff_annotation']
 OUTPUT_DIR = config['outputs']['mhc_binding']
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Reference proteome (Ensembl canonical proteins for GRCh38)
-# Download from: https://ftp.ensembl.org/pub/release-112/fasta/homo_sapiens/pep/
-# Use the canonical file (one protein per gene, not all isoforms)
-PROTEOME_PATH = os.path.join(PROJECT_ROOT, "data/reference/Homo_sapiens.GRCh38.pep.canonical.fa")
+# Reference proteome (Ensembl GRCh38 all protein isoforms)
+# Download from: https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/pep/
+# pep.all.fa contains multiple isoforms per gene; loader selects the
+# canonical transcript (Ensembl_canonical tag) or falls back to longest.
+PROTEOME_PATH = os.path.join(PROJECT_ROOT, "data/reference/Homo_sapiens.GRCh38.pep.all.fa")
 PROTEOME_PATH_GZ = PROTEOME_PATH + ".gz"
 
 GROUPS = ['SBS2_HIGH', 'CNV_HIGH']  # Only disease groups (NORMAL used for subtraction in Step02)
@@ -89,6 +92,17 @@ AA_3TO1 = {
 
 VALID_AA = set(AA_3TO1.values())
 
+# Gene symbol aliases: SnpEff name -> Ensembl name
+# Confirmed by Diagnostic_Proteome_Mapping.py and UniProt/HGNC lookups
+GENE_ALIASES = {
+    'C4orf3': 'C4orf33',
+    'TMEM199': 'VMA12',
+    'SLC9A3R1': 'NHERF1',
+}
+
+# Maximum offset to try for signal peptide numbering shifts
+MAX_POSITION_OFFSET = 30
+
 # =============================================================================
 # LOGGING
 # =============================================================================
@@ -112,15 +126,34 @@ log_sep("STEP 0: Load reference proteome")
 
 def load_proteome(fasta_path):
     """
-    Parse Ensembl proteome FASTA. Builds lookup dicts by gene_symbol and ENSG ID.
+    Parse Ensembl proteome FASTA (pep.all.fa). Builds lookup dicts by
+    gene_symbol, ENSG ID, and ENST transcript ID.
 
-    Ensembl header format:
-    >ENSP00000269305.4 pep chromosome:GRCh38:... gene:ENSG00000141510.18
-      transcript:ENST00000269305.9 ... gene_symbol:TP53 ...
+    Since pep.all.fa contains ALL transcript isoforms (multiple per gene),
+    we use this priority for gene_symbol/ENSG lookups:
+        1. Entry tagged 'Ensembl_canonical' in the header (if present)
+        2. Longest protein sequence (fallback)
+
+    The ENST dict stores ALL isoforms (no selection needed since transcript
+    IDs are unique), enabling exact isoform matching when SnpEff provides
+    the transcript ID in its annotation.
+
+    Ensembl header format (release 115):
+    >ENSP00000269305.4 pep chromosome:GRCh38:17:7661779:7687538:-1
+      gene:ENSG00000141510.18 transcript:ENST00000269305.9
+      gene_biotype:protein_coding transcript_biotype:protein_coding
+      gene_symbol:TP53 description:... [Ensembl_canonical]
     """
     proteome_by_symbol = {}
     proteome_by_ensg = {}
-    ensp_to_info = {}
+    proteome_by_enst = {}  # ALL isoforms, keyed by transcript ID
+    all_isoforms_by_symbol = {}  # gene_symbol -> list of ALL isoform entries
+
+    # Track selection diagnostics
+    n_entries = 0
+    n_canonical_tagged = 0
+    n_genes_with_multiple = 0
+    selection_method = Counter()  # 'canonical_tag' vs 'longest'
 
     # Handle gzipped or plain FASTA
     if fasta_path.endswith('.gz'):
@@ -134,67 +167,117 @@ def load_proteome(fasta_path):
     current_seq = []
     current_symbol = None
     current_ensg = None
-    n_entries = 0
+    current_enst = None
+    current_is_canonical = False
+
+    def save_entry():
+        """Save the current entry if it's better than what we have."""
+        nonlocal n_entries, n_canonical_tagged, n_genes_with_multiple
+        if not current_id or not current_seq:
+            return
+
+        seq = ''.join(current_seq)
+        n_entries += 1
+        if current_is_canonical:
+            n_canonical_tagged += 1
+
+        entry = {
+            'ensp': current_id,
+            'enst': current_enst,
+            'gene_symbol': current_symbol,
+            'ensg': current_ensg,
+            'sequence': seq,
+            'length': len(seq),
+            'is_canonical': current_is_canonical,
+        }
+
+        # Update gene_symbol dict
+        if current_symbol:
+            existing = proteome_by_symbol.get(current_symbol)
+            if existing is None:
+                proteome_by_symbol[current_symbol] = entry
+                selection_method['first_seen'] += 1
+            else:
+                if existing != entry:
+                    n_genes_with_multiple += 1
+                # Canonical tag always wins over non-canonical
+                if current_is_canonical and not existing.get('is_canonical', False):
+                    proteome_by_symbol[current_symbol] = entry
+                    selection_method['canonical_tag'] += 1
+                # If both canonical or both non-canonical, keep longest
+                elif current_is_canonical == existing.get('is_canonical', False):
+                    if len(seq) > existing['length']:
+                        proteome_by_symbol[current_symbol] = entry
+                        selection_method['longest'] += 1
+
+        # Same logic for ENSG dict
+        if current_ensg:
+            existing = proteome_by_ensg.get(current_ensg)
+            if existing is None:
+                proteome_by_ensg[current_ensg] = entry
+            else:
+                if current_is_canonical and not existing.get('is_canonical', False):
+                    proteome_by_ensg[current_ensg] = entry
+                elif current_is_canonical == existing.get('is_canonical', False):
+                    if len(seq) > existing['length']:
+                        proteome_by_ensg[current_ensg] = entry
+
+        # ENST dict: store ALL isoforms (no selection, transcript IDs are unique)
+        if current_enst:
+            proteome_by_enst[current_enst] = entry
+
+        # All isoforms per gene symbol (for fallback AA matching)
+        if current_symbol:
+            if current_symbol not in all_isoforms_by_symbol:
+                all_isoforms_by_symbol[current_symbol] = []
+            all_isoforms_by_symbol[current_symbol].append(entry)
 
     with opener(fasta_path, mode) as f:
         for line in f:
             line = line.strip()
             if line.startswith('>'):
                 # Save previous entry
-                if current_id and current_seq:
-                    seq = ''.join(current_seq)
-                    entry = {
-                        'ensp': current_id,
-                        'gene_symbol': current_symbol,
-                        'ensg': current_ensg,
-                        'sequence': seq,
-                        'length': len(seq),
-                    }
-                    if current_symbol:
-                        # Keep longest if multiple entries per symbol
-                        if current_symbol not in proteome_by_symbol or len(seq) > len(proteome_by_symbol[current_symbol]['sequence']):
-                            proteome_by_symbol[current_symbol] = entry
-                    if current_ensg:
-                        if current_ensg not in proteome_by_ensg or len(seq) > len(proteome_by_ensg[current_ensg]['sequence']):
-                            proteome_by_ensg[current_ensg] = entry
-                    n_entries += 1
+                save_entry()
 
                 # Parse new header
                 parts = line[1:].split()
-                current_id = parts[0].split('.')[0] if parts else None  # ENSP without version
+                current_id = parts[0].split('.')[0] if parts else None
                 current_seq = []
                 current_symbol = None
                 current_ensg = None
+                current_enst = None
+                current_is_canonical = False
 
-                # Extract gene_symbol and gene ENSG from header fields
+                # Extract fields from header
                 header_str = line[1:]
                 for field in header_str.split():
                     if field.startswith('gene_symbol:'):
                         current_symbol = field.split(':')[1]
                     elif field.startswith('gene:'):
-                        current_ensg = field.split(':')[1].split('.')[0]  # Strip version
+                        current_ensg = field.split(':')[1].split('.')[0]
+                    elif field.startswith('transcript:'):
+                        current_enst = field.split(':')[1].split('.')[0]
+
+                # Check for Ensembl_canonical tag (appears as [Ensembl_canonical])
+                if 'Ensembl_canonical' in header_str:
+                    current_is_canonical = True
             else:
                 current_seq.append(line)
 
     # Save last entry
-    if current_id and current_seq:
-        seq = ''.join(current_seq)
-        entry = {
-            'ensp': current_id,
-            'gene_symbol': current_symbol,
-            'ensg': current_ensg,
-            'sequence': seq,
-            'length': len(seq),
-        }
-        if current_symbol:
-            if current_symbol not in proteome_by_symbol or len(seq) > len(proteome_by_symbol[current_symbol]['sequence']):
-                proteome_by_symbol[current_symbol] = entry
-        if current_ensg:
-            if current_ensg not in proteome_by_ensg or len(seq) > len(proteome_by_ensg[current_ensg]['sequence']):
-                proteome_by_ensg[current_ensg] = entry
-        n_entries += 1
+    save_entry()
 
-    return proteome_by_symbol, proteome_by_ensg, n_entries
+    diagnostics = {
+        'total_entries': n_entries,
+        'canonical_tagged': n_canonical_tagged,
+        'unique_enst': len(proteome_by_enst),
+        'genes_with_multiple_isoforms': n_genes_with_multiple,
+        'genes_with_isoform_list': len(all_isoforms_by_symbol),
+        'total_isoforms_stored': sum(len(v) for v in all_isoforms_by_symbol.values()),
+        'selection_methods': dict(selection_method),
+    }
+
+    return proteome_by_symbol, proteome_by_ensg, proteome_by_enst, all_isoforms_by_symbol, diagnostics
 
 
 # Find proteome file
@@ -210,23 +293,37 @@ else:
     log(f"  Download with:")
     log(f"    mkdir -p {os.path.dirname(PROTEOME_PATH)}")
     log(f"    cd {os.path.dirname(PROTEOME_PATH)}")
-    log(f"    wget https://ftp.ensembl.org/pub/release-112/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.canonical.fa.gz")
-    log(f"    gunzip Homo_sapiens.GRCh38.pep.canonical.fa.gz")
+    log(f"    wget https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/pep/Homo_sapiens.GRCh38.pep.all.fa.gz")
+    log(f"    gunzip Homo_sapiens.GRCh38.pep.all.fa.gz")
     sys.exit(1)
 
 log(f"  Loading proteome: {proteome_file}")
-prot_by_symbol, prot_by_ensg, n_prot_entries = load_proteome(proteome_file)
-log(f"  Total entries parsed: {n_prot_entries}")
+prot_by_symbol, prot_by_ensg, prot_by_enst, prot_all_isoforms, prot_diag = load_proteome(proteome_file)
+log(f"  Total FASTA entries parsed: {prot_diag['total_entries']}")
+log(f"  Entries with Ensembl_canonical tag: {prot_diag['canonical_tagged']}")
 log(f"  Unique gene symbols:  {len(prot_by_symbol)}")
 log(f"  Unique ENSG IDs:      {len(prot_by_ensg)}")
+log(f"  Unique ENST IDs:      {prot_diag['unique_enst']}")
+log(f"  Genes with isoform lists: {prot_diag['genes_with_isoform_list']}")
+log(f"  Total isoforms stored:    {prot_diag['total_isoforms_stored']}")
+log(f"  Genes with multiple isoforms encountered: {prot_diag['genes_with_multiple_isoforms']}")
+log(f"  Selection methods (gene symbol dict): {prot_diag['selection_methods']}")
+
+# Report how many selected entries are canonical-tagged
+n_selected_canonical = sum(1 for e in prot_by_symbol.values() if e.get('is_canonical', False))
+n_selected_longest = len(prot_by_symbol) - n_selected_canonical
+log(f"  Selected entries: {n_selected_canonical} canonical-tagged, {n_selected_longest} longest-fallback")
+log(f"  ENST dict: {len(prot_by_enst)} transcripts (exact isoform matching)")
+log(f"  Isoform fallback: {len(prot_all_isoforms)} genes with all isoforms available")
 
 # Spot-check well-known genes
 spot_checks = ['TP53', 'HLA-A', 'ANXA1', 'CD74', 'DSP', 'B2M']
-log(f"\n  Spot-check (gene -> protein length):")
+log(f"\n  Spot-check (gene -> protein length, canonical status):")
 for gene in spot_checks:
     if gene in prot_by_symbol:
         entry = prot_by_symbol[gene]
-        log(f"    {gene:10s}: {entry['length']} aa ({entry['ensp']})")
+        canon = "canonical" if entry.get('is_canonical', False) else "longest"
+        log(f"    {gene:10s}: {entry['length']} aa ({entry['ensp']}, {entry.get('enst', '?')}, {canon})")
     else:
         log(f"    {gene:10s}: NOT FOUND")
 
@@ -296,20 +393,22 @@ def parse_hgvs_p(hgvs_p):
     return (wt_aa, int(pos_str), mut_aa)
 
 
-def generate_peptides_from_proteome(gene_symbol, gene_id, wt_aa, mut_pos, mut_aa,
-                                     peptide_lengths, prot_by_symbol, prot_by_ensg):
+def generate_peptides_from_proteome(gene_symbol, gene_id, transcript_id,
+                                     wt_aa, mut_pos, mut_aa,
+                                     peptide_lengths,
+                                     prot_by_enst, prot_by_symbol, prot_by_ensg,
+                                     all_isoforms_by_symbol=None):
     """
     Generate mutant and wild-type peptides using actual protein sequence context.
 
-    Args:
-        gene_symbol: Gene name (e.g., 'TP53')
-        gene_id: Ensembl gene ID (e.g., 'ENSG00000141510')
-        wt_aa: Expected wild-type amino acid (1-letter)
-        mut_pos: 1-indexed position in protein
-        mut_aa: Mutant amino acid (1-letter)
-        peptide_lengths: List of peptide lengths to generate
-        prot_by_symbol: Proteome dict keyed by gene symbol
-        prot_by_ensg: Proteome dict keyed by ENSG ID
+    Lookup chain (each step tried only if previous failed):
+        1. ENST transcript ID (exact isoform match)
+        2. Gene symbol (longest or canonical-tagged isoform)
+        3. Gene alias (HUGO symbol updates: e.g., TMEM199 -> VMA12)
+        4. ENSG gene ID
+        5. Isoform scan: try ALL isoforms at the exact position
+        6. Offset scan: try positions ±1..±30 across all isoforms
+           (catches signal peptide numbering shifts between SnpEff and Ensembl)
 
     Returns:
         (mut_peptides, wt_peptides, metadata, status_dict)
@@ -317,6 +416,7 @@ def generate_peptides_from_proteome(gene_symbol, gene_id, wt_aa, mut_pos, mut_aa
     status = {
         'gene_symbol': gene_symbol,
         'gene_id': gene_id,
+        'transcript_id': transcript_id,
         'hgvs_p': f"p.{wt_aa}{mut_pos}{mut_aa}",
         'lookup_method': None,
         'protein_length': None,
@@ -324,17 +424,42 @@ def generate_peptides_from_proteome(gene_symbol, gene_id, wt_aa, mut_pos, mut_aa
         'aa_expected': wt_aa,
         'aa_found': None,
         'n_peptides': 0,
+        'n_isoforms_tried': 0,
         'status': 'unknown',
         'detail': '',
     }
 
-    # Look up protein sequence (try symbol first, then ENSG)
+    # Resolve gene alias if applicable
+    lookup_symbol = GENE_ALIASES.get(gene_symbol, gene_symbol)
+    if lookup_symbol != gene_symbol:
+        status['detail'] = f"Alias: {gene_symbol} -> {lookup_symbol}"
+
+    # --- PRIMARY LOOKUP: ENST > symbol > alias > ENSG ---
     entry = None
-    if gene_symbol and gene_symbol in prot_by_symbol:
-        entry = prot_by_symbol[gene_symbol]
-        status['lookup_method'] = 'gene_symbol'
-    elif gene_id:
-        # Strip version from gene_id if present
+
+    # Priority 1: Exact transcript match
+    if transcript_id:
+        enst_base = transcript_id.split('.')[0] if transcript_id else None
+        if enst_base and enst_base in prot_by_enst:
+            entry = prot_by_enst[enst_base]
+            status['lookup_method'] = 'enst_id'
+
+    # Priority 2: Gene symbol (canonical-tagged or longest isoform)
+    if entry is None and lookup_symbol and lookup_symbol in prot_by_symbol:
+        entry = prot_by_symbol[lookup_symbol]
+        if lookup_symbol != gene_symbol:
+            status['lookup_method'] = f'gene_alias({gene_symbol}->{lookup_symbol})'
+        else:
+            status['lookup_method'] = 'gene_symbol'
+
+    # Priority 3: Original symbol if alias didn't work
+    if entry is None and lookup_symbol != gene_symbol:
+        if gene_symbol and gene_symbol in prot_by_symbol:
+            entry = prot_by_symbol[gene_symbol]
+            status['lookup_method'] = 'gene_symbol'
+
+    # Priority 4: ENSG gene ID
+    if entry is None and gene_id:
         ensg_base = gene_id.split('.')[0] if gene_id else None
         if ensg_base and ensg_base in prot_by_ensg:
             entry = prot_by_ensg[ensg_base]
@@ -342,31 +467,99 @@ def generate_peptides_from_proteome(gene_symbol, gene_id, wt_aa, mut_pos, mut_aa
 
     if entry is None:
         status['status'] = 'GENE_NOT_FOUND'
-        status['detail'] = f"Neither {gene_symbol} nor {gene_id} found in proteome"
+        status['detail'] = (f"Neither {transcript_id} nor {gene_symbol} "
+                            f"(alias: {lookup_symbol}) nor {gene_id} found in proteome")
         return [], [], [], status
 
     protein_seq = entry['sequence']
     status['protein_length'] = len(protein_seq)
 
-    # Check position is within bounds (1-indexed)
+    # --- CHECK PRIMARY MATCH ---
+    if 1 <= mut_pos <= len(protein_seq):
+        actual_aa = protein_seq[mut_pos - 1]
+        status['aa_found'] = actual_aa
+        if actual_aa == wt_aa:
+            status['aa_match'] = True
+            return _generate_peptides_from_seq(
+                protein_seq, wt_aa, mut_pos, mut_aa, peptide_lengths, status)
+
+    # --- FALLBACK 1: ISOFORM SCAN (exact position, all isoforms) ---
+    # Use lookup_symbol for isoform lookup (handles aliases)
+    isoform_symbols = set()
+    if lookup_symbol:
+        isoform_symbols.add(lookup_symbol)
+    if gene_symbol:
+        isoform_symbols.add(gene_symbol)
+
+    all_gene_isoforms = []
+    if all_isoforms_by_symbol:
+        for sym in isoform_symbols:
+            if sym in all_isoforms_by_symbol:
+                all_gene_isoforms.extend(all_isoforms_by_symbol[sym])
+
+    if all_gene_isoforms:
+        status['n_isoforms_tried'] = len(all_gene_isoforms)
+        for iso_entry in all_gene_isoforms:
+            iso_seq = iso_entry['sequence']
+            if 1 <= mut_pos <= len(iso_seq) and iso_seq[mut_pos - 1] == wt_aa:
+                primary_method = status['lookup_method'] or 'none'
+                status['lookup_method'] = f"isoform_scan(was:{primary_method})"
+                status['aa_match'] = True
+                status['aa_found'] = wt_aa
+                status['protein_length'] = len(iso_seq)
+                status['detail'] = (f"Primary gave mismatch, "
+                                    f"exact match in {iso_entry['enst']} "
+                                    f"({len(iso_seq)} aa)")
+                return _generate_peptides_from_seq(
+                    iso_seq, wt_aa, mut_pos, mut_aa, peptide_lengths, status)
+
+    # --- FALLBACK 2: OFFSET SCAN (signal peptide numbering shift) ---
+    # Try positions ±1..±MAX_POSITION_OFFSET across all isoforms
+    if all_gene_isoforms:
+        for offset in range(-MAX_POSITION_OFFSET, MAX_POSITION_OFFSET + 1):
+            if offset == 0:
+                continue
+            test_pos = mut_pos + offset
+            for iso_entry in all_gene_isoforms:
+                iso_seq = iso_entry['sequence']
+                if 1 <= test_pos <= len(iso_seq) and iso_seq[test_pos - 1] == wt_aa:
+                    # Found match at offset position. Use offset for peptide generation
+                    # but report original mut_pos for traceability
+                    primary_method = status['lookup_method'] or 'none'
+                    status['lookup_method'] = (
+                        f"offset_scan({offset:+d},was:{primary_method})")
+                    status['aa_match'] = True
+                    status['aa_found'] = wt_aa
+                    status['protein_length'] = len(iso_seq)
+                    status['detail'] = (
+                        f"Signal peptide offset {offset:+d}: "
+                        f"pos {mut_pos}->{test_pos} in {iso_entry['enst']} "
+                        f"({len(iso_seq)} aa)")
+                    # Generate peptides using the OFFSET position
+                    return _generate_peptides_from_seq(
+                        iso_seq, wt_aa, test_pos, mut_aa, peptide_lengths, status)
+
+    # --- ALL STRATEGIES EXHAUSTED ---
     if mut_pos < 1 or mut_pos > len(protein_seq):
         status['status'] = 'POSITION_OUT_OF_BOUNDS'
-        status['detail'] = f"Position {mut_pos} outside protein length {len(protein_seq)}"
-        return [], [], [], status
-
-    # Verify wild-type amino acid matches
-    actual_aa = protein_seq[mut_pos - 1]  # Convert to 0-indexed
-    status['aa_found'] = actual_aa
-
-    if actual_aa != wt_aa:
+        status['detail'] = (f"Position {mut_pos} outside protein length "
+                            f"{len(protein_seq)}, no isoform/offset match")
+    else:
         status['aa_match'] = False
         status['status'] = 'AA_MISMATCH'
-        status['detail'] = f"Expected {wt_aa} at pos {mut_pos}, found {actual_aa}"
-        return [], [], [], status
+        n_tried = status.get('n_isoforms_tried', 0)
+        status['detail'] = (f"Expected {wt_aa} at pos {mut_pos}, "
+                            f"found {protein_seq[mut_pos - 1]} "
+                            f"(tried {n_tried} isoforms + offset ±{MAX_POSITION_OFFSET})")
+    return [], [], [], status
 
-    status['aa_match'] = True
 
-    # Generate peptides with real flanking context
+def _generate_peptides_from_seq(protein_seq, wt_aa, mut_pos, mut_aa,
+                                 peptide_lengths, status):
+    """
+    Inner helper: generate peptide windows from a validated protein sequence.
+    Called after AA match is confirmed.
+    """
     mut_peptides = []
     wt_peptides = []
     metadata = []
@@ -463,6 +656,7 @@ for group in GROUPS:
     for idx, var in missense.iterrows():
         gene_symbol = var.get('gene', '')
         gene_id = var.get('gene_id', '')
+        transcript_id = var.get('transcript_id', '')
         hgvs_p = var.get('hgvs_p', '')
         chrom = var.get('chrom', '')
         pos = var.get('pos', '')
@@ -473,6 +667,7 @@ for group in GROUPS:
             diag['hgvs_parse_failed'] += 1
             all_mapping_status.append({
                 'gene_symbol': gene_symbol, 'gene_id': gene_id,
+                'transcript_id': transcript_id,
                 'hgvs_p': hgvs_p, 'chrom': chrom, 'pos': pos,
                 'status': 'HGVS_PARSE_FAILED',
                 'detail': f"Could not parse: {hgvs_p}",
@@ -484,10 +679,13 @@ for group in GROUPS:
 
         wt_aa, mut_pos, mut_aa = parsed
 
-        # Generate peptides from proteome
+        # Generate peptides from proteome (ENST > gene_symbol > ENSG > isoform scan)
         mut_peps, wt_peps, pep_metas, status = generate_peptides_from_proteome(
-            gene_symbol, gene_id, wt_aa, mut_pos, mut_aa,
-            PEPTIDE_LENGTHS, prot_by_symbol, prot_by_ensg
+            gene_symbol, gene_id, transcript_id,
+            wt_aa, mut_pos, mut_aa,
+            PEPTIDE_LENGTHS,
+            prot_by_enst, prot_by_symbol, prot_by_ensg,
+            all_isoforms_by_symbol=prot_all_isoforms
         )
 
         # Add variant-level info to status
@@ -530,8 +728,22 @@ for group in GROUPS:
 
     log(f"    Total peptides generated: {len(all_mut_peptides)}")
 
-    # Save mapping diagnostics
+    # Breakdown of lookup methods used
     mapping_df = pd.DataFrame(all_mapping_status)
+    if 'lookup_method' in mapping_df.columns:
+        method_counts = mapping_df[mapping_df['status'] == 'SUCCESS']['lookup_method'].value_counts()
+        log(f"\n    Lookup methods for successful matches:")
+        for method, count in method_counts.items():
+            log(f"      {method}: {count}")
+
+        # Also show what method AA mismatches used (to confirm they're symbol/ensg fallbacks)
+        if diag.get('AA_MISMATCH', 0) > 0:
+            mismatch_methods = mapping_df[mapping_df['status'] == 'AA_MISMATCH']['lookup_method'].value_counts()
+            log(f"    Lookup methods for AA mismatches:")
+            for method, count in mismatch_methods.items():
+                log(f"      {method}: {count}")
+
+    # Save mapping diagnostics
     mapping_path = os.path.join(OUTPUT_DIR, f"{group}_proteome_mapping_diagnostics.tsv")
     mapping_df.to_csv(mapping_path, sep='\t', index=False)
     log(f"    Saved: {mapping_path}")

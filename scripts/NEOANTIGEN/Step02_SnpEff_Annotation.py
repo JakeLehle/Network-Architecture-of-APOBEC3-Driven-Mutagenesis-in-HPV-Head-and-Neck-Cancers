@@ -139,6 +139,8 @@ for group in GROUPS:
                 continue
 
             # Parse first (canonical) annotation
+            # ANN field format: Allele|Effect|Impact|GeneName|GeneID|FeatureType|
+            #   FeatureID(ENST)|Biotype|Rank|HGVS.c|HGVS.p|...
             ann_parts = ann_str.split(',')[0].split('|')
             if len(ann_parts) < 11:
                 continue
@@ -147,6 +149,8 @@ for group in GROUPS:
                 'chrom': chrom, 'pos': pos, 'ref': ref_, 'alt': alt_,
                 'effect': ann_parts[1], 'impact': ann_parts[2],
                 'gene': ann_parts[3], 'gene_id': ann_parts[4],
+                'feature_type': ann_parts[5],
+                'transcript_id': ann_parts[6],  # ENST ID for proteome matching
                 'biotype': ann_parts[7],
                 'hgvs_c': ann_parts[9], 'hgvs_p': ann_parts[10],
             })
