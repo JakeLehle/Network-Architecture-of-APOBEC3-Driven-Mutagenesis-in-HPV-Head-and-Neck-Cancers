@@ -400,22 +400,73 @@ if len(all_rankings) == 2:
         log(f"  SBS2_HIGH only:             {len(sbs2_only)}")
         log(f"  CNV_HIGH only:              {len(cnv_only)}")
 
-        # Compare top 10 from each group
-        log(f"\n  SBS2_HIGH top 10:")
-        for _, row in sbs2_ranked.head(10).iterrows():
-            in_cnv = "shared" if row['gene'] in cnv_genes else "SBS2-only"
-            log(f"    {row['rank']:3d}. {row['gene']:15s} (composite={row['composite_score']:.4f}) [{in_cnv}]")
+        # --- TOP 25 OVERALL (with shared/unique annotation) ---
+        log(f"\n  SBS2_HIGH top 25:")
+        for _, row in sbs2_ranked.head(25).iterrows():
+            tag = "shared" if row['gene'] in cnv_genes else "SBS2-only"
+            log(f"    {row['rank']:3d}. {row['gene']:15s} "
+                f"(composite={row['composite_score']:.4f}) [{tag}]")
 
-        log(f"\n  CNV_HIGH top 10:")
-        for _, row in cnv_ranked.head(10).iterrows():
-            in_sbs2 = "shared" if row['gene'] in sbs2_genes else "CNV-only"
-            log(f"    {row['rank']:3d}. {row['gene']:15s} (composite={row['composite_score']:.4f}) [{in_sbs2}]")
+        log(f"\n  CNV_HIGH top 25:")
+        for _, row in cnv_ranked.head(25).iterrows():
+            tag = "shared" if row['gene'] in sbs2_genes else "CNV-only"
+            log(f"    {row['rank']:3d}. {row['gene']:15s} "
+                f"(composite={row['composite_score']:.4f}) [{tag}]")
 
-        # Genes in both lists: compare rank shifts
+        # --- TOP 25 GROUP-UNIQUE NEOANTIGENS ---
+        # These are the most interesting for group-specific therapeutic targeting
+
+        # SBS2-unique: present in maintenance-phase cells under immune pressure
+        sbs2_unique_ranked = sbs2_ranked[sbs2_ranked['gene'].isin(sbs2_only)].copy()
+        sbs2_unique_ranked = sbs2_unique_ranked.reset_index(drop=True)
+
+        log(f"\n  === TOP 25 SBS2_HIGH-UNIQUE NEOANTIGENS ===")
+        log(f"  (Present only in maintenance-phase cells, best immune stimulation candidates)")
+        log(f"\n  {'Rank':>4s}  {'Gene':15s}  {'Composite':>10s}  {'MeanExpr':>9s}  "
+            f"{'%Expr':>6s}  {'BestIC50':>9s}  {'#Neo':>5s}  {'#Strong':>7s}  {'#Diff':>6s}")
+        log(f"  {'----':>4s}  {'----':15s}  {'--------':>10s}  {'-------':>9s}  "
+            f"{'-----':>6s}  {'--------':>9s}  {'----':>5s}  {'------':>7s}  {'-----':>6s}")
+
+        for _, row in sbs2_unique_ranked.head(25).iterrows():
+            log(f"  {row['rank']:4d}  {row['gene']:15s}  {row['composite_score']:10.4f}  "
+                f"{row['mean_expr_group']:9.4f}  {row['pct_expressing_group']:5.1f}%  "
+                f"{row['best_ic50']:9.1f}  "
+                f"{row['n_neoantigen_peptides']:5d}  {row['n_strong_binders']:7d}  "
+                f"{row['n_differential']:6d}")
+
+        sbs2_unique_path = os.path.join(OUTPUT_DIR, "SBS2_HIGH_unique_neoantigens.tsv")
+        sbs2_unique_ranked.to_csv(sbs2_unique_path, sep='\t', index=False)
+        log(f"\n  Saved: {sbs2_unique_path} ({len(sbs2_unique_ranked)} genes)")
+
+        # CNV-unique: present only in productive-phase cells
+        cnv_unique_ranked = cnv_ranked[cnv_ranked['gene'].isin(cnv_only)].copy()
+        cnv_unique_ranked = cnv_unique_ranked.reset_index(drop=True)
+
+        log(f"\n  === TOP 25 CNV_HIGH-UNIQUE NEOANTIGENS ===")
+        log(f"  (Present only in productive-phase cells)")
+        log(f"\n  {'Rank':>4s}  {'Gene':15s}  {'Composite':>10s}  {'MeanExpr':>9s}  "
+            f"{'%Expr':>6s}  {'BestIC50':>9s}  {'#Neo':>5s}  {'#Strong':>7s}  {'#Diff':>6s}")
+        log(f"  {'----':>4s}  {'----':15s}  {'--------':>10s}  {'-------':>9s}  "
+            f"{'-----':>6s}  {'--------':>9s}  {'----':>5s}  {'------':>7s}  {'-----':>6s}")
+
+        for _, row in cnv_unique_ranked.head(25).iterrows():
+            log(f"  {row['rank']:4d}  {row['gene']:15s}  {row['composite_score']:10.4f}  "
+                f"{row['mean_expr_group']:9.4f}  {row['pct_expressing_group']:5.1f}%  "
+                f"{row['best_ic50']:9.1f}  "
+                f"{row['n_neoantigen_peptides']:5d}  {row['n_strong_binders']:7d}  "
+                f"{row['n_differential']:6d}")
+
+        cnv_unique_path = os.path.join(OUTPUT_DIR, "CNV_HIGH_unique_neoantigens.tsv")
+        cnv_unique_ranked.to_csv(cnv_unique_path, sep='\t', index=False)
+        log(f"\n  Saved: {cnv_unique_path} ({len(cnv_unique_ranked)} genes)")
+
+        # --- SHARED GENES: RANK COMPARISON ---
         if shared_genes:
-            log(f"\n  Shared genes - rank comparison (top 20 by SBS2 rank):")
-            log(f"    {'Gene':15s}  {'SBS2_rank':>10s}  {'CNV_rank':>10s}  {'SBS2_score':>11s}  {'CNV_score':>10s}")
-            log(f"    {'----':15s}  {'--------':>10s}  {'--------':>10s}  {'---------':>11s}  {'---------':>10s}")
+            log(f"\n  === SHARED NEOANTIGENS - rank comparison (top 25 by SBS2 rank) ===")
+            log(f"    {'Gene':15s}  {'SBS2_rank':>10s}  {'CNV_rank':>10s}  "
+                f"{'SBS2_score':>11s}  {'CNV_score':>10s}")
+            log(f"    {'----':15s}  {'--------':>10s}  {'--------':>10s}  "
+                f"{'---------':>11s}  {'---------':>10s}")
 
             shared_compare = []
             for gene in shared_genes:
@@ -427,11 +478,20 @@ if len(all_rankings) == 2:
                     'cnv_rank': cnv_row['rank'],
                     'sbs2_score': sbs2_row['composite_score'],
                     'cnv_score': cnv_row['composite_score'],
+                    'sbs2_expr': sbs2_row['mean_expr_group'],
+                    'cnv_expr': cnv_row['mean_expr_group'],
+                    'sbs2_ic50': sbs2_row['best_ic50'],
+                    'cnv_ic50': cnv_row['best_ic50'],
                 })
             shared_df = pd.DataFrame(shared_compare).sort_values('sbs2_rank')
-            for _, row in shared_df.head(20).iterrows():
+
+            for _, row in shared_df.head(25).iterrows():
                 log(f"    {row['gene']:15s}  {row['sbs2_rank']:10d}  {row['cnv_rank']:10d}  "
                     f"{row['sbs2_score']:11.4f}  {row['cnv_score']:10.4f}")
+
+            shared_path = os.path.join(OUTPUT_DIR, "shared_neoantigen_comparison.tsv")
+            shared_df.to_csv(shared_path, sep='\t', index=False)
+            log(f"\n  Saved: {shared_path} ({len(shared_df)} shared genes)")
 
 # =============================================================================
 # STEP 3: SAVE CROSS-GROUP EXPRESSION DIAGNOSTICS
@@ -449,9 +509,11 @@ if all_expression_diagnostics:
         group_diag = diag_df[diag_df['source_group'] == group]
         if len(group_diag) == 0:
             continue
+        # Build column name outside f-string to avoid nested quote issues
+        expr_col = f"mean_expr_{group.lower().split('_')[0]}"
+        n_zero = (group_diag[expr_col] == 0).sum() if expr_col in group_diag.columns else 'N/A'
         log(f"\n  {group} neoantigen genes expression summary:")
-        log(f"    Genes with zero expr in own group:  "
-            f"{(group_diag[f'mean_expr_{group.lower().split('_')[0]}'] == 0).sum()}")
+        log(f"    Genes with zero expr in own group:  {n_zero}")
         log(f"    Mean composite score:                {group_diag['composite_score'].mean():.4f}")
         log(f"    Median composite score:              {group_diag['composite_score'].median():.4f}")
 

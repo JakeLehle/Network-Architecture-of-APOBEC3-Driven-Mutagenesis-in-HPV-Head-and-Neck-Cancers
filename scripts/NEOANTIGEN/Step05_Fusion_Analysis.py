@@ -512,6 +512,10 @@ else:
 # =============================================================================
 log_sep("STEP 4: Enrichment analysis (gseapy)")
 
+ENRICHR_MAX_RETRIES = 5
+ENRICHR_BASE_DELAY = 30       # seconds, doubles each retry
+ENRICHR_BETWEEN_DELAY = 15    # seconds between queries to prevent 429s
+
 try:
     import gseapy as gp
     HAS_GSEAPY = True
@@ -520,7 +524,36 @@ except ImportError:
     HAS_GSEAPY = False
     log("  gseapy not available, skipping enrichment")
 
+
+def enrichr_with_retry(gene_list, gene_sets, max_retries=ENRICHR_MAX_RETRIES,
+                       base_delay=ENRICHR_BASE_DELAY):
+    """Run gseapy.enrichr with exponential backoff on HTTP 429 errors."""
+    for attempt in range(max_retries):
+        try:
+            enr = gp.enrichr(
+                gene_list=gene_list,
+                gene_sets=[gene_sets],
+                organism="human",
+                outdir=None,
+                no_plot=True,
+                verbose=False,
+            )
+            return enr.results, None
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str:
+                delay = base_delay * (2 ** attempt)
+                log(f"      [RETRY] 429 rate limit, attempt {attempt+1}/{max_retries}, "
+                    f"waiting {delay}s...")
+                import time
+                time.sleep(delay)
+            else:
+                return None, err_str
+    return None, f"Failed after {max_retries} retries (429 rate limit)"
+
+
 if HAS_GSEAPY and len(jdf) > 0:
+    import time
     LIBS = ['KEGG_2021_Human', 'Reactome_2022', 'GO_Biological_Process_2023']
 
     for grp in ['SBS2_HIGH', 'CNV_HIGH']:
@@ -530,11 +563,10 @@ if HAS_GSEAPY and len(jdf) > 0:
             continue
 
         log(f"\n  --- {grp} ({len(gl)} genes) ---")
-        for lib in LIBS:
-            try:
-                enr = gp.enrichr(gene_list=gl, gene_sets=lib, organism='human',
-                                 outdir=None, no_plot=True)
-                res = enr.results
+        for i, lib in enumerate(LIBS):
+            res, err = enrichr_with_retry(gl, lib)
+
+            if res is not None and len(res) > 0:
                 sig = res[res['Adjusted P-value'] < 0.05]
                 log(f"    {lib}: {len(sig)} significant / {len(res)} total")
 
@@ -546,8 +578,14 @@ if HAS_GSEAPY and len(jdf) > 0:
                     pre = "" if r['Adjusted P-value'] < 0.05 else "(ns) "
                     log(f"      {pre}{r['Term']}: p_adj={r['Adjusted P-value']:.2e}, "
                         f"genes={r['Genes']}")
-            except Exception as e:
-                log(f"    {lib}: ERROR - {e}")
+            elif res is not None and len(res) == 0:
+                log(f"    {lib}: No results returned")
+            else:
+                log(f"    {lib}: ERROR - {err}")
+
+            # Rate-limit delay between queries
+            if i < len(LIBS) - 1:
+                time.sleep(ENRICHR_BETWEEN_DELAY)
 
 # =============================================================================
 # STEP 5: SPLICEOSOME AND ANTIGEN PRESENTATION OVERLAP
@@ -660,6 +698,133 @@ if crossref_rows:
     log(f"\n  Saved: neoantigen_fusion_crossref.tsv ({len(crossref_df)} genes)")
 else:
     log(f"\n  No neoantigen-fusion overlap found (or rankings not yet generated)")
+
+# =============================================================================
+# STEP 7: CROSS-GROUP FUSION-MUTATION OVERLAP
+# =============================================================================
+log_sep("STEP 7: Cross-group neoantigen-fusion overlap")
+log(f"  Do genes that produce neoantigens in one group get disrupted")
+log(f"  by fusions in the OTHER group? This tests whether the lifecycle")
+log(f"  transition involves selective loss of immunogenic targets.")
+
+cross_group_rows = []
+
+# Load both neoantigen rankings
+neo_rankings = {}
+for grp in ['SBS2_HIGH', 'CNV_HIGH']:
+    ranking_path = os.path.join(MHC_DIR, f"{grp}_expression_weighted_ranking.tsv")
+    if os.path.exists(ranking_path):
+        neo_rankings[grp] = pd.read_csv(ranking_path, sep='\t')
+
+if len(neo_rankings) == 2 and len(jdf) > 0:
+
+    # --- SBS2 neoantigens disrupted by CNV fusions ---
+    sbs2_neo_genes = set(neo_rankings['SBS2_HIGH']['gene'])
+    cnv_fusion_genes = set(exclusive_genes.get('CNV_HIGH', []))
+    sbs2_neo_in_cnv_fusions = sbs2_neo_genes & cnv_fusion_genes
+
+    log(f"\n  SBS2_HIGH neoantigens found in CNV_HIGH exclusive fusions:")
+    log(f"    SBS2 neoantigen genes:      {len(sbs2_neo_genes)}")
+    log(f"    CNV exclusive fusion genes:  {len(cnv_fusion_genes)}")
+    log(f"    Overlap:                     {len(sbs2_neo_in_cnv_fusions)}")
+
+    if sbs2_neo_in_cnv_fusions:
+        log(f"\n    These SBS2 neoantigen genes are disrupted by fusions in CNV_HIGH:")
+        log(f"    (potential immune escape: neoantigen lost during lifecycle transition)")
+        for gene in sorted(sbs2_neo_in_cnv_fusions):
+            neo_row = neo_rankings['SBS2_HIGH'][neo_rankings['SBS2_HIGH']['gene'] == gene].iloc[0]
+
+            # Fusion partners in CNV
+            partners = []
+            for p in exclusive.get('CNV_HIGH', set()):
+                if gene in p:
+                    partner = p[1] if p[0] == gene else p[0]
+                    n = len(pair_cells['CNV_HIGH'][p])
+                    partners.append(f"{partner}({n})")
+
+            # Check if also a neoantigen in CNV
+            in_cnv_neo = gene in set(neo_rankings['CNV_HIGH']['gene'])
+            cnv_note = "also CNV neoantigen" if in_cnv_neo else "NOT a CNV neoantigen"
+
+            log(f"      {gene}: SBS2_rank={neo_row['rank']}, "
+                f"composite={neo_row['composite_score']:.1f}, "
+                f"IC50={neo_row['best_ic50']:.1f}, "
+                f"CNV_fusions=[{', '.join(partners)}], "
+                f"[{cnv_note}]")
+
+            cross_group_rows.append({
+                'direction': 'SBS2_neo_in_CNV_fusion',
+                'gene': gene,
+                'neo_group': 'SBS2_HIGH',
+                'fusion_group': 'CNV_HIGH',
+                'neo_rank': neo_row['rank'],
+                'composite_score': neo_row['composite_score'],
+                'best_ic50': neo_row['best_ic50'],
+                'fusion_partners': '; '.join(partners),
+                'also_neoantigen_in_other': in_cnv_neo,
+            })
+
+    # --- CNV neoantigens disrupted by SBS2 fusions ---
+    cnv_neo_genes = set(neo_rankings['CNV_HIGH']['gene'])
+    sbs2_fusion_genes = set(exclusive_genes.get('SBS2_HIGH', []))
+    cnv_neo_in_sbs2_fusions = cnv_neo_genes & sbs2_fusion_genes
+
+    log(f"\n  CNV_HIGH neoantigens found in SBS2_HIGH exclusive fusions:")
+    log(f"    CNV neoantigen genes:        {len(cnv_neo_genes)}")
+    log(f"    SBS2 exclusive fusion genes:  {len(sbs2_fusion_genes)}")
+    log(f"    Overlap:                      {len(cnv_neo_in_sbs2_fusions)}")
+
+    if cnv_neo_in_sbs2_fusions:
+        log(f"\n    These CNV neoantigen genes are disrupted by fusions in SBS2_HIGH:")
+        for gene in sorted(cnv_neo_in_sbs2_fusions):
+            neo_row = neo_rankings['CNV_HIGH'][neo_rankings['CNV_HIGH']['gene'] == gene].iloc[0]
+
+            partners = []
+            for p in exclusive.get('SBS2_HIGH', set()):
+                if gene in p:
+                    partner = p[1] if p[0] == gene else p[0]
+                    n = len(pair_cells['SBS2_HIGH'][p])
+                    partners.append(f"{partner}({n})")
+
+            in_sbs2_neo = gene in set(neo_rankings['SBS2_HIGH']['gene'])
+            sbs2_note = "also SBS2 neoantigen" if in_sbs2_neo else "NOT a SBS2 neoantigen"
+
+            log(f"      {gene}: CNV_rank={neo_row['rank']}, "
+                f"composite={neo_row['composite_score']:.1f}, "
+                f"IC50={neo_row['best_ic50']:.1f}, "
+                f"SBS2_fusions=[{', '.join(partners)}], "
+                f"[{sbs2_note}]")
+
+            cross_group_rows.append({
+                'direction': 'CNV_neo_in_SBS2_fusion',
+                'gene': gene,
+                'neo_group': 'CNV_HIGH',
+                'fusion_group': 'SBS2_HIGH',
+                'neo_rank': neo_row['rank'],
+                'composite_score': neo_row['composite_score'],
+                'best_ic50': neo_row['best_ic50'],
+                'fusion_partners': '; '.join(partners),
+                'also_neoantigen_in_other': in_sbs2_neo,
+            })
+
+    # --- SUMMARY ---
+    log(f"\n  Cross-group summary:")
+    log(f"    SBS2 neoantigens disrupted by CNV fusions: {len(sbs2_neo_in_cnv_fusions)}")
+    log(f"    CNV neoantigens disrupted by SBS2 fusions: {len(cnv_neo_in_sbs2_fusions)}")
+
+    if len(sbs2_neo_in_cnv_fusions) > len(cnv_neo_in_sbs2_fusions):
+        log(f"    -> Asymmetric: more SBS2 neoantigens lost in CNV transition")
+        log(f"       Consistent with immune escape during lifecycle progression")
+    elif len(cnv_neo_in_sbs2_fusions) > len(sbs2_neo_in_cnv_fusions):
+        log(f"    -> Asymmetric: more CNV neoantigens disrupted in SBS2")
+    else:
+        log(f"    -> Symmetric overlap")
+
+if cross_group_rows:
+    cross_df = pd.DataFrame(cross_group_rows)
+    cross_path = os.path.join(OUTPUT_DIR, "cross_group_neoantigen_fusion_overlap.tsv")
+    cross_df.to_csv(cross_path, sep='\t', index=False)
+    log(f"\n  Saved: {cross_path} ({len(cross_df)} entries)")
 
 # =============================================================================
 # SAVE REPORT
