@@ -96,6 +96,6 @@ All TCGA data were accessed through the GDC API under dbGaP authorization. Singl
 
 ## Authors
 
-Jake Lehle, Mohadeseh Soleimanpour, Diako Ebrahimi
+Jake D. Lehle, Mohadeseh Soleimanpour, Niloofar Haghjoo, Colin Rorex, Feng Li, Armando Mendez, Diako Ebrahimi
 
 Texas Biomedical Research Institute
