@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate_Figure6_Lifecycle_Panels.py  (v5)
-===========================================
+Generate_Figure6_Lifecycle_Panels.py  (v6 -- BH-FDR corrected)
+===============================================================
 Figure 6: HPV16 Lifecycle States Drive Divergent Mutagenic Programs
+
+v6 change: All pairwise Mann-Whitney p-values are now BH-FDR corrected
+figure-wide (across Panels B + D + F = up to 42 tests). Displayed as
+q-values on brackets.
 
 Layout:
   ROW 1:
@@ -53,6 +57,7 @@ from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 import seaborn as sns
 from scipy.stats import mannwhitneyu
+from statsmodels.stats.multitest import multipletests
 from collections import OrderedDict
 import warnings
 warnings.filterwarnings('ignore')
@@ -224,24 +229,83 @@ def p_to_stars(p):
     if p < 0.05: return '*'
     return 'ns'
 
-def format_p(p):
-    """Format p-value for display on plot."""
-    if p < 1e-99:
-        return 'p<1e-99'
-    elif p < 0.001:
-        return f'p={p:.0e}'
-    elif p < 0.05:
-        return f'p={p:.3f}'
+def format_q(q):
+    """Format BH-adjusted q-value for display on plot."""
+    if q < 1e-99:
+        return 'q<1e-99'
+    elif q < 0.001:
+        return f'q={q:.0e}'
+    elif q < 0.05:
+        return f'q={q:.3f}'
     else:
-        return f'p={p:.2f}'
+        return f'q={q:.2f}'
+
+
+# =============================================================================
+# FDR CORRECTION: Compute pairwise raw p-values for a data dict
+# =============================================================================
+def compute_pairwise_pvals(data_dict, pop_order):
+    """
+    Compute raw Mann-Whitney U pairwise p-values for the 3 population pairs.
+    Returns list of 3 values (np.nan for pairs with insufficient data).
+    """
+    pairs = [(0, 1), (1, 2), (0, 2)]
+    raw_pvals = []
+    for i, j in pairs:
+        v1 = data_dict[pop_order[i]]
+        v2 = data_dict[pop_order[j]]
+        valid_i = len(v1) >= MIN_CELLS_FOR_STATS
+        valid_j = len(v2) >= MIN_CELLS_FOR_STATS
+        if valid_i and valid_j and len(v1) > 5 and len(v2) > 5:
+            _, p = mannwhitneyu(v1, v2, alternative='two-sided')
+            raw_pvals.append(p)
+        else:
+            raw_pvals.append(np.nan)
+    return raw_pvals
+
+
+def apply_bh_correction(all_raw_pvals_flat):
+    """
+    Apply Benjamini-Hochberg FDR correction to a flat list of raw p-values.
+    NaN entries (from N.D. pairs) are skipped and remain NaN.
+    Returns list of adjusted q-values in the same order.
+
+    Uses position-mapped assignment (not [::-1]) to avoid the reversal bug.
+    """
+    pvals = np.array(all_raw_pvals_flat, dtype=float)
+    adjusted = np.full_like(pvals, np.nan)
+
+    valid_mask = ~np.isnan(pvals)
+    n_valid = valid_mask.sum()
+
+    if n_valid == 0:
+        return adjusted.tolist()
+
+    # multipletests handles the position mapping correctly
+    reject, adj_p, _, _ = multipletests(pvals[valid_mask], method='fdr_bh')
+    adjusted[valid_mask] = adj_p
+
+    # Sanity check: adjusted p >= raw p (always true for BH)
+    for idx in np.where(valid_mask)[0]:
+        if adjusted[idx] < pvals[idx] - 1e-15:
+            log(f"  WARNING: BH sanity fail at idx {idx}: "
+                f"raw={pvals[idx]:.6e}, adj={adjusted[idx]:.6e}")
+
+    return adjusted.tolist()
 
 
 def make_violin_panel(ax, data_dict, pop_order, pop_colors, pop_labels,
-                      ylabel='', show_stats=True):
+                      ylabel='', show_stats=True, adjusted_pvals=None):
     """
     Draw violin + box overlay for one metric across populations.
-    All three pairwise comparisons shown with stars and p-values.
+    All three pairwise comparisons shown with stars and q-values.
     Groups with < MIN_CELLS_FOR_STATS cells are marked N.D.
+
+    Parameters
+    ----------
+    adjusted_pvals : list of 3 floats or None
+        BH-adjusted q-values for pairs [(0,1), (1,2), (0,2)].
+        If None, stats brackets are skipped (should not happen in normal flow).
     """
     positions = list(range(len(pop_order)))
     plot_data = [data_dict[p] for p in pop_order]
@@ -281,7 +345,6 @@ def make_violin_panel(ax, data_dict, pop_order, pop_colors, pop_labels,
             patch.set_visible(False)
             # Hide whiskers/caps/medians for invalid groups
             for element in ['whiskers', 'caps', 'medians']:
-                # Each group has 2 whiskers, 2 caps, 1 median
                 n_per = 2 if element != 'medians' else 1
                 start = idx_bp * n_per
                 end = start + n_per
@@ -294,12 +357,11 @@ def make_violin_panel(ax, data_dict, pop_order, pop_colors, pop_labels,
             mean_val = np.mean(data_dict[pop])
             ax.scatter(i, mean_val, color='black', s=40, zorder=5, marker='D')
         elif not valid_groups[i]:
-            # Mark as N.D.
             ax.text(i, 0, 'N.D.', ha='center', va='center',
                     fontsize=FONT_PVAL + 2, fontstyle='italic', color='#888888')
 
-    # Pairwise stat brackets
-    if show_stats and len(pop_order) >= 3:
+    # Pairwise stat brackets with BH-adjusted q-values
+    if show_stats and len(pop_order) >= 3 and adjusted_pvals is not None:
         pairs = [(0, 1), (1, 2), (0, 2)]
 
         # Compute y range from valid data only
@@ -317,12 +379,10 @@ def make_violin_panel(ax, data_dict, pop_order, pop_colors, pop_labels,
         bracket_gap = 0.12 * y_range
 
         for bracket_idx, (i, j) in enumerate(pairs):
-            v1 = data_dict[pop_order[i]]
-            v2 = data_dict[pop_order[j]]
+            q = adjusted_pvals[bracket_idx]
 
-            # Both groups must have enough data
-            if not (valid_groups[i] and valid_groups[j]):
-                # N.D. bracket
+            # N.D. bracket (NaN means one or both groups had insufficient data)
+            if np.isnan(q):
                 y_bar = y_data_max + (bracket_idx + 0.5) * bracket_gap
                 y_tip = y_bar + 0.015 * y_range
                 ax.plot([i, i, j, j],
@@ -333,21 +393,19 @@ def make_violin_panel(ax, data_dict, pop_order, pop_colors, pop_labels,
                         fontsize=FONT_PVAL, fontstyle='italic', color='#888888')
                 continue
 
-            if len(v1) > 5 and len(v2) > 5:
-                _, p = mannwhitneyu(v1, v2, alternative='two-sided')
-                y_bar = y_data_max + (bracket_idx + 0.5) * bracket_gap
-                y_tip = y_bar + 0.015 * y_range
+            y_bar = y_data_max + (bracket_idx + 0.5) * bracket_gap
+            y_tip = y_bar + 0.015 * y_range
 
-                ax.plot([i, i, j, j],
-                        [y_bar, y_tip, y_tip, y_bar],
-                        color='black', linewidth=1.2, clip_on=False)
+            ax.plot([i, i, j, j],
+                    [y_bar, y_tip, y_tip, y_bar],
+                    color='black', linewidth=1.2, clip_on=False)
 
-                stars = p_to_stars(p)
-                p_text = format_p(p)
-                ax.text((i + j) / 2.0, y_tip + 0.005 * y_range,
-                        f'{stars}  {p_text}',
-                        ha='center', va='bottom',
-                        fontsize=FONT_PVAL, fontweight='bold')
+            stars = p_to_stars(q)
+            q_text = format_q(q)
+            ax.text((i + j) / 2.0, y_tip + 0.005 * y_range,
+                    f'{stars}  {q_text}',
+                    ha='center', va='bottom',
+                    fontsize=FONT_PVAL, fontweight='bold')
 
         # Extend y-axis
         ax.set_ylim(bottom=y_data_min - 0.05 * y_range,
@@ -452,6 +510,168 @@ if total_col in hpv_genes.columns:
         f"{(hpv_total > 0).sum()} cells with reads")
 
 
+# =============================================================================
+# STEP 1: PRE-COMPUTE ALL DATA DICTS AND RAW P-VALUES (FIGURE-WIDE BH)
+# =============================================================================
+banner("STEP 1: Pre-compute all data dicts + raw p-values for BH correction")
+
+# We collect every data dict and its label, then compute raw pairwise p-values
+# for the entire figure before any plotting. BH is applied once to the full set.
+
+all_violin_data = OrderedDict()  # label -> data_dict
+all_raw_pvals = []               # flat list of raw p-values (with NaN for N.D.)
+violin_pval_slices = {}          # label -> (start_idx, end_idx) into all_raw_pvals
+
+# --- Panel B: 5 metrics ---
+log("  Computing Panel B data dicts...")
+
+# B1: SBS2 weight
+sbs2_data = {}
+for pop in POP_ORDER:
+    cells = sbs2_cells if pop == 'SBS2_HIGH' else (cnv_cells if pop == 'CNV_HIGH' else normal_cells)
+    overlap = cells & set(sig_weights.index)
+    if sbs2_col and len(overlap) > 0:
+        sbs2_data[pop] = sig_weights.loc[list(overlap), sbs2_col].values.astype(float)
+    else:
+        sbs2_data[pop] = np.array([0.0])
+    log(f"    SBS2 weight {pop}: n={len(sbs2_data[pop])}, mean={np.mean(sbs2_data[pop]):.4f}")
+all_violin_data['B_SBS2'] = sbs2_data
+
+# B2: inferCNV score
+cnv_data = {}
+for pop in POP_ORDER:
+    mask = adata_pop.obs['population'] == pop
+    cnv_data[pop] = adata_pop.obs.loc[mask, 'cnv_score'].values.astype(float)
+    log(f"    CNV score {pop}: n={len(cnv_data[pop])}, mean={np.mean(cnv_data[pop]):.4f}")
+all_violin_data['B_CNV'] = cnv_data
+
+# B3: CytoTRACE2
+cyto_data = {}
+for pop in POP_ORDER:
+    mask = adata_pop.obs['population'] == pop
+    cyto_data[pop] = adata_pop.obs.loc[mask, 'CytoTRACE2_Score'].values.astype(float)
+    log(f"    CytoTRACE2 {pop}: n={len(cyto_data[pop])}, mean={np.mean(cyto_data[pop]):.4f}")
+all_violin_data['B_CytoTRACE2'] = cyto_data
+
+# B4: APOBEC3A
+a3a_data = {}
+a3a_expr = get_expression(adata_pop, 'APOBEC3A')
+if a3a_expr is not None:
+    for pop in POP_ORDER:
+        mask = (adata_pop.obs['population'] == pop).values
+        a3a_data[pop] = a3a_expr[mask]
+        log(f"    A3A {pop}: n={len(a3a_data[pop])}, mean={np.mean(a3a_data[pop]):.4f}")
+else:
+    log("  WARNING: APOBEC3A not found")
+    for pop in POP_ORDER:
+        a3a_data[pop] = np.array([0.0])
+all_violin_data['B_A3A'] = a3a_data
+
+# B5: APOBEC3B
+a3b_data = {}
+a3b_expr = get_expression(adata_pop, 'APOBEC3B')
+if a3b_expr is not None:
+    for pop in POP_ORDER:
+        mask = (adata_pop.obs['population'] == pop).values
+        a3b_data[pop] = a3b_expr[mask]
+        log(f"    A3B {pop}: n={len(a3b_data[pop])}, mean={np.mean(a3b_data[pop]):.4f}")
+else:
+    log("  WARNING: APOBEC3B not found")
+    for pop in POP_ORDER:
+        a3b_data[pop] = np.array([0.0])
+all_violin_data['B_A3B'] = a3b_data
+
+# --- Panel D: HPV16 read distribution ---
+log("  Computing Panel D data dict...")
+hpv_dist_data = {}
+for pop in POP_ORDER:
+    mask = master_pop['group'] == pop
+    vals = master_pop.loc[mask, 'raw_HPV16'].values.astype(float)
+    hpv_dist_data[pop] = np.log1p(vals)
+    n_pos = (vals >= HPV16_THRESHOLD).sum()
+    log(f"    HPV16 dist {pop}: n={len(vals)}, HPV16+ (>={HPV16_THRESHOLD}): {n_pos}, "
+        f"mean raw={np.mean(vals):.1f}")
+all_violin_data['D_HPV16_dist'] = hpv_dist_data
+
+# --- Panel F: HPV16 lifecycle fraction violins (8 genes) ---
+log("  Computing Panel F data dicts...")
+
+# Subset to HPV+ cells in the three populations
+hpv_pop = hpv_genes[hpv_genes['population'].isin(POP_ORDER)].copy()
+hpv_pop = hpv_pop[hpv_pop[total_col] > 0].copy()
+log(f"  HPV+ cells (alignment-based) in three populations: {len(hpv_pop)}")
+for pop in POP_ORDER:
+    n = (hpv_pop['population'] == pop).sum()
+    log(f"    {pop}: {n}")
+
+# Compute per-cell fractions
+all_hpv_genes_list = []
+for phase_genes in HPV16_PHASES.values():
+    all_hpv_genes_list.extend(phase_genes)
+
+for gene in all_hpv_genes_list:
+    if gene in hpv_pop.columns:
+        hpv_pop[f'{gene}_frac'] = hpv_pop[gene] / hpv_pop[total_col]
+    else:
+        log(f"  WARNING: {gene} not in HPV count columns")
+        hpv_pop[f'{gene}_frac'] = 0.0
+
+for phase_name, phase_genes in HPV16_PHASES.items():
+    for gene in phase_genes:
+        frac_col = f'{gene}_frac'
+        vdata = {}
+        for pop in POP_ORDER:
+            mask = hpv_pop['population'] == pop
+            vdata[pop] = hpv_pop.loc[mask, frac_col].values.astype(float)
+        all_violin_data[f'F_{gene}'] = vdata
+        log(f"    {gene}: "
+            + ", ".join(f"{pop} n={len(vdata[pop])}" for pop in POP_ORDER))
+
+# --- Collect all raw p-values ---
+log("")
+log("  Computing raw pairwise p-values across all violin panels...")
+for label, ddict in all_violin_data.items():
+    start = len(all_raw_pvals)
+    raw_pv = compute_pairwise_pvals(ddict, POP_ORDER)
+    all_raw_pvals.extend(raw_pv)
+    end = len(all_raw_pvals)
+    violin_pval_slices[label] = (start, end)
+
+n_total = len(all_raw_pvals)
+n_valid = sum(1 for p in all_raw_pvals if not np.isnan(p))
+log(f"  Total pairwise tests: {n_total} ({n_valid} valid, "
+    f"{n_total - n_valid} N.D.)")
+
+# --- Apply figure-wide BH correction ---
+log("  Applying Benjamini-Hochberg FDR correction (figure-wide)...")
+all_adjusted_pvals = apply_bh_correction(all_raw_pvals)
+
+# Build lookup: label -> [q1, q2, q3]
+violin_qvals = {}
+for label, (start, end) in violin_pval_slices.items():
+    violin_qvals[label] = all_adjusted_pvals[start:end]
+
+# --- Report raw vs adjusted ---
+log("")
+log(f"  {'Panel':<20s}  {'Pair':<20s}  {'Raw p':>12s}  {'BH q':>12s}  Stars")
+log(f"  {'-'*20}  {'-'*20}  {'-'*12}  {'-'*12}  -----")
+pair_names = [
+    f"{POP_LABELS[POP_ORDER[0]]} vs {POP_LABELS[POP_ORDER[1]]}",
+    f"{POP_LABELS[POP_ORDER[1]]} vs {POP_LABELS[POP_ORDER[2]]}",
+    f"{POP_LABELS[POP_ORDER[0]]} vs {POP_LABELS[POP_ORDER[2]]}",
+]
+for label in all_violin_data:
+    start, end = violin_pval_slices[label]
+    for k in range(3):
+        raw_p = all_raw_pvals[start + k]
+        adj_q = all_adjusted_pvals[start + k]
+        if np.isnan(raw_p):
+            log(f"  {label:<20s}  {pair_names[k]:<20s}  {'N.D.':>12s}  {'N.D.':>12s}  N.D.")
+        else:
+            stars = p_to_stars(adj_q)
+            log(f"  {label:<20s}  {pair_names[k]:<20s}  {raw_p:>12.4e}  {adj_q:>12.4e}  {stars}")
+
+
 # #############################################################################
 #
 #   PANEL A: UMAP -- HPV16 viral load
@@ -504,86 +724,24 @@ save_fig(fig, "Panel_6A_UMAP_HPV16_viral_load")
 #   PANEL B: Baseline violins (SBS2, CNV, CytoTRACE, A3A, A3B)
 #
 # #############################################################################
-banner("PANEL B: Baseline violins")
+banner("PANEL B: Baseline violins (BH-adjusted q-values)")
 
 fig, axes = plt.subplots(1, 5, figsize=(40, 12))
 plt.subplots_adjust(wspace=0.45)
 
-# --- Metric 1: SBS2 signature weight ---
-log("  Metric 1: SBS2 signature weight")
-sbs2_data = {}
-for pop in POP_ORDER:
-    cells = sbs2_cells if pop == 'SBS2_HIGH' else (cnv_cells if pop == 'CNV_HIGH' else normal_cells)
-    overlap = cells & set(sig_weights.index)
-    if sbs2_col and len(overlap) > 0:
-        sbs2_data[pop] = sig_weights.loc[list(overlap), sbs2_col].values.astype(float)
-    else:
-        sbs2_data[pop] = np.array([0.0])
-    log(f"    {pop}: n={len(sbs2_data[pop])}, mean={np.mean(sbs2_data[pop]):.4f}")
+panel_b_specs = [
+    ('B_SBS2',       axes[0], 'SBS2 Weight', 'SBS2'),
+    ('B_CNV',        axes[1], 'CNV Score',   'inferCNV'),
+    ('B_CytoTRACE2', axes[2], 'CytoTRACE2 Score', 'Stemness'),
+    ('B_A3A',        axes[3], 'Expression',  'A3A'),
+    ('B_A3B',        axes[4], 'Expression',  'A3B'),
+]
 
-make_violin_panel(axes[0], sbs2_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='SBS2 Weight')
-axes[0].set_title('SBS2', fontsize=FONT_AXIS, fontweight='bold', pad=15)
-
-# --- Metric 2: inferCNV score ---
-log("  Metric 2: inferCNV score")
-cnv_data = {}
-for pop in POP_ORDER:
-    mask = adata_pop.obs['population'] == pop
-    cnv_data[pop] = adata_pop.obs.loc[mask, 'cnv_score'].values.astype(float)
-    log(f"    {pop}: n={len(cnv_data[pop])}, mean={np.mean(cnv_data[pop]):.4f}")
-
-make_violin_panel(axes[1], cnv_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='CNV Score')
-axes[1].set_title('inferCNV', fontsize=FONT_AXIS, fontweight='bold', pad=15)
-
-# --- Metric 3: CytoTRACE2 ---
-log("  Metric 3: CytoTRACE2 score")
-cyto_data = {}
-for pop in POP_ORDER:
-    mask = adata_pop.obs['population'] == pop
-    cyto_data[pop] = adata_pop.obs.loc[mask, 'CytoTRACE2_Score'].values.astype(float)
-    log(f"    {pop}: n={len(cyto_data[pop])}, mean={np.mean(cyto_data[pop]):.4f}")
-
-make_violin_panel(axes[2], cyto_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='CytoTRACE2 Score')
-axes[2].set_title('Stemness', fontsize=FONT_AXIS, fontweight='bold', pad=15)
-
-# --- Metric 4: APOBEC3A ---
-log("  Metric 4: APOBEC3A")
-a3a_data = {}
-a3a_expr = get_expression(adata_pop, 'APOBEC3A')
-if a3a_expr is not None:
-    for pop in POP_ORDER:
-        mask = (adata_pop.obs['population'] == pop).values
-        a3a_data[pop] = a3a_expr[mask]
-        log(f"    {pop}: n={len(a3a_data[pop])}, mean={np.mean(a3a_data[pop]):.4f}")
-else:
-    log("  WARNING: APOBEC3A not found")
-    for pop in POP_ORDER:
-        a3a_data[pop] = np.array([0.0])
-
-make_violin_panel(axes[3], a3a_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='Expression')
-axes[3].set_title('A3A', fontsize=FONT_AXIS, fontweight='bold', pad=15)
-
-# --- Metric 5: APOBEC3B ---
-log("  Metric 5: APOBEC3B")
-a3b_data = {}
-a3b_expr = get_expression(adata_pop, 'APOBEC3B')
-if a3b_expr is not None:
-    for pop in POP_ORDER:
-        mask = (adata_pop.obs['population'] == pop).values
-        a3b_data[pop] = a3b_expr[mask]
-        log(f"    {pop}: n={len(a3b_data[pop])}, mean={np.mean(a3b_data[pop]):.4f}")
-else:
-    log("  WARNING: APOBEC3B not found")
-    for pop in POP_ORDER:
-        a3b_data[pop] = np.array([0.0])
-
-make_violin_panel(axes[4], a3b_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='Expression')
-axes[4].set_title('A3B', fontsize=FONT_AXIS, fontweight='bold', pad=15)
+for label, ax, ylabel, title in panel_b_specs:
+    make_violin_panel(ax, all_violin_data[label], POP_ORDER, POP_COLORS,
+                      POP_LABELS, ylabel=ylabel,
+                      adjusted_pvals=violin_qvals[label])
+    ax.set_title(title, fontsize=FONT_AXIS, fontweight='bold', pad=15)
 
 legend_elements = [
     Patch(facecolor=POP_COLORS[p], edgecolor='#333333', label=POP_LABELS[p])
@@ -734,7 +892,7 @@ save_fig(fig, "Panel_6C_host_marker_dotplot")
 #   F = lifecycle fraction violins
 #
 # #############################################################################
-banner("PANELS D/E/F: HPV16 overview row")
+banner("PANELS D/E/F: HPV16 overview row (BH-adjusted q-values)")
 
 # Width ratios: D (1 violin set) : E (summary boxes) : F (8 violins)
 fig = plt.figure(figsize=(48, 12))
@@ -747,18 +905,10 @@ gs = gridspec.GridSpec(1, 3, width_ratios=[1.2, 0.8, 5.0],
 log("  Panel D: HPV16 read distribution")
 ax_d = fig.add_subplot(gs[0, 0])
 
-# Get raw HPV16 counts for each group (all cells, including zeros)
-hpv_dist_data = {}
-for pop in POP_ORDER:
-    mask = master_pop['group'] == pop
-    vals = master_pop.loc[mask, 'raw_HPV16'].values.astype(float)
-    hpv_dist_data[pop] = np.log1p(vals)
-    n_pos = (vals >= HPV16_THRESHOLD).sum()
-    log(f"    {pop}: n={len(vals)}, HPV16+ (>={HPV16_THRESHOLD}): {n_pos}, "
-        f"mean raw={np.mean(vals):.1f}")
-
-make_violin_panel(ax_d, hpv_dist_data, POP_ORDER, POP_COLORS, POP_LABELS,
-                  ylabel='HPV16 UMI (log1p)', show_stats=True)
+make_violin_panel(ax_d, all_violin_data['D_HPV16_dist'], POP_ORDER,
+                  POP_COLORS, POP_LABELS,
+                  ylabel='HPV16 UMI (log1p)', show_stats=True,
+                  adjusted_pvals=violin_qvals['D_HPV16_dist'])
 
 # Threshold line
 thresh_log = np.log1p(HPV16_THRESHOLD)
@@ -822,26 +972,6 @@ for idx, pop in enumerate(POP_ORDER):
 # -------------------------------------------------------------------------
 log("  Panel F: HPV16 lifecycle fraction violins")
 
-# Subset to HPV+ cells in the three populations
-hpv_pop = hpv_genes[hpv_genes['population'].isin(POP_ORDER)].copy()
-hpv_pop = hpv_pop[hpv_pop[total_col] > 0].copy()
-log(f"  HPV+ cells (alignment-based) in three populations: {len(hpv_pop)}")
-for pop in POP_ORDER:
-    n = (hpv_pop['population'] == pop).sum()
-    log(f"    {pop}: {n}")
-
-# Compute per-cell fractions
-all_hpv_genes = []
-for phase_genes in HPV16_PHASES.values():
-    all_hpv_genes.extend(phase_genes)
-
-for gene in all_hpv_genes:
-    if gene in hpv_pop.columns:
-        hpv_pop[f'{gene}_frac'] = hpv_pop[gene] / hpv_pop[total_col]
-    else:
-        log(f"  WARNING: {gene} not in HPV count columns")
-        hpv_pop[f'{gene}_frac'] = 0.0
-
 # Nested gridspec for 8 violins within Panel F region
 gs_f = gridspec.GridSpecFromSubplotSpec(1, 8, subplot_spec=gs[0, 2],
                                         wspace=0.40)
@@ -852,22 +982,18 @@ for phase_name, phase_genes in HPV16_PHASES.items():
     for gene in phase_genes:
         ax = fig.add_subplot(gs_f[0, gene_idx])
         f_axes.append(ax)
-        frac_col = f'{gene}_frac'
 
-        vdata = {}
-        for pop in POP_ORDER:
-            mask = hpv_pop['population'] == pop
-            vdata[pop] = hpv_pop.loc[mask, frac_col].values.astype(float)
-
-        make_violin_panel(ax, vdata, POP_ORDER, POP_COLORS, POP_LABELS,
+        label = f'F_{gene}'
+        make_violin_panel(ax, all_violin_data[label], POP_ORDER,
+                          POP_COLORS, POP_LABELS,
                           ylabel='Fraction of HPV16 reads' if gene_idx == 0 else '',
-                          show_stats=True)
+                          show_stats=True,
+                          adjusted_pvals=violin_qvals[label])
 
         ax.set_title(gene, fontsize=FONT_AXIS - 2, fontweight='bold', pad=15)
         gene_idx += 1
 
 # Phase headers above pairs
-# Need positions after layout is computed
 fig.canvas.draw()
 phase_pairs = [(0, 1), (2, 3), (4, 5), (6, 7)]
 for (left, right), (phase_name, _) in zip(phase_pairs, HPV16_PHASES.items()):
