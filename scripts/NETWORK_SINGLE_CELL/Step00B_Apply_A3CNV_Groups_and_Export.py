@@ -9,16 +9,20 @@ co-expression network comparisons.
 
 POPULATIONS:
   SBS2-HIGH (n=546): Latent infection, active A3A mutagenesis
-    - Selected from SBS2 > 0 basal cells
+    - Selected from SBS2 > 0 CANCER TISSUE basal cells
     - Composite score: SBS2 weight (40%) + low CNV (20%) + low stemness (20%)
       + high A3A/(A3A+A3B) fraction (20%)
     - Size benchmark from L-method elbow detection (~546 cells)
 
   CNV-HIGH (n=546): Productive infection, capsid assembly, CNV accumulation
     - Selected from SBS2=0 CANCER TISSUE basal cells only
-    - Composite score: anti-correlated signature profile (25%) + SBS2=0 (15%)
-      + A3A+A3B matching to HIGH group (25%) + high CNV (25%)
-      + late gene fraction (10%)
+    - Composite score (mirror of SBS2-HIGH; no viral input):
+      high CNV (40%) + total A3 (A3A+A3B) range match to SBS2-HIGH (20%)
+      + high CytoTRACE2 stemness (20%) + high A3B/(A3A+A3B) dominance (20%)
+    - SBS2 == 0 is enforced by the pool filter, not scored. The HPV16
+      late-gene (L1/L2) and anti-correlated-profile terms used previously
+      have been removed so selection carries no viral input and is not
+      circular with the Fig. 6 virus analysis.
 
   NORMAL (n=546): Normal adjacent tissue basal cells, pre-infection baseline
     - Random sample of 546 from all 554 normal adjacent basal cells
@@ -65,7 +69,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from scipy.stats import pearsonr
 from datetime import datetime
 
 from network_config_SC import (
@@ -85,21 +88,19 @@ N_CELLS = 546   # Target group size (from L-method benchmark)
 NORMAL_SOURCE = 'normal tissue adjucent to head and neck squamous cell carcinoma'
 CANCER_SOURCE = 'head and neck squamous cell carcinoma'
 
-HPV_GENE_PATH = os.path.join(PROJECT_ROOT, "data", "FIG_6", "03_hpv16_genome",
-                              "per_cell_hpv16_gene_counts.tsv")
-
 # HIGH group composite weights
 W_HIGH_SBS2     = 0.40
 W_HIGH_CNV_INV  = 0.20
 W_HIGH_CYTO_INV = 0.20
 W_HIGH_A3A_FRAC = 0.20
 
-# CNV-HIGH group composite weights (matching v2 diagnostic)
-W_CNV_PROFILE  = 0.25
-W_CNV_SBS2     = 0.15
-W_CNV_A3_MATCH = 0.25
-W_CNV_CNV      = 0.25
-W_CNV_HPV_LATE = 0.10
+# CNV-HIGH group composite weights (mirror of the SBS2-HIGH composite; no
+# viral input). The late-gene (L1/L2) and anti-correlated-profile terms have
+# been removed, and SBS2 == 0 is a hard pool filter rather than a scored term.
+W_CNV_CNV     = 0.40   # high CNV (productive hallmark)
+W_CNV_A3RANGE = 0.20   # total A3 (A3A+A3B) range-matched to SBS2-HIGH mean
+W_CNV_STEM    = 0.20   # high CytoTRACE2 stemness (p53 / G2-M checkpoint loss)
+W_CNV_A3BDOM  = 0.20   # high A3B/(A3A+A3B) dominance (counterpart to A3A)
 
 np.random.seed(RANDOM_SEED)
 
@@ -123,7 +124,7 @@ COLOR_OTHER  = "#e0e0e0"
 # =============================================================================
 
 def step1_load():
-    """Load adata, weights, HPV gene data."""
+    """Load adata and signature weights; compute per-cell selection metrics."""
     banner("STEP 1: Load Data")
 
     log(f"  Loading: {ADATA_FINAL_PATH}")
@@ -162,32 +163,22 @@ def step1_load():
         adata_basal.obs['APOBEC3A'] /
         (adata_basal.obs['APOBEC3A'] + adata_basal.obs['APOBEC3B'] + 0.01)
     )
+    adata_basal.obs['A3B_fraction'] = (
+        adata_basal.obs['APOBEC3B'] /
+        (adata_basal.obs['APOBEC3A'] + adata_basal.obs['APOBEC3B'] + 0.01)
+    )
 
     # CNV and CytoTRACE2
     for col in ['cnv_score', 'CytoTRACE2_Score']:
         if col in adata_basal.obs.columns:
             adata_basal.obs[col] = adata_basal.obs[col].astype(float)
 
-    # HPV gene data
-    hpv_available = False
-    if os.path.exists(HPV_GENE_PATH):
-        hpv_df = pd.read_csv(HPV_GENE_PATH, sep='\t', index_col=0)
-        for col in ['L1', 'L2', 'total_hpv16_genome_reads']:
-            if col in hpv_df.columns:
-                adata_basal.obs[col] = hpv_df[col].reindex(
-                    adata_basal.obs_names).fillna(0).astype(float)
-        if 'L1' in hpv_df.columns:
-            l1 = adata_basal.obs.get('L1', 0)
-            l2 = adata_basal.obs.get('L2', 0)
-            total = adata_basal.obs.get('total_hpv16_genome_reads', 0)
-            adata_basal.obs['late_fraction'] = (l1 + l2) / (total + 0.5)
-            hpv_available = (adata_basal.obs['late_fraction'] > 0).sum() > 100
-            log(f"  HPV late gene data: available ({(adata_basal.obs['late_fraction'] > 0).sum():,} cells)")
-    else:
-        adata_basal.obs['late_fraction'] = 0.0
-        log(f"  HPV gene data: not found")
+    # HPV16 late-gene (L1/L2) data is intentionally NOT loaded or used in group
+    # selection. The productive phenotype is captured by CNV, stemness, and A3B
+    # dominance; late-gene signal is reserved for the independent virus analysis
+    # (Fig. 6) so selection is not circular with it.
 
-    return adata, adata_basal, weights_df, hpv_available
+    return adata, adata_basal
 
 
 # =============================================================================
@@ -228,7 +219,6 @@ def step2_select_high(adata_basal):
     log(f"    A3A_frac:    mean={sub['A3A_fraction'].mean():.4f}")
     log(f"    CNV:         mean={sub['cnv_score'].mean():.4f}")
     log(f"    CytoTRACE2:  mean={sub['CytoTRACE2_Score'].mean():.4f}")
-    log(f"    Late frac:   mean={sub['late_fraction'].mean():.4f}")
 
     return high_cells
 
@@ -237,8 +227,17 @@ def step2_select_high(adata_basal):
 # STEP 3: SELECT CNV-HIGH GROUP
 # =============================================================================
 
-def step3_select_cnv(adata_basal, weights_df, high_cells, hpv_available):
-    """Select CNV-HIGH cells from SBS2=0 cancer tissue basal cells."""
+def step3_select_cnv(adata_basal, high_cells):
+    """Select CNV-HIGH cells from SBS2=0 cancer-tissue basal cells.
+
+    Composite (mirror of the SBS2-HIGH composite; no viral input):
+      high CNV (rank) .......... W_CNV_CNV
+      total A3 range match ..... W_CNV_A3RANGE   Gaussian proximity to HIGH mean
+      high stemness (rank) ..... W_CNV_STEM
+      high A3B dominance (rank)  W_CNV_A3BDOM
+    SBS2 == 0 is enforced by the pool filter and is not a scored term; the
+    anti-correlated profile and HPV late-gene terms have been removed.
+    """
     banner("STEP 3: Select CNV-HIGH Group")
 
     obs = adata_basal.obs
@@ -252,89 +251,38 @@ def step3_select_cnv(adata_basal, weights_df, high_cells, hpv_available):
     pool_cells = obs.index[pool_mask].tolist()
     log(f"  SBS2=0 cancer tissue pool: {len(pool_cells):,} cells")
 
-    # HIGH group reference stats for A3 matching
+    # A3-range reference: total A3 distribution of the (unchanged) SBS2-HIGH group
     high_obs = obs.loc[obs.index.isin(high_cells)]
     high_a3_mean = high_obs['A3_sum'].mean()
     high_a3_std = high_obs['A3_sum'].std()
-    log(f"  HIGH A3_sum: mean={high_a3_mean:.4f}, std={high_a3_std:.4f}")
+    log(f"  HIGH A3_sum reference: mean={high_a3_mean:.4f}, std={high_a3_std:.4f}")
+    log(f"  Scoring weights: cnv={W_CNV_CNV}, a3range={W_CNV_A3RANGE}, "
+        f"stem={W_CNV_STEM}, a3bdom={W_CNV_A3BDOM}")
 
-    # Average signature profile of HIGH cells
-    high_in_weights = [c for c in high_cells if c in weights_df.columns]
-    high_avg_profile = weights_df[high_in_weights].mean(axis=1)
+    # Per-cell term scores over the pool
+    pool_obs = obs.loc[pool_cells]
+    cnv_rank = pool_obs['cnv_score'].rank(pct=True)
+    stem_rank = pool_obs['CytoTRACE2_Score'].rank(pct=True)
+    a3bdom_rank = pool_obs['A3B_fraction'].rank(pct=True)
+    if high_a3_std > 0:
+        z = (pool_obs['A3_sum'] - high_a3_mean) / high_a3_std
+        a3range = np.exp(-0.5 * z ** 2)
+    else:
+        a3range = (pool_obs['A3_sum'] == high_a3_mean).astype(float)
 
-    # CNV percentile ranks within pool
-    pool_cnv = obs.loc[pool_cells, 'cnv_score']
-    cnv_ranks = pool_cnv.rank(pct=True)
+    score = (W_CNV_CNV * cnv_rank + W_CNV_A3RANGE * a3range +
+             W_CNV_STEM * stem_rank + W_CNV_A3BDOM * a3bdom_rank)
 
-    # Effective weights
-    w_profile = W_CNV_PROFILE
-    w_sbs2 = W_CNV_SBS2
-    w_a3 = W_CNV_A3_MATCH
-    w_cnv = W_CNV_CNV
-    w_hpv = W_CNV_HPV_LATE
-
-    if not hpv_available:
-        w_cnv += w_hpv / 2
-        w_a3 += w_hpv / 2
-        w_hpv = 0.0
-
-    log(f"  Scoring weights: profile={w_profile}, sbs2={w_sbs2}, "
-        f"a3={w_a3}, cnv={w_cnv}, hpv={w_hpv}")
-
-    # Score all candidates
-    eligible = [c for c in pool_cells if c in weights_df.columns]
-    log(f"  Candidates with weights: {len(eligible):,}")
-
-    scores = []
-    for cell in eligible:
-        cell_profile = weights_df[cell]
-        cell_a3 = obs.loc[cell, 'A3_sum']
-        cell_sbs2 = obs.loc[cell, 'SBS2']
-
-        # 1. Anti-correlated signature profile
-        try:
-            corr, _ = pearsonr(high_avg_profile, cell_profile)
-        except:
-            corr = 0.0
-        profile_score = (1 - corr) / 2
-
-        # 2. SBS2 = 0
-        sbs2_score = 1.0 if cell_sbs2 == 0 else 0.0
-
-        # 3. A3 similarity (Gaussian proximity)
-        if high_a3_std > 0:
-            z = (cell_a3 - high_a3_mean) / high_a3_std
-            a3_score = np.exp(-0.5 * z**2)
-        else:
-            a3_score = 1.0 if cell_a3 == high_a3_mean else 0.0
-
-        # 4. CNV enrichment
-        cnv_score = cnv_ranks.get(cell, 0.5)
-
-        # 5. Late gene fraction
-        if w_hpv > 0:
-            late_frac = obs.loc[cell, 'late_fraction']
-            hpv_score = min(late_frac * 5.0, 1.0)
-        else:
-            hpv_score = 0.0
-
-        total = (w_profile * profile_score + w_sbs2 * sbs2_score +
-                 w_a3 * a3_score + w_cnv * cnv_score + w_hpv * hpv_score)
-
-        scores.append({'cell_barcode': cell, 'score': total})
-
-    score_df = pd.DataFrame(scores).sort_values('score', ascending=False)
-    cnv_cells = score_df.head(N_CELLS)['cell_barcode'].tolist()
+    cnv_cells = score.sort_values(ascending=False).head(N_CELLS).index.tolist()
 
     sub = obs.loc[cnv_cells]
     log(f"\n  CNV-HIGH selected: {len(cnv_cells):,} cells")
     log(f"    SBS2:        mean={sub['SBS2'].mean():.4f}")
     log(f"    A3_sum:      mean={sub['A3_sum'].mean():.4f}")
-    log(f"    A3B:         mean={sub['APOBEC3B'].mean():.4f}")
     log(f"    A3A_frac:    mean={sub['A3A_fraction'].mean():.4f}")
+    log(f"    A3B_frac:    mean={sub['A3B_fraction'].mean():.4f}")
     log(f"    CNV:         mean={sub['cnv_score'].mean():.4f}")
     log(f"    CytoTRACE2:  mean={sub['CytoTRACE2_Score'].mean():.4f}")
-    log(f"    Late frac:   mean={sub['late_fraction'].mean():.4f}")
 
     return cnv_cells
 
@@ -390,7 +338,6 @@ def step4_select_normal(adata_basal, high_cells, cnv_cells):
     log(f"    A3A_frac:      mean={sub['A3A_fraction'].mean():.4f}")
     log(f"    CNV:           mean={sub['cnv_score'].mean():.4f}")
     log(f"    CytoTRACE2:    mean={sub['CytoTRACE2_Score'].mean():.4f}")
-    log(f"    Late frac:     mean={sub['late_fraction'].mean():.4f}")
 
     return normal_cells
 
@@ -407,7 +354,7 @@ def step5_summary(adata_basal, high_cells, cnv_cells, normal_cells):
     groups = [("SBS2-HIGH", high_cells), ("CNV-HIGH", cnv_cells), ("NORMAL", normal_cells)]
 
     metrics = ['SBS2', 'APOBEC3A', 'APOBEC3B', 'A3_sum', 'A3A_fraction',
-               'cnv_score', 'CytoTRACE2_Score', 'late_fraction']
+               'A3B_fraction', 'cnv_score', 'CytoTRACE2_Score']
     metrics = [m for m in metrics if m in obs.columns]
 
     # Header
@@ -581,13 +528,13 @@ def main():
     log(f"  Target group size: {N_CELLS} cells per group")
 
     # Step 1: Load
-    adata, adata_basal, weights_df, hpv_available = step1_load()
+    adata, adata_basal = step1_load()
 
     # Step 2: SBS2-HIGH
     high_cells = step2_select_high(adata_basal)
 
     # Step 3: CNV-HIGH (cancer tissue only)
-    cnv_cells = step3_select_cnv(adata_basal, weights_df, high_cells, hpv_available)
+    cnv_cells = step3_select_cnv(adata_basal, high_cells)
 
     # Step 4: NORMAL
     normal_cells = step4_select_normal(adata_basal, high_cells, cnv_cells)
