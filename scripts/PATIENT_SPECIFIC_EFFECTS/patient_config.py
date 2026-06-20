@@ -12,6 +12,12 @@ Updated May 2026 to align with Figure 4 V4 three-group pipeline:
   - Network parameters match V4 auto-selected values
   - Expression matrices read from NETWORK_SBS2_VS_NORMAL/ subdirectory
 
+Updated Jun 2026:
+  - load_harris_interactors() now reads the gene_symbol column from the
+    tab-delimited interactor files instead of whole lines (the previous
+    reader pulled in the header row and the full tab-delimited line, so no
+    symbol ever matched and in_harris was 0 in every tier).
+
 Author: Jake Lehle
 Texas Biomedical Research Institute
 """
@@ -240,15 +246,24 @@ def get_gene_expression(adata, gene_symbol):
     return None
 
 def load_harris_interactors():
-    """Load Harris A3 interactor gene lists."""
-    harris_all = set()
-    harris_a3b = set()
-    if os.path.exists(HARRIS_ALL_PATH):
-        with open(HARRIS_ALL_PATH) as f:
-            harris_all = {line.strip() for line in f if line.strip()}
-    if os.path.exists(HARRIS_A3B_PATH):
-        with open(HARRIS_A3B_PATH) as f:
-            harris_a3b = {line.strip() for line in f if line.strip()}
+    """Load Harris A3 interactor gene lists from the gene_symbol column.
+
+    The interactor files are tab-delimited with a header row (gene_symbol,
+    A3_baits, source, R_loop_associated, confirmed_coIP, A3B_interactor).
+    The previous reader took whole stripped lines, which pulled in the header
+    and the full tab-delimited row, so the stored strings never matched clean
+    gene symbols and in_harris came back 0 in every tier. Read the
+    gene_symbol column explicitly instead.
+    """
+    def _read(path):
+        if not os.path.exists(path):
+            return set()
+        df = pd.read_csv(path, sep='\t')
+        col = 'gene_symbol' if 'gene_symbol' in df.columns else df.columns[0]
+        return {str(g).strip() for g in df[col].dropna() if str(g).strip()}
+
+    harris_all = _read(HARRIS_ALL_PATH)
+    harris_a3b = _read(HARRIS_A3B_PATH)
     log(f"  Harris interactors: {len(harris_all)} all, {len(harris_a3b)} A3B-specific")
     return harris_all, harris_a3b
 

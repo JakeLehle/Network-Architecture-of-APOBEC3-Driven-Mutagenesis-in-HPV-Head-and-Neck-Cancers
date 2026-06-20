@@ -1,33 +1,40 @@
 #!/usr/bin/env python3
 """
-Diagnostic_SC_Figure1_Comparison.py
-====================================
+Diagnostic_SC_Figure1_Comparison_v2.py
+======================================
 
 Troubleshooting script: recreate Figure 1 panels using single-cell basal cell
 data to test whether the bulk TCGA A3-SBS2 relationships hold at single-cell
 resolution, and prepare for network gene predictive analysis.
+
+v2 CHANGES:
+  - Panel 1a now mirrors bulk Figure 1 styling: background region fills
+    (teal/coral/cream), custom inner axes with teal y-axis, Patch legend,
+    axis-break support, and envelope lines matching bulk draw_1a logic.
+  - Added helper functions: find_axis_break, add_inner_axes,
+    add_break_markers, clean_spines (ported from Step05 bulk pipeline).
 
 Data sources (from FIG_4 single-cell network input directory):
   - adata_final.h5ad       : ClusterCatcher output with popV annotations + UMAP
   - signature_weights_per_cell.txt : SBS2 (and other) signature weights per cell
 
 Phases:
-  Phase 0 — Census: cell counts, barcode overlap, zero-inflation rates
-  Phase 1 — Distribution diagnostics: summary stats for SBS2, A3A, A3B
-  Phase 2 — Panel 1a diagnostics: A3A+A3B vs SBS2 correlation + envelope
-  Phase 3 — Quadrant analysis (4 variants, text-only, no plots)
-  Phase 4 — Panel 1b diagnostics: A3A vs A3B correlations with SBS2
-  Phase 5 — Plots:
+  Phase 0 -- Census: cell counts, barcode overlap, zero-inflation rates
+  Phase 1 -- Distribution diagnostics: summary stats for SBS2, A3A, A3B
+  Phase 2 -- Panel 1a diagnostics: A3A+A3B vs SBS2 correlation + envelope
+  Phase 3 -- Quadrant analysis (4 variants, text-only, no plots)
+  Phase 4 -- Panel 1b diagnostics: A3A vs A3B correlations with SBS2
+  Phase 5 -- Plots:
               Panel 1a: A3 sum vs SBS2 (Track A: all basal, Track C: A3-expressing)
               Panel 1b: A3A vs A3B colored by SBS2 (Track A + Track B)
-  Phase 6 — Network gene scaffold: exports analysis-ready TSV and documents
+  Phase 6 -- Network gene scaffold: exports analysis-ready TSV and documents
             the planned network gene vs SBS2 predictive analysis + ROC curves
             (TODO: add after Figure 4 community genes are finalized)
 
 Three analysis tracks:
-  Track A — All basal cells with SBS2 weights (includes zeros)
-  Track B — Basal cells with SBS2 > 0 only
-  Track C — Basal cells with A3A > 0 OR A3B > 0 (dropout-filtered)
+  Track A -- All basal cells with SBS2 weights (includes zeros)
+  Track B -- Basal cells with SBS2 > 0 only
+  Track C -- Basal cells with A3A > 0 OR A3B > 0 (dropout-filtered)
 
 Output:
   data/FIG_3/TROUBLESHOOTING/
@@ -37,7 +44,7 @@ Output:
     - diagnostic plots (PDF + PNG at 300 DPI)
 
 Usage:
-  conda run -n NETWORK python Diagnostic_SC_Figure1_Comparison.py
+  conda run -n NETWORK python Diagnostic_SC_Figure1_Comparison_v2.py
   (also runs under sc_pre environment)
 
 Author: Jake Lehle
@@ -52,6 +59,7 @@ import scanpy as sc
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from scipy.stats import spearmanr, mannwhitneyu
 from datetime import datetime
 
@@ -89,7 +97,7 @@ A3_FAMILY_ALL = [
     'APOBEC3F', 'APOBEC3G', 'APOBEC3H',
 ]
 
-# Plot parameters (diagnostic grade, kept simple)
+# Plot parameters
 DPI = 300
 FONT_SIZE = 28
 COLOR_SBS2_HIGH = "#ed6a5a"
@@ -128,6 +136,61 @@ def save_fig(fig, name):
                     dpi=DPI, bbox_inches='tight', facecolor='white')
     plt.close(fig)
     log(f"  Saved: {name}.pdf/.png")
+
+
+# =============================================================================
+# PLOT HELPERS (ported from Step05 bulk Figure 1 pipeline)
+# =============================================================================
+
+def find_axis_break(values, n_check=10, min_gap_ratio=1.5):
+    """Detect if an axis break is needed for outlier separation."""
+    sv = np.sort(values)[::-1]
+    if len(sv) < 3:
+        return 0, 0, False
+    best_r, best_i = 1.0, -1
+    for i in range(min(n_check, len(sv) - 1)):
+        r = sv[i] / sv[i + 1] if sv[i + 1] > 0 else 1.0
+        if r > best_r:
+            best_r, best_i = r, i
+    if best_r > min_gap_ratio and best_i >= 0:
+        bs = sv[best_i + 1] * 1.10
+        be = sv[best_i] * 0.97
+        log(f"    Axis break: ratio={best_r:.2f}, {bs:.1f}-{be:.1f}")
+        return bs, be, True
+    return 0, 0, False
+
+
+def add_inner_axes(ax, x_lo, x_hi, y_lo, y_hi,
+                   y_color=COLOR_BLACK, lw=3, zorder=1):
+    """Draw custom axis lines (replaces default spines)."""
+    if x_lo <= 0 <= x_hi:
+        ax.plot([0, 0], [max(0, y_lo), y_hi],
+                color=y_color, lw=lw, zorder=zorder, solid_capstyle='butt')
+    ax.plot([max(0, x_lo), x_hi], [0, 0],
+            color=COLOR_BLACK, lw=lw, zorder=zorder, solid_capstyle='butt')
+
+
+def add_break_markers(axL, axR, d=0.015):
+    """Draw diagonal break markers between split axes."""
+    for kw in [dict(transform=axL.transAxes)]:
+        axL.plot((1 - d, 1 + d), (-d, +d),
+                 color=COLOR_BLACK, clip_on=False, lw=1.5, **kw)
+        axL.plot((1 - d, 1 + d), (1 - d, 1 + d),
+                 color=COLOR_BLACK, clip_on=False, lw=1.5, **kw)
+    for kw in [dict(transform=axR.transAxes)]:
+        axR.plot((-d, +d), (-d, +d),
+                 color=COLOR_BLACK, clip_on=False, lw=1.5, **kw)
+        axR.plot((-d, +d), (1 - d, 1 + d),
+                 color=COLOR_BLACK, clip_on=False, lw=1.5, **kw)
+    axR.spines['left'].set_visible(False)
+    axR.tick_params(left=False)
+    axL.spines['right'].set_visible(False)
+
+
+def clean_spines(ax):
+    """Remove all spines (replaced by add_inner_axes)."""
+    for s in ax.spines.values():
+        s.set_visible(False)
 
 
 # =============================================================================
@@ -501,7 +564,7 @@ def phase_4_panel_1b(df, track_name):
 # =============================================================================
 
 def plot_panel_1a(df, p2_results, track_name, suffix):
-    """Scatter: A3A+A3B vs SBS2."""
+    """Scatter: A3A+A3B vs SBS2, styled to match bulk Figure 1 Panel 1a."""
 
     log(f"\n  Plotting Panel 1a [{track_name}]...")
 
@@ -511,37 +574,110 @@ def plot_panel_1a(df, p2_results, track_name, suffix):
     rcol = {'teal': COLOR_NORMAL, 'coral': COLOR_SBS2_HIGH, 'cream': COLOR_CREAM}
     colors = [rcol[r] for r in regions]
 
-    fig, ax = plt.subplots(figsize=(14, 10))
-    ax.scatter(x, y, c=colors, s=15, alpha=0.5, edgecolors=COLOR_BLACK,
-               linewidths=0.2, rasterized=True, zorder=2)
-
-    # Envelope lines (only draw if thresholds are meaningful)
     slope = p2_results['safe_slope']
     x_thr = p2_results['x_thr']
     median_sbs2 = p2_results['median_sbs2']
-    x_max = np.max(x) * 1.05 if np.max(x) > 0 else 1
-
-    if slope > 0 and x_thr > 0:
-        xline = np.linspace(0, min(x_thr, x_max), 100)
-        ax.plot(xline, slope * xline, '--', color=COLOR_DARK_GRAY, lw=1.5, alpha=0.7)
-        ax.axhline(median_sbs2, color=COLOR_DARK_GRAY, ls='--', lw=1.5, alpha=0.7)
-
-    # Stats annotation
     rho = p2_results['rho']
-    n_t, n_c, n_cr = p2_results['n_teal'], p2_results['n_coral'], p2_results['n_cream']
-    ax.text(0.02, 0.98,
-            f"Spearman rho = {rho:.4f}\n"
-            f"n = {len(df):,}\n"
-            f"teal={n_t}, coral={n_c}, cream={n_cr}",
-            transform=ax.transAxes, va='top', fontsize=FONT_SIZE - 10,
-            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    n_teal = p2_results['n_teal']
+    n_coral = p2_results['n_coral']
+    n_cream = p2_results['n_cream']
 
-    ax.set_xlabel('A3A + A3B Expression', fontsize=FONT_SIZE)
-    ax.set_ylabel('SBS2 Weight', fontsize=FONT_SIZE)
-    ax.set_title(f'SC Panel 1a: A3 Sum vs SBS2\n[{track_name}]', fontsize=FONT_SIZE - 2)
-    ax.tick_params(labelsize=FONT_SIZE - 6)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    x_max = np.max(x) * 1.05 if np.max(x) > 0 else 1
+    y_max = np.max(y) * 1.05 if np.max(y) > 0 else 1
+
+    # Set rcParams to match bulk Figure 1
+    plt.rcParams.update({
+        'font.size': FONT_SIZE,
+        'axes.titlesize': FONT_SIZE,
+        'axes.labelsize': FONT_SIZE,
+        'xtick.labelsize': FONT_SIZE - 6,
+        'ytick.labelsize': FONT_SIZE - 6,
+        'legend.fontsize': FONT_SIZE - 8,
+    })
+
+    # Check for axis break on x values
+    bs, be, has_break = find_axis_break(x)
+
+    def draw_panel(ax, xl, xh, is_main=True):
+        """Draw background fills, envelope lines, and scatter."""
+        # --- Background region fills ---
+        # Teal: low A3, above envelope (left of x_thr)
+        ax.fill([0, 0, x_thr, x_thr],
+                [0, y_max, y_max, median_sbs2],
+                color=COLOR_NORMAL, alpha=0.5, zorder=0)
+        # Coral: high A3, high SBS2 (right of x_thr, above median)
+        ax.fill([x_thr, x_thr, x_max * 2, x_max * 2],
+                [median_sbs2, y_max, y_max, median_sbs2],
+                color=COLOR_SBS2_HIGH, alpha=0.5, zorder=0)
+        # Cream: below envelope + below median threshold
+        ax.fill([0, x_thr, x_thr, x_max * 2, x_max * 2, 0],
+                [0, median_sbs2, median_sbs2, median_sbs2, 0, 0],
+                color=COLOR_CREAM, alpha=0.5, zorder=0)
+
+        # Custom inner axes
+        add_inner_axes(ax, xl, xh, 0, y_max,
+                       y_color=COLOR_NORMAL if is_main else COLOR_BLACK,
+                       lw=3, zorder=1)
+
+        # Envelope lines
+        if slope > 0 and x_thr > 0:
+            ax.plot([0, x_thr], [0, median_sbs2], '--',
+                    color=COLOR_DARK_GRAY, lw=1, alpha=0.7, zorder=2)
+            ax.plot([x_thr, x_max * 2], [median_sbs2, median_sbs2], '--',
+                    color=COLOR_DARK_GRAY, lw=1, alpha=0.7, zorder=2)
+
+        # Scatter (sized to match bulk Figure 1)
+        ax.scatter(x, y, c=colors, s=100, alpha=0.5, edgecolors=COLOR_BLACK,
+                   linewidths=0.2, rasterized=True, zorder=3)
+
+        ax.set_xlim(xl, xh)
+        ax.set_ylim(-y_max * 0.02, y_max)
+
+    # --- Legend (shared by both layouts) ---
+    legend_patches = [
+        Patch(facecolor=COLOR_SBS2_HIGH, edgecolor=COLOR_BLACK, alpha=0.7,
+              label=f'A3 + SBS2 HIGH (n={n_coral})'),
+        Patch(facecolor=COLOR_CREAM, edgecolor=COLOR_BLACK, alpha=0.7,
+              label=f'A3 + SBS2 LOW (n={n_cream})'),
+        Patch(facecolor=COLOR_NORMAL, edgecolor=COLOR_BLACK, alpha=0.7,
+              label=f'No A3 + High SBS2 (n={n_teal})'),
+    ]
+
+    stat_text = f"rho = {rho:.4f}, n = {len(df):,}"
+
+    if has_break:
+        fig, (axM, axB) = plt.subplots(
+            1, 2, sharey=True, figsize=(16, 10),
+            gridspec_kw={'width_ratios': [3, 1], 'wspace': 0.04})
+
+        draw_panel(axM, -x_max * 0.02, bs, True)
+        draw_panel(axB, be, x_max, False)
+        clean_spines(axM)
+        clean_spines(axB)
+        add_break_markers(axM, axB)
+
+        axM.set_ylabel('SBS2 Weight', fontsize=FONT_SIZE)
+        fig.text(0.5, 0.01, 'A3A + A3B Expression (log-normalized, ln(X) + 1)',
+                 ha='center', fontsize=FONT_SIZE)
+
+        axM.legend(handles=legend_patches, loc='upper right', framealpha=0.9)
+        axM.text(0.02, 0.98, stat_text,
+                 transform=axM.transAxes, va='top', fontsize=FONT_SIZE - 10,
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    else:
+        fig, ax = plt.subplots(figsize=(14, 10))
+
+        draw_panel(ax, -x_max * 0.02, x_max, True)
+        clean_spines(ax)
+
+        ax.set_xlabel('A3A + A3B Expression (log-normalized, ln(X) + 1)', fontsize=FONT_SIZE)
+        ax.set_ylabel('SBS2 Weight', fontsize=FONT_SIZE)
+
+        ax.legend(handles=legend_patches, loc='upper right', framealpha=0.9)
+        ax.text(0.02, 0.98, stat_text,
+                transform=ax.transAxes, va='top', fontsize=FONT_SIZE - 10,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
     save_fig(fig, f"Diag_Panel_1a_{suffix}")
@@ -584,7 +720,6 @@ def plot_panel_1b(df, track_name, suffix):
 
     ax.set_xlabel('APOBEC3A Expression', fontsize=FONT_SIZE)
     ax.set_ylabel('APOBEC3B Expression', fontsize=FONT_SIZE)
-    ax.set_title(f'SC Panel 1b: A3A vs A3B by SBS2\n[{track_name}]', fontsize=FONT_SIZE - 2)
     ax.tick_params(labelsize=FONT_SIZE - 6)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -759,7 +894,7 @@ def main():
     # =====================================================================
     banner("PHASE 5: PLOTS")
 
-    # Panel 1a: Track A (all basal) and Track C (A3-expressing / dropout-filtered)
+    # Panel 1a: Track A (all basal) and Track C (A3-expressing)
     plot_panel_1a(df_all, p2_track_a, "Track A: All Basal", "TrackA_AllBasal")
     plot_panel_1a(df_a3_pos, p2_track_c, "Track C: A3-Expressing", "TrackC_A3pos")
 

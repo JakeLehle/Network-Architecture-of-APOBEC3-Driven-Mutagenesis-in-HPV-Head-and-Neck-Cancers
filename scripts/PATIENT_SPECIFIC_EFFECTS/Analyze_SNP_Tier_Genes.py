@@ -17,6 +17,14 @@ Requires a GTF file to map variant positions to genes. Set GTF_PATH below.
 Updated May 2026: aligned with V4 pipeline, adds activating/inhibiting
 chain cross-referencing from Figure 4 concordance analysis.
 
+Updated Jun 2026 (sanity checks):
+  - Anchor-in-Harris invariant: RALY/HNRNPA2B1 must be in the Harris set;
+    a warning here flags a mis-parsed interactor file (the bug that made
+    in_harris 0 in every tier).
+  - Tier-file provenance log + stale-file guard so KEGG inputs are
+    traceable to the current (basal-only) variant_sharing_tiers.tsv.
+  - Per-tier gene lists fed to enrichr are written to disk for auditing.
+
 Usage:
   conda run -n NETWORK python Analyze_SNP_Tier_Genes.py
 
@@ -24,7 +32,7 @@ Author: Jake Lehle
 Texas Biomedical Research Institute
 """
 
-import os, sys, gzip, numpy as np, pandas as pd
+import os, sys, gzip, time, numpy as np, pandas as pd
 from collections import Counter, defaultdict
 import gseapy as gp
 import matplotlib; matplotlib.use('Agg')
@@ -240,6 +248,7 @@ def cross_reference_analysis(tier_df, sc_network_genes, harris_all,
             'activating_genes_hit': sorted(in_activating),
             'inhibiting_genes_hit': sorted(in_inhibiting),
             'a3_genes_hit': sorted(in_a3),
+            'harris_genes_hit': sorted(in_harris),
         }
 
     return tier_summaries
@@ -262,6 +271,14 @@ def run_gsea_per_tier(tier_df, out_dir):
             continue
 
         log(f"  {tier}: running enrichr on {len(tier_genes)} genes...")
+
+        # Provenance: write the exact gene list fed to enrichr so the KEGG
+        # input is auditable and traceable to this run (basal-only tier file).
+        genes_path = os.path.join(
+            out_dir, f"SNP_tier_{tier.replace(' ', '_')}_genes.txt")
+        with open(genes_path, 'w') as gh:
+            gh.write('\n'.join(tier_genes) + '\n')
+        log(f"    wrote {len(tier_genes)} genes -> {os.path.basename(genes_path)}")
 
         try:
             enr = gp.enrichr(
@@ -353,6 +370,7 @@ def generate_report(tier_df, gsea_results, tier_summaries, out_dir):
             'in_inhibiting_chain': ts['in_inhibiting_chain'],
             'in_anchors_RALY_HNRNPA2B1': ts['in_anchors'],
             'activating_genes': ','.join(ts['activating_genes_hit']),
+            'harris_genes': ','.join(ts['harris_genes_hit']),
             'a3_genes': ','.join(ts['a3_genes_hit']),
         }
 
@@ -395,6 +413,15 @@ def main():
     log(f"  Loaded {len(tier_df):,} variants with tier assignments")
     for t in TIERS_TO_ANALYZE:
         log(f"    {t}: {(tier_df['tier'] == t).sum():,}")
+
+    # Provenance: confirm we are reading the freshly regenerated (basal-only)
+    # tier file, not the old all-cells one.
+    log(f"  Tier file: {TIER_FILE}")
+    log(f"  Tier file modified: {time.ctime(os.path.getmtime(TIER_FILE))}")
+    if len(tier_df) > 60000:
+        log("  WARNING: >60k variants in tier file -- looks like the OLD "
+            "all-cells run. Re-run Generate_Supplemental_Patient_Effects.py "
+            "with the basal-cell filter before this script.")
 
     # ── Find and parse GTF ───────────────────────────────────────────────
     gtf_path = None
@@ -449,6 +476,17 @@ def main():
         f"({', '.join(sorted(inhibiting_set))})")
     log(f"  A3 interactor anchors: {len(anchor_set)} "
         f"({', '.join(sorted(anchor_set))})")
+
+    # Sanity check: the anchors are Harris interactors by definition. If they
+    # are absent from harris_all, the interactor file was parsed incorrectly
+    # (this is the check that catches the header / whole-line parsing bug that
+    # previously zeroed out in_harris in every tier).
+    missing_anchors = anchor_set - harris_all
+    if missing_anchors:
+        log(f"  WARNING: A3 anchors missing from Harris set: "
+            f"{sorted(missing_anchors)} -- check Harris interactor file parsing")
+    else:
+        log(f"  OK: A3 anchors {sorted(anchor_set)} present in Harris set")
 
     # ── Cross-reference ──────────────────────────────────────────────────
     tier_summaries = cross_reference_analysis(
