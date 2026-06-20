@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate_Figure6_Lifecycle_Panels.py  (v6 -- BH-FDR corrected)
-===============================================================
+Generate_Figure6_Lifecycle_Panels.py  (v6.1 -- split BH-FDR correction)
+=======================================================================
 Figure 6: HPV16 Lifecycle States Drive Divergent Mutagenic Programs
 
-v6 change: All pairwise Mann-Whitney p-values are now BH-FDR corrected
-figure-wide (across Panels B + D + F = up to 42 tests). Displayed as
-q-values on brackets.
+v6.1 change: Statistics are split by test type.
+  - Panels B + D use Mann-Whitney U, BH-FDR corrected together (one family).
+  - Panel F (HPV16 lifecycle fractions) uses a permutation test on the
+    difference of means (10,000 perms), BH-FDR corrected separately.
+  - Panel F is restricted to L-method HPV16-positive cells (raw UMI >= 8)
+    with alignment reads > 0.
+All pairwise p-values are displayed as q-values on the brackets.
 
 Layout:
   ROW 1:
@@ -242,7 +246,7 @@ def format_q(q):
 
 
 # =============================================================================
-# FDR CORRECTION: Compute pairwise raw p-values for a data dict
+# STATISTICS: pairwise Mann-Whitney, pairwise permutation, BH correction
 # =============================================================================
 def compute_pairwise_pvals(data_dict, pop_order):
     """
@@ -263,6 +267,36 @@ def compute_pairwise_pvals(data_dict, pop_order):
             raw_pvals.append(np.nan)
     return raw_pvals
 
+def permutation_test_means(v1, v2, n_perm=10000, seed=42):
+    """Two-sided permutation test on the absolute difference of means."""
+    v1 = np.asarray(v1, dtype=float)
+    v2 = np.asarray(v2, dtype=float)
+    if len(v1) < MIN_CELLS_FOR_STATS or len(v2) < MIN_CELLS_FOR_STATS:
+        return np.nan
+    obs = abs(v1.mean() - v2.mean())
+    pooled = np.concatenate([v1, v2])
+    n1 = len(v1)
+    rng = np.random.default_rng(seed)
+    count = 0
+    for _ in range(n_perm):
+        perm = rng.permutation(pooled)
+        if abs(perm[:n1].mean() - perm[n1:].mean()) >= obs:
+            count += 1
+    return (count + 1) / (n_perm + 1)
+
+
+def compute_pairwise_perm(data_dict, pop_order, n_perm=10000, seed=42):
+    """Permutation p-values for the 3 population pairs (NaN if too few cells)."""
+    pairs = [(0, 1), (1, 2), (0, 2)]
+    raw = []
+    for i, j in pairs:
+        v1 = data_dict[pop_order[i]]
+        v2 = data_dict[pop_order[j]]
+        if len(v1) >= MIN_CELLS_FOR_STATS and len(v2) >= MIN_CELLS_FOR_STATS:
+            raw.append(permutation_test_means(v1, v2, n_perm=n_perm, seed=seed))
+        else:
+            raw.append(np.nan)
+    return raw
 
 def apply_bh_correction(all_raw_pvals_flat):
     """
@@ -511,16 +545,13 @@ if total_col in hpv_genes.columns:
 
 
 # =============================================================================
-# STEP 1: PRE-COMPUTE ALL DATA DICTS AND RAW P-VALUES (FIGURE-WIDE BH)
+# STEP 1: PRE-COMPUTE ALL DATA DICTS AND P-VALUES
+#   Panels B + D: Mann-Whitney, BH-corrected together.
+#   Panel F:      permutation, BH-corrected separately.
 # =============================================================================
-banner("STEP 1: Pre-compute all data dicts + raw p-values for BH correction")
-
-# We collect every data dict and its label, then compute raw pairwise p-values
-# for the entire figure before any plotting. BH is applied once to the full set.
+banner("STEP 1: Pre-compute all data dicts + p-values")
 
 all_violin_data = OrderedDict()  # label -> data_dict
-all_raw_pvals = []               # flat list of raw p-values (with NaN for N.D.)
-violin_pval_slices = {}          # label -> (start_idx, end_idx) into all_raw_pvals
 
 # --- Panel B: 5 metrics ---
 log("  Computing Panel B data dicts...")
@@ -597,9 +628,14 @@ all_violin_data['D_HPV16_dist'] = hpv_dist_data
 log("  Computing Panel F data dicts...")
 
 # Subset to HPV+ cells in the three populations
+# L-method HPV16-positive cells (raw UMI >= threshold). Alignment reads > 0
+# is still required so per-gene fractions are defined.
 hpv_pop = hpv_genes[hpv_genes['population'].isin(POP_ORDER)].copy()
-hpv_pop = hpv_pop[hpv_pop[total_col] > 0].copy()
-log(f"  HPV+ cells (alignment-based) in three populations: {len(hpv_pop)}")
+hpv_pop['raw_HPV16'] = hpv_pop.index.map(master['raw_HPV16'])
+hpv_pop = hpv_pop[(hpv_pop['raw_HPV16'] >= HPV16_THRESHOLD) &
+                  (hpv_pop[total_col] > 0)].copy()
+log(f"  HPV16-positive cells (>= {HPV16_THRESHOLD} UMI) with alignment "
+    f"in three populations: {len(hpv_pop)}")
 for pop in POP_ORDER:
     n = (hpv_pop['population'] == pop).sum()
     log(f"    {pop}: {n}")
@@ -627,49 +663,114 @@ for phase_name, phase_genes in HPV16_PHASES.items():
         log(f"    {gene}: "
             + ", ".join(f"{pop} n={len(vdata[pop])}" for pop in POP_ORDER))
 
-# --- Collect all raw p-values ---
-log("")
-log("  Computing raw pairwise p-values across all violin panels...")
-for label, ddict in all_violin_data.items():
-    start = len(all_raw_pvals)
-    raw_pv = compute_pairwise_pvals(ddict, POP_ORDER)
-    all_raw_pvals.extend(raw_pv)
-    end = len(all_raw_pvals)
-    violin_pval_slices[label] = (start, end)
+# --- Collect raw p-values and apply BH within each test family ---
+# Panels B and D: Mann-Whitney, BH-corrected together.
+# Panel F (labels prefixed 'F_'): permutation, BH-corrected separately.
+mw_labels   = [l for l in all_violin_data if not l.startswith('F_')]
+perm_labels = [l for l in all_violin_data if l.startswith('F_')]
 
-n_total = len(all_raw_pvals)
-n_valid = sum(1 for p in all_raw_pvals if not np.isnan(p))
-log(f"  Total pairwise tests: {n_total} ({n_valid} valid, "
-    f"{n_total - n_valid} N.D.)")
+mw_raw, mw_slices = [], {}
+for label in mw_labels:
+    start = len(mw_raw)
+    mw_raw.extend(compute_pairwise_pvals(all_violin_data[label], POP_ORDER))
+    mw_slices[label] = (start, len(mw_raw))
+mw_adj = apply_bh_correction(mw_raw)
 
-# --- Apply figure-wide BH correction ---
-log("  Applying Benjamini-Hochberg FDR correction (figure-wide)...")
-all_adjusted_pvals = apply_bh_correction(all_raw_pvals)
+perm_raw, perm_slices = [], {}
+for label in perm_labels:
+    start = len(perm_raw)
+    perm_raw.extend(compute_pairwise_perm(all_violin_data[label], POP_ORDER))
+    perm_slices[label] = (start, len(perm_raw))
+perm_adj = apply_bh_correction(perm_raw)
 
-# Build lookup: label -> [q1, q2, q3]
 violin_qvals = {}
-for label, (start, end) in violin_pval_slices.items():
-    violin_qvals[label] = all_adjusted_pvals[start:end]
+for label in mw_labels:
+    s, e = mw_slices[label]
+    violin_qvals[label] = mw_adj[s:e]
+for label in perm_labels:
+    s, e = perm_slices[label]
+    violin_qvals[label] = perm_adj[s:e]
+
+log(f"  Mann-Whitney family: {len([p for p in mw_raw if not np.isnan(p)])} "
+    f"valid tests of {len(mw_raw)}")
+log(f"  Permutation family: {len([p for p in perm_raw if not np.isnan(p)])} "
+    f"valid tests of {len(perm_raw)}")
+
+# --- Phase-level fractions + permutation (source for the results text) ---
+phase_frac_data = OrderedDict()
+for phase_name, phase_genes in HPV16_PHASES.items():
+    frac_cols = [f'{g}_frac' for g in phase_genes]
+    hpv_pop[f'{phase_name}_frac'] = hpv_pop[frac_cols].sum(axis=1)
+    pdata = {}
+    for pop in POP_ORDER:
+        mask = hpv_pop['population'] == pop
+        pdata[pop] = hpv_pop.loc[mask, f'{phase_name}_frac'].values.astype(float)
+    phase_frac_data[phase_name] = pdata
+
+# BH within the 4 phase comparisons, separate from the 8 per-gene tests
+phase_raw, phase_slices = [], {}
+for phase_name in HPV16_PHASES:
+    start = len(phase_raw)
+    phase_raw.extend(compute_pairwise_perm(phase_frac_data[phase_name], POP_ORDER))
+    phase_slices[phase_name] = (start, len(phase_raw))
+phase_adj = apply_bh_correction(phase_raw)
+phase_qvals = {ph: phase_adj[slice(*phase_slices[ph])] for ph in HPV16_PHASES}
+
+# Mean fractions + SBS2-vs-CNV q (pair (0,1)), per gene then per phase
+log("")
+log("  PANEL F MEAN FRACTIONS (results text source)")
+log(f"  {'Item':<14s}  {'SBS2-HIGH':>10s}  {'CNV-HIGH':>10s}  {'Normal':>10s}  {'q SBS2vCNV':>13s}")
+log(f"  {'-'*14}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*13}")
+for gene in all_hpv_genes_list:
+    vd = all_violin_data[f'F_{gene}']
+    m = {p: (100*np.mean(vd[p]) if len(vd[p]) > 0 else float('nan')) for p in POP_ORDER}
+    q01 = violin_qvals[f'F_{gene}'][0]
+    log(f"  {gene:<14s}  {m['SBS2_HIGH']:>9.2f}%  {m['CNV_HIGH']:>9.2f}%  "
+        f"{m['NORMAL']:>9.2f}%  {q01:>13.4e}")
+log(f"  {'-'*14}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*13}")
+for phase_name in HPV16_PHASES:
+    pdct = phase_frac_data[phase_name]
+    m = {p: (100*np.mean(pdct[p]) if len(pdct[p]) > 0 else float('nan')) for p in POP_ORDER}
+    q01 = phase_qvals[phase_name][0]
+    log(f"  {phase_name:<14s}  {m['SBS2_HIGH']:>9.2f}%  {m['CNV_HIGH']:>9.2f}%  "
+        f"{m['NORMAL']:>9.2f}%  {q01:>13.4e}")
+log("")
+for pop in POP_ORDER:
+    sub = hpv_pop[hpv_pop['population'] == pop]
+    if len(sub) > 0:
+        urr = 100 * (sub['URR'] / sub[total_col]).mean()
+        log(f"  URR mean per-cell fraction {POP_LABELS[pop]}: {urr:.1f}%")
 
 # --- Report raw vs adjusted ---
+# B + D are Mann-Whitney (corrected together); F is permutation (corrected separately).
 log("")
-log(f"  {'Panel':<20s}  {'Pair':<20s}  {'Raw p':>12s}  {'BH q':>12s}  Stars")
-log(f"  {'-'*20}  {'-'*20}  {'-'*12}  {'-'*12}  -----")
+log(f"  {'Panel':<20s}  {'Pair':<20s}  {'Test':>5s}  {'Raw p':>12s}  {'BH q':>12s}  Stars")
+log(f"  {'-'*20}  {'-'*20}  {'-'*5}  {'-'*12}  {'-'*12}  -----")
 pair_names = [
     f"{POP_LABELS[POP_ORDER[0]]} vs {POP_LABELS[POP_ORDER[1]]}",
     f"{POP_LABELS[POP_ORDER[1]]} vs {POP_LABELS[POP_ORDER[2]]}",
     f"{POP_LABELS[POP_ORDER[0]]} vs {POP_LABELS[POP_ORDER[2]]}",
 ]
 for label in all_violin_data:
-    start, end = violin_pval_slices[label]
+    if label.startswith('F_'):
+        s, e = perm_slices[label]
+        raw_slice = perm_raw[s:e]
+        test_name = 'perm'
+    else:
+        s, e = mw_slices[label]
+        raw_slice = mw_raw[s:e]
+        test_name = 'MW'
+    q_slice = violin_qvals[label]
     for k in range(3):
-        raw_p = all_raw_pvals[start + k]
-        adj_q = all_adjusted_pvals[start + k]
+        raw_p = raw_slice[k]
+        adj_q = q_slice[k]
         if np.isnan(raw_p):
-            log(f"  {label:<20s}  {pair_names[k]:<20s}  {'N.D.':>12s}  {'N.D.':>12s}  N.D.")
+            log(f"  {label:<20s}  {pair_names[k]:<20s}  {test_name:>5s}  "
+                f"{'N.D.':>12s}  {'N.D.':>12s}  N.D.")
         else:
             stars = p_to_stars(adj_q)
-            log(f"  {label:<20s}  {pair_names[k]:<20s}  {raw_p:>12.4e}  {adj_q:>12.4e}  {stars}")
+            log(f"  {label:<20s}  {pair_names[k]:<20s}  {test_name:>5s}  "
+                f"{raw_p:>12.4e}  {adj_q:>12.4e}  {stars}")
 
 
 # #############################################################################

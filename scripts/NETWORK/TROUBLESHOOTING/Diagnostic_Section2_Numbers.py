@@ -43,7 +43,7 @@ print(f"\n--- Network Group Sizes ---")
 # Check multiple possible locations
 for gpath in [
     os.path.join(FIG2, "03_differential_expression", "TCGA-HNSC", "TCGA-HNSC_group_assignments.tsv"),
-    os.path.join(PROJECT, "data", "FIG_1", "HNSC_network_groups_v3.tsv"),
+    os.path.join(PROJECT, "data", "FIG_1", "HNSC_A3_SBS2_matched_v3.tsv"),
     os.path.join(FIG2, "03_differential_expression", "group_assignments.tsv"),
 ]:
     if os.path.exists(gpath):
@@ -60,6 +60,14 @@ for gpath in [
         break
 else:
     print("  No group assignment file found")
+
+# Check the ACTUAL Step03 pkl outputs (authoritative source)
+for label, fname in [("HIGH", "TCGA-HNSC_SBS2_HIGH_group.pkl"), 
+                     ("LOW", "TCGA-HNSC_SBS2_LOW_group.pkl")]:
+    pkl_path = os.path.join(FIG2, "03_differential_expression", "TCGA-HNSC", fname)
+    if os.path.exists(pkl_path):
+        df = pd.read_pickle(pkl_path)
+        print(f"  SBS2-{label}: n={len(df)}  (from {fname})")
 
 # ============================================================
 # 3. DIFFERENTIAL EXPRESSION

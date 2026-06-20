@@ -93,10 +93,23 @@ def load_all_data():
                             mut_df['Start'].astype(str) + ':' +
                             mut_df['REF'].astype(str) + '>' +
                             mut_df['Base_observed'].astype(str))
-    bc_to_patient = adata.obs[PATIENT_COL].to_dict()
-    mut_df['patient'] = mut_df['CB'].map(bc_to_patient)
+    bc_to_patient  = adata.obs[PATIENT_COL].to_dict()
+    bc_to_celltype = adata.obs[CELLTYPE_COL].to_dict()
+    mut_df['patient']  = mut_df['CB'].map(bc_to_patient)
+    mut_df['celltype'] = mut_df['CB'].map(bc_to_celltype)
     mut_df = mut_df[mut_df['patient'].notna()].copy()
-    log(f"  Variants: {mut_df['variant_id'].nunique():,}")
+    log(f"  Variants (all cell types): {mut_df['variant_id'].nunique():,}")
+
+    # Restrict the SNP tiering to basal epithelial cells. Panels A/B already
+    # subset to basal; the variant path did not, so immune/stromal variants
+    # were entering the patient-sharing tiers. Filtering here (the only place
+    # mut_df is built) makes every downstream tier and variant_sharing_tiers.tsv
+    # basal-only, consistent with the rest of Figure 5.
+    n_all = mut_df['variant_id'].nunique()
+    mut_df = mut_df[mut_df['celltype'] == 'basal cell'].copy()
+    log(f"  Variants (basal cell only): {mut_df['variant_id'].nunique():,} "
+        f"(removed {n_all - mut_df['variant_id'].nunique():,} non-basal)")
+
     return adata, sbs2_high, enrichment_df, mut_df
 
 
