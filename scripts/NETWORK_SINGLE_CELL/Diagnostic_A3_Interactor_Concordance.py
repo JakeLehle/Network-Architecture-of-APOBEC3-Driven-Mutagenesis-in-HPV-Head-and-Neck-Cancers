@@ -1,47 +1,42 @@
 #!/usr/bin/env python3
 """
-Diagnostic_A3_Network_Structure.py > Still called Diagnostic_A3_Interactor_Concordance.py but this is the updated version
-==================================
+Diagnostic_A3_Network_Structure_and_Numbers.py > Still called Diagnostic_A3_Interactor_Concordance.py but this is the updated version
+=============================================================================
+Merge of two diagnostics into a single pass so the structural map and every
+Section 4.2 / methods number come out of one run with full cross-context:
 
-Structural map of the A3 neighborhood in each differential co-expression
-network. Supersedes three earlier diagnostics by folding their useful
-parts into one multi-community pass:
+  (1) BUILD PROVENANCE HARVEST  (folded in from Harvest_Section4.2_numbers.py)
+      Per network, reads the on-disk build outputs and prints the values that
+      fill the bracketed numbers in the results and methods, each tagged with
+      the sentence it fills and flagged against the confirmed draft value:
+        - 04_communities/SC_selected_parameters.txt   thr, resolution,
+          modularity, ARI, NMI, evenness, N_GENES, N_COMMUNITIES, N_SATELLITE
+        - 02_differential_expression/SC_diffexpr_stats.csv  A3A/A3B fdr + log2FC
+        - 04_communities/SC_threshold_sweep.csv        fragmentation margin
+        - 04_communities/SC_G_comm.gpickle             A3A/A3B full-graph degree
+        - per-group wall fraction recomputed from the graph
 
-  - Diagnostic_A3_Interactor_Concordance.py  (V3; toward-A3 tracing)
-  - Diagnostic_A3_Edge_Profile_and_Approach.py  (edge cross-tab, boundary)
-  - Diagnostic_Per_Interactor_Concordance.py  (per-interactor / A3-anchored flood)
+  (2) A3 NETWORK STRUCTURE  (unchanged core of Diagnostic_A3_Network_Structure.py)
+      Per A3-containing community: edge-composition cross-tab + per-A3 edge
+      profile and wall verdict (PART A), full activator/repressor concordant
+      subnetwork enumeration with Harris/A3 annotation and hop-gap (PART B),
+      and A3 boundary / decoupling-point classification (PART C). Writes the
+      same five TSVs to DIAGNOSTIC_CONCORDANCE/ as before.
 
-Why a rewrite. Tracing from each Harris interactor toward A3 always
-reports zero when A3 is walled, which tells us nothing about the actual
-structure. Instead this script ENUMERATES the concordant structure and
-annotates it, and quantifies the wall directly from A3's edge composition.
+  (3) CONSOLIDATED BRACKET REPORT
+      After both, a per-network report listing each Section 4.2 number next to
+      the confirmed value and a flag, so manuscript drift is loud.
 
-MULTI-COMMUNITY. Every community containing A3A or A3B is analyzed
-separately. In CNV-HIGH vs NORMAL the enzymes split (A3A in one
-community, A3B in another), so each is profiled in its own community.
+SCOPE: SBS2-HIGH vs NORMAL and CNV-HIGH vs NORMAL only (SBS2-vs-CNV is spun off).
 
-Concordance definitions (DIFF = HIGH_corr - LOW_corr):
-  positive DIFF edge = co-expression gained in tumor (HIGH)
-  negative DIFF edge = co-expression retained in normal (LOW)
-  activator-concordant edge   = positive DIFF between two up-in-tumor genes
-  repressor-concordant edge   = negative DIFF between two up-in-normal genes
-  WALL edge                   = negative DIFF between two up-in-tumor genes
-                                (co-induced but co-expression lost)
-
-Per community it reports:
-  PART A  community edge composition cross-tab, then per A3 gene an edge
-          profile (sign x partner direction), direct Harris neighbors by
-          sign, and a wall verdict.
-  PART B  enumeration of every activator and repressor concordant
-          subnetwork (size >= 2), each annotated with Harris members,
-          A3 membership, top hubs, and hop-gap to the nearest A3 gene in
-          the full community graph. Plus a per-Harris index.
-  PART C  A3 boundary / decoupling: A3's direct neighbors classified as
-          concordant bridges vs discordant decoupling points, and whether
-          each neighbor anchors a concordant chain beyond A3.
+Confirmed values baked into the flags are the on-disk truth as of job 129065
+(verified 2026-06-22). KNOWN DRAFT FIX: CNV-HIGH resolution is 0.80, the prose
+still says 0.70.
 
 Usage:
-    conda run -n NETWORK python Diagnostic_A3_Network_Structure.py
+    conda run -n NETWORK python Diagnostic_A3_Network_Structure_and_Numbers.py
+
+Author: Jake Lehle / Texas Biomedical Research Institute
 """
 
 import os
@@ -62,10 +57,20 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 NETWORKS = [
     {"name": "SBS2_VS_NORMAL", "label": "SBS2-HIGH vs NORMAL",
-     "dir": os.path.join(FIG4_ROOT, "NETWORK_SBS2_VS_NORMAL")},
+     "dir": os.path.join(FIG4_ROOT, "NETWORK_SBS2_VS_NORMAL"),
+     # confirmed on-disk values for the flag (NOT the draft, which is wrong on res)
+     "exp": {"genes": 2948, "groups": 23, "thr": 0.40, "res": 0.70,
+             "recovery": 54, "deg_A3A": 55, "deg_A3B": 16}},
     {"name": "CNV_VS_NORMAL", "label": "CNV-HIGH vs NORMAL",
-     "dir": os.path.join(FIG4_ROOT, "NETWORK_CNV_VS_NORMAL")},
+     "dir": os.path.join(FIG4_ROOT, "NETWORK_CNV_VS_NORMAL"),
+     "exp": {"genes": 4886, "groups": 38, "thr": 0.45, "res": 0.80,
+             "recovery": 109, "deg_A3A": 15, "deg_A3B": 136}},
 ]
+
+# Manuscript prose values that differ from on-disk truth (printed as fixes).
+DRAFT_FIXES = {
+    "CNV_VS_NORMAL": [("Leiden resolution", "prose says 0.70", "disk = 0.80")],
+}
 
 A3_SYMBOLS = {"APOBEC3A", "APOBEC3B", "APOBEC3C", "APOBEC3D",
               "APOBEC3F", "APOBEC3G", "APOBEC3H"}
@@ -87,6 +92,15 @@ def banner(title, char="="):
 def section(title):
     print(f"\n  --- {title} ---", flush=True)
 
+def flag(found, expected, tol=0):
+    if expected is None:
+        return "(no value)"
+    try:
+        ok = abs(float(found) - float(expected)) <= tol
+    except (TypeError, ValueError):
+        ok = str(found) == str(expected)
+    return "OK" if ok else f"FLAG (confirmed {expected})"
+
 
 # =============================================================================
 # LOAD
@@ -101,11 +115,13 @@ def load_harris():
 
 def load_network(net_config):
     net_dir = net_config["dir"]
-    result = {"name": net_config["name"], "label": net_config["label"]}
+    result = {"name": net_config["name"], "label": net_config["label"],
+              "dir": net_dir, "exp": net_config["exp"]}
 
     part_df = pd.read_csv(
         os.path.join(net_dir, "04_communities/SC_best_partition.csv"))
     result["gene_to_comm"] = dict(zip(part_df["gene"], part_df["community"]))
+    result["partition"] = part_df
 
     with open(os.path.join(net_dir,
               "04_communities/SC_G_comm.gpickle"), "rb") as f:
@@ -114,37 +130,144 @@ def load_network(net_config):
     de_df = pd.read_csv(
         os.path.join(net_dir,
                      "02_differential_expression/SC_diffexpr_stats.csv"))
+    result["de_df"] = de_df
     result["de_log2fc"] = dict(zip(de_df["gene"], de_df["log2FC"]))
     return result
 
 
 # =============================================================================
-# DIRECTIONS + CONCORDANCE SUBGRAPHS
+# (1) BUILD PROVENANCE HARVEST  (folded in from the standalone harvester)
+# =============================================================================
+
+def read_params(net_dir):
+    path = os.path.join(net_dir, "04_communities", "SC_selected_parameters.txt")
+    if not os.path.exists(path):
+        return None
+    d = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                d[k.strip()] = v.strip()
+    return d
+
+
+def fragmentation_margin(net_dir, selected_thr):
+    """Largest positive delta-component step at an A3-valid upper threshold.
+    Mirrors Step03's max-fragmentation-rate selection."""
+    path = os.path.join(net_dir, "04_communities", "SC_threshold_sweep.csv")
+    if not os.path.exists(path):
+        return None, None
+    df = pd.read_csv(path).sort_values("threshold").reset_index(drop=True)
+    df["d_comp"] = df["components"].diff()
+    valid = df[(df.get("deg_A3A", 1) >= 1) & (df.get("deg_A3B", 1) >= 1)]
+    margin_row = None
+    if "d_comp" in valid:
+        pos = valid[valid["d_comp"] > 0]
+        if len(pos):
+            margin_row = pos.loc[pos["d_comp"].idxmax()]
+    return df, margin_row
+
+
+def harvest_build(net_data):
+    """Print the build numbers that fill the methods + results-para-3 brackets."""
+    net_dir, exp = net_data["dir"], net_data["exp"]
+    G = net_data["G_comm"]
+    de = net_data["de_df"]
+
+    banner(f"[BUILD HARVEST] {net_data['label']}", "-")
+    params = read_params(net_dir)
+    harvested = {}
+
+    if params:
+        ng = int(params.get("N_GENES", -1))
+        nc = int(params.get("N_COMMUNITIES", -1))
+        thr = float(params.get("DIFF_THRESHOLD", -1))
+        res = float(params.get("LEIDEN_RESOLUTION", -1))
+        harvested.update(genes=ng, groups=nc, thr=thr, res=res,
+                         mod=params.get("MODULARITY"), ari=params.get("ARI"),
+                         nmi=params.get("NMI"), evenness=params.get("EVENNESS"))
+        log(f"  N_GENES        = {ng}   {flag(ng, exp['genes'])}   -> results 'N genes'")
+        log(f"  N_COMMUNITIES  = {nc}   {flag(nc, exp['groups'])}   -> results 'N gene groups'")
+        log(f"  DIFF_THRESHOLD = {thr}   {flag(thr, exp['thr'])}   -> methods threshold")
+        log(f"  LEIDEN_RES     = {res}   {flag(res, exp['res'])}   -> methods resolution")
+        log(f"  MODULARITY     = {params.get('MODULARITY')}   ARI = {params.get('ARI')}   "
+            f"NMI = {params.get('NMI')}   EVENNESS = {params.get('EVENNESS')}   -> methods [NN]")
+    else:
+        log("  [MISSING] SC_selected_parameters.txt")
+
+    # A3 differential expression (four adj-p)
+    for a3, lab in ((("APOBEC3A"), "A3A"), (("APOBEC3B"), "A3B")):
+        row = de[de["gene"] == a3]
+        if len(row):
+            r = row.iloc[0]
+            harvested[f"{lab}_fdr"] = r["fdr"]
+            harvested[f"{lab}_log2fc"] = float(r["log2FC"])
+            log(f"  {lab} adj p (fdr) = {r['fdr']:.3e}   log2FC = {float(r['log2FC']):.4f}"
+                f"   -> methods DE para")
+        else:
+            log(f"  {lab}: ABSENT from SC_diffexpr_stats.csv")
+
+    # A3 full-graph degree
+    for a3, lab in (("APOBEC3A", "A3A"), ("APOBEC3B", "A3B")):
+        d = G.degree(a3) if a3 in G else "ABSENT"
+        harvested[f"{lab}_deg"] = d
+        log(f"  {lab} degree = {d}   {flag(d, exp.get('deg_'+lab))}   -> results para 3")
+
+    # fragmentation margin
+    if params:
+        _, mrow = fragmentation_margin(net_dir, harvested.get("thr"))
+        if mrow is not None:
+            log(f"  fragmentation margin: +{int(mrow['d_comp'])} components into "
+                f"threshold {mrow['threshold']}   -> methods 'fragmentation margins'")
+            harvested["frag_margin"] = int(mrow["d_comp"])
+
+    return harvested
+
+
+def group_wall_fraction(G, gene_to_comm, de_log2fc):
+    """Per A3-community wall fraction recomputed from the graph (results para 7)."""
+    a3_comms = sorted({gene_to_comm.get(a) for a in A3_TARGETS
+                       if gene_to_comm.get(a) is not None})
+    out = []
+    for c in a3_comms:
+        nodes = [g for g, cc in gene_to_comm.items() if cc == c and g in G]
+        sub = G.subgraph(nodes)
+        ne = sub.number_of_edges()
+        wall = pos = rep = 0
+        for u, v, d in sub.edges(data=True):
+            w = d.get("weight", 0.0)
+            uu, vv = de_log2fc.get(u, 0) > 0, de_log2fc.get(v, 0) > 0
+            if w < 0 and uu and vv:
+                wall += 1
+            elif w < 0 and not uu and not vv:
+                rep += 1
+            elif w > 0:
+                pos += 1
+        a3_here = [A3_ALIAS[a] for a in A3_TARGETS if gene_to_comm.get(a) == c]
+        out.append({"community": c, "a3": ",".join(a3_here),
+                    "nodes": len(nodes), "edges": ne,
+                    "wall_pct": round(100 * wall / ne, 1) if ne else 0.0})
+    return out
+
+
+# =============================================================================
+# (2) A3 NETWORK STRUCTURE  -- directions, concordance subgraphs, edge class
 # =============================================================================
 
 def node_directions(G_sub, de_log2fc):
     up_tumor, up_normal = set(), set()
     for n in G_sub.nodes():
-        if de_log2fc.get(n, 0) > 0:
-            up_tumor.add(n)
-        else:
-            up_normal.add(n)
+        (up_tumor if de_log2fc.get(n, 0) > 0 else up_normal).add(n)
     return up_tumor, up_normal
 
 
 def build_concordance_subgraphs(G_sub, up_tumor, up_normal):
-    """Edge-only concordance subgraphs (A3 included as endpoints).
-
-    Activator: positive DIFF edges between up-in-tumor nodes (+ A3).
-    Repressor: negative DIFF edges between up-in-normal nodes (+ A3).
-    A node appears only if it has >=1 qualifying edge.
-    """
     a3 = set(n for n in G_sub.nodes() if n in A3_SYMBOLS)
     act_nodes = up_tumor | a3
     rep_nodes = up_normal | a3
-
-    G_act = nx.Graph()
-    G_rep = nx.Graph()
+    G_act, G_rep = nx.Graph(), nx.Graph()
     for u, v, d in G_sub.edges(data=True):
         w = d.get("weight", 0)
         if w > 0 and u in act_nodes and v in act_nodes:
@@ -155,27 +278,22 @@ def build_concordance_subgraphs(G_sub, up_tumor, up_normal):
 
 
 def edge_class(w, du, dv):
-    """Classify a community edge by sign and the two endpoint directions."""
     if w > 0 and du == "up_tumor" and dv == "up_tumor":
         return "activator_concordant"
     if w < 0 and du == "up_normal" and dv == "up_normal":
         return "repressor_concordant"
     if w < 0 and du == "up_tumor" and dv == "up_tumor":
-        return "wall"                      # co-induced, co-expression lost
+        return "wall"
     if w > 0 and du == "up_normal" and dv == "up_normal":
-        return "anti_normal"               # co-normal, gained in tumor
+        return "anti_normal"
     return "cross_pos" if w > 0 else "cross_neg"
 
 
-# =============================================================================
-# PART A: COMMUNITY EDGE COMPOSITION + A3 EDGE PROFILE
-# =============================================================================
-
+# ---- PART A -----------------------------------------------------------------
 def part_a_edge_profile(G_sub, up_tumor, up_normal, de_log2fc,
                         harris, a3_in_comm, comm, name):
     dirof = lambda g: "up_tumor" if g in up_tumor else "up_normal"
 
-    # --- community-level edge composition cross-tab ---
     section(f"Community C{comm} edge composition")
     counts = {}
     for u, v, d in G_sub.edges(data=True):
@@ -190,14 +308,11 @@ def part_a_edge_profile(G_sub, up_tumor, up_normal, de_log2fc,
         n = counts.get(c, 0)
         pct = 100 * n / total if total else 0
         log(f"    {c:22s}: {n:7d}  ({pct:5.1f}%)")
-    conc = counts.get("activator_concordant", 0) + \
-        counts.get("repressor_concordant", 0)
+    conc = counts.get("activator_concordant", 0) + counts.get("repressor_concordant", 0)
     log(f"    -> concordant fraction: {100*conc/total:.1f}%  "
         f"(low fraction = wall-dominated community)")
 
-    # --- per-A3-gene edge profile ---
-    rows = []
-    wall_rows = []
+    rows, wall_rows = [], []
     for a3g in a3_in_comm:
         alias = A3_ALIAS[a3g]
         a3fc = de_log2fc.get(a3g, 0)
@@ -239,25 +354,19 @@ def part_a_edge_profile(G_sub, up_tumor, up_normal, de_log2fc,
         log(f"    negative + up_normal : {neg_dn:4d}  concordant repressor")
         log(f"    positive + up_normal : {pos_dn:4d}  discordant")
         if harris_pos:
-            log(f"    Harris (positive edge): "
-                + ", ".join(f"{g}(w={w},fc={fc},{d})"
-                            for g, w, fc, d in harris_pos))
+            log("    Harris (positive edge): " +
+                ", ".join(f"{g}(w={w},fc={fc},{d})" for g, w, fc, d in harris_pos))
         if harris_neg:
-            log(f"    Harris (negative edge): "
-                + ", ".join(f"{g}(w={w},fc={fc},{d})"
-                            for g, w, fc, d in harris_neg))
+            log("    Harris (negative edge): " +
+                ", ".join(f"{g}(w={w},fc={fc},{d})" for g, w, fc, d in harris_neg))
 
-        # wall verdict
         if a3dir == "up_tumor":
             if pos_up == 0:
-                verdict = (f"WALLED: zero gained co-expression with the "
-                           f"up-program; {neg_up} wall edges")
+                verdict = f"WALLED: zero gained co-expression with the up-program; {neg_up} wall edges"
             elif pos_up < neg_up:
-                verdict = (f"MOSTLY WALLED: {pos_up} concordant-activator vs "
-                           f"{neg_up} wall edges")
+                verdict = f"MOSTLY WALLED: {pos_up} concordant-activator vs {neg_up} wall edges"
             else:
-                verdict = (f"PARTIALLY COUPLED: {pos_up} concordant-activator "
-                           f"edges")
+                verdict = f"PARTIALLY COUPLED: {pos_up} concordant-activator edges"
         else:
             verdict = "up_normal A3 (unexpected in tumor comparison)"
         log(f"    verdict: {verdict}")
@@ -271,17 +380,12 @@ def part_a_edge_profile(G_sub, up_tumor, up_normal, de_log2fc,
             "n_harris_neighbors": len(harris_pos) + len(harris_neg),
             "verdict": verdict,
         })
-
     return rows, wall_rows
 
 
-# =============================================================================
-# PART B: SUBNETWORK ENUMERATION
-# =============================================================================
-
+# ---- PART B -----------------------------------------------------------------
 def part_b_subnetworks(G_sub, G_act, G_rep, de_log2fc, harris,
                        a3_in_comm, comm, name):
-    # hop distance from each A3 gene to every node in the full community
     a3_hops = {a3g: nx.single_source_shortest_path_length(G_sub, a3g)
                for a3g in a3_in_comm if a3g in G_sub}
 
@@ -297,24 +401,20 @@ def part_b_subnetworks(G_sub, G_act, G_rep, de_log2fc, harris,
                     best = h
         return best, []
 
-    subnet_rows = []
-    harris_index = []
-
+    subnet_rows, harris_index = [], []
     for mode, G_conc in [("activator", G_act), ("repressor", G_rep)]:
         comps = [c for c in nx.connected_components(G_conc)
                  if len(c) >= MIN_SUBNET_SIZE]
         comps.sort(key=len, reverse=True)
         section(f"{mode.upper()} subnetworks in C{comm}: {len(comps)} "
                 f"(>= {MIN_SUBNET_SIZE} nodes)")
-
         for i, comp in enumerate(comps):
             sub = G_conc.subgraph(comp)
             hubs = sorted(sub.degree(), key=lambda x: -x[1])[:5]
             hub_str = ", ".join(f"{g}({d})" for g, d in hubs)
             h_members = sorted((comp & harris) - A3_SYMBOLS)
             a3_members = sorted(A3_ALIAS[g] for g in comp if g in A3_TARGETS)
-            gap, contains = gap_to_a3(comp)
-
+            gap, _ = gap_to_a3(comp)
             tag = ""
             if a3_members:
                 tag = f"  <-- contains {', '.join(a3_members)}"
@@ -322,19 +422,15 @@ def part_b_subnetworks(G_sub, G_act, G_rep, de_log2fc, harris,
                 tag = f"  (nearest A3 {gap} hop{'s' if gap != 1 else ''} away)"
             if i < TOP_SUBNETS_PRINTED or a3_members or h_members:
                 log(f"    [{mode[:3]}-{i}] {len(comp)} nodes, "
-                    f"{sub.number_of_edges()} edges, "
-                    f"Harris={len(h_members)}{tag}")
+                    f"{sub.number_of_edges()} edges, Harris={len(h_members)}{tag}")
                 log(f"         hubs: {hub_str}")
                 if h_members:
                     log(f"         Harris: {', '.join(h_members)}")
-
             subnet_rows.append({
                 "community": comm, "mode": mode, "subnet_id": f"{mode[:3]}-{i}",
                 "size": len(comp), "n_edges": sub.number_of_edges(),
-                "n_harris": len(h_members),
-                "harris_members": ", ".join(h_members),
-                "a3_members": ", ".join(a3_members),
-                "top_hubs": hub_str,
+                "n_harris": len(h_members), "harris_members": ", ".join(h_members),
+                "a3_members": ", ".join(a3_members), "top_hubs": hub_str,
                 "gap_hops_to_a3": gap,
             })
             for hg in h_members:
@@ -344,32 +440,24 @@ def part_b_subnetworks(G_sub, G_act, G_rep, de_log2fc, harris,
                     "contains_a3": ", ".join(a3_members) if a3_members else "",
                     "gap_hops_to_a3": gap,
                 })
-
     return subnet_rows, harris_index
 
 
-# =============================================================================
-# PART C: A3 BOUNDARY / DECOUPLING
-# =============================================================================
-
+# ---- PART C -----------------------------------------------------------------
 def part_c_boundary(G_sub, G_act, G_rep, up_tumor, up_normal,
                     de_log2fc, harris, a3_in_comm, comm, name):
     dirof = lambda g: "up_tumor" if g in up_tumor else "up_normal"
     rows = []
-
     for a3g in a3_in_comm:
         alias = A3_ALIAS[a3g]
-        a3dir = dirof(a3g)
         section(f"{alias} boundary (C{comm})")
         nbrs = [n for n in G_sub.neighbors(a3g) if n not in A3_SYMBOLS]
-
         n_bridge = n_decouple = 0
         for nb in nbrs:
             w = G_sub[a3g][nb].get("weight", 0)
             nbdir = dirof(nb)
             edge_conc = ((nbdir == "up_tumor" and w > 0) or
                          (nbdir == "up_normal" and w < 0))
-            # does nb anchor a concordant chain beyond A3?
             G_conc = G_act if nbdir == "up_tumor" else G_rep
             beyond = 0
             if nb in G_conc:
@@ -378,11 +466,9 @@ def part_c_boundary(G_sub, G_act, G_rep, up_tumor, up_normal,
             if beyond == 0:
                 continue
             if edge_conc:
-                n_bridge += 1
-                kind = "concordant bridge"
+                n_bridge += 1; kind = "concordant bridge"
             else:
-                n_decouple += 1
-                kind = "DECOUPLING POINT (wall edge into a real chain)"
+                n_decouple += 1; kind = "DECOUPLING POINT (wall edge into a real chain)"
             rows.append({
                 "community": comm, "a3_gene": alias, "boundary_gene": nb,
                 "edge_weight": round(w, 4), "neighbor_de": nbdir,
@@ -392,9 +478,7 @@ def part_c_boundary(G_sub, G_act, G_rep, up_tumor, up_normal,
                 "is_harris": (nb in harris and nb not in A3_SYMBOLS),
                 "kind": kind,
             })
-
-        log(f"    neighbors anchoring concordant chains: "
-            f"{n_bridge + n_decouple} "
+        log(f"    neighbors anchoring concordant chains: {n_bridge + n_decouple} "
             f"({n_bridge} concordant bridges, {n_decouple} decoupling points)")
         chain_rows = [r for r in rows
                       if r["a3_gene"] == alias and r["community"] == comm]
@@ -402,8 +486,8 @@ def part_c_boundary(G_sub, G_act, G_rep, up_tumor, up_normal,
                         key=lambda x: -x["concordant_edges_beyond"])[:15]:
             hm = " [Harris]" if r["is_harris"] else ""
             log(f"      {r['boundary_gene']}{hm}: edge w={r['edge_weight']}, "
-                f"{r['neighbor_de']}, chains beyond="
-                f"{r['concordant_edges_beyond']} -> {r['kind']}")
+                f"{r['neighbor_de']}, chains beyond={r['concordant_edges_beyond']} "
+                f"-> {r['kind']}")
     return rows
 
 
@@ -419,8 +503,7 @@ def analyze_a3_community(net_data, comm, harris):
 
     comm_nodes = [g for g, c in gene_to_comm.items() if c == comm]
     G_sub = G_comm.subgraph(comm_nodes).copy()
-    G_sub.remove_nodes_from([n for n in G_sub.nodes()
-                             if G_sub.degree(n) == 0])
+    G_sub.remove_nodes_from([n for n in G_sub.nodes() if G_sub.degree(n) == 0])
 
     a3_in_comm = sorted(g for g in A3_TARGETS if g in G_sub.nodes())
     a3_lbl = ", ".join(A3_ALIAS[g] for g in a3_in_comm) or "none"
@@ -438,9 +521,60 @@ def analyze_a3_community(net_data, comm, harris):
     c_rows = part_c_boundary(
         G_sub, G_act, G_rep, up_tumor, up_normal, de_log2fc, harris,
         a3_in_comm, comm, name)
-
     return {"edges": a_rows, "wall": wall_rows, "subnets": b_rows,
             "harris_index": h_index, "boundary": c_rows}
+
+
+def consolidated_report(net_data, harvested, agg):
+    """Per-network Section 4.2 bracket fill, drawing build numbers from the
+    harvest and structural numbers from the enumeration."""
+    name, label, exp = net_data["name"], net_data["label"], net_data["exp"]
+    gene_to_comm, G, de_log2fc = (net_data["gene_to_comm"], net_data["G_comm"],
+                                  net_data["de_log2fc"])
+    banner(f"[SECTION 4.2 BRACKET REPORT] {label}", "#")
+
+    log("  Methods / results para 3:")
+    log(f"    network size   : {harvested.get('genes')} genes, "
+        f"{harvested.get('groups')} gene groups")
+    log(f"    DIFF threshold : {harvested.get('thr')}  (margin +{harvested.get('frag_margin','?')} components)")
+    log(f"    Leiden res     : {harvested.get('res')}   modularity {harvested.get('mod')}   ARI {harvested.get('ari')}")
+    recovery = len(set(net_data["partition"]["gene"].astype(str)) & load_harris.cache)
+    log(f"    recovery       : {recovery} / 174   {flag(recovery, exp['recovery'])}")
+
+    log("  Methods DE para (adj p, log2FC):")
+    log(f"    A3A fdr {harvested.get('A3A_fdr'):.3e}  log2FC {harvested.get('A3A_log2fc'):.4f}")
+    log(f"    A3B fdr {harvested.get('A3B_fdr'):.3e}  log2FC {harvested.get('A3B_log2fc'):.4f}")
+
+    log("  Results para 3 (A3 degree, placement):")
+    a3a_c, a3b_c = gene_to_comm.get("APOBEC3A"), gene_to_comm.get("APOBEC3B")
+    log(f"    A3A degree {harvested.get('A3A_deg')}  (C{a3a_c}) | "
+        f"A3B degree {harvested.get('A3B_deg')}  (C{a3b_c}) | "
+        f"{'SAME group' if a3a_c == a3b_c else 'SPLIT'}")
+
+    log("  Results para 7 (wall):")
+    for w in agg["wall"]:
+        pos = w["concordant_activator_edges"] + w["discordant_pos_edges"]
+        neg = w["wall_edges"] + w["concordant_repressor_edges"]
+        log(f"    C{w['community']} {w['a3_gene']}: {w['total_edges']} edges, "
+            f"{pos} positive, {neg} negative "
+            f"({w['wall_edges']} wall + {w['concordant_repressor_edges']} repressor)")
+    gw = group_wall_fraction(G, gene_to_comm, de_log2fc)
+    log("    group wall fraction: " +
+        ", ".join(f"C{r['community']}[{r['a3']}] {r['wall_pct']}%" for r in gw)
+        + f"   -> range {min(r['wall_pct'] for r in gw)}-{max(r['wall_pct'] for r in gw)}%")
+
+    log("  Results para 5/6 (concordant chains):")
+    for mode in ("activator", "repressor"):
+        ms = sorted((s for s in agg["subnets"] if s["mode"] == mode),
+                    key=lambda x: -x["size"])
+        if ms:
+            t = ms[0]
+            log(f"    largest {mode}: C{t['community']} size {t['size']}, "
+                f"Harris [{t['harris_members'] or 'none'}], A3 [{t['a3_members'] or 'none'}]")
+            log(f"        hubs: {t['top_hubs']}")
+
+    for fixlabel, says, disk in DRAFT_FIXES.get(name, []):
+        log(f"  *** DRAFT FIX: {fixlabel} -- {says}, {disk} ***")
 
 
 def analyze_network(net_data, harris):
@@ -448,23 +582,25 @@ def analyze_network(net_data, harris):
     gene_to_comm = net_data["gene_to_comm"]
     banner(f"NETWORK: {label}")
 
+    # (1) build provenance harvest
+    harvested = harvest_build(net_data)
+
     placement = {g: gene_to_comm[g] for g in A3_TARGETS if g in gene_to_comm}
     if not placement:
         log("  [SKIP] A3A/A3B not in partition"); return
-    log("  A3 placement: " +
+    log("\n  A3 placement: " +
         ", ".join(f"{A3_ALIAS[g]}=C{c}" for g, c in placement.items()))
     a3_comms = sorted(set(placement.values()))
     if len(a3_comms) > 1:
         log("  NOTE: A3A and A3B split across communities; analyzing each.")
 
-    agg = {k: [] for k in
-           ["edges", "wall", "subnets", "harris_index", "boundary"]}
+    # (2) structural enumeration
+    agg = {k: [] for k in ["edges", "wall", "subnets", "harris_index", "boundary"]}
     for comm in a3_comms:
         out = analyze_a3_community(net_data, comm, harris)
         for k in agg:
             agg[k] += out[k]
 
-    # save tables
     saves = [
         ("edges", f"{name}_A3_edge_profile.tsv"),
         ("wall", f"{name}_A3_wall_status.tsv"),
@@ -477,40 +613,19 @@ def analyze_network(net_data, harris):
             pd.DataFrame(agg[key]).to_csv(
                 os.path.join(OUTPUT_DIR, fname), sep="\t", index=False)
 
-    # network summary
-    banner(f"SUMMARY: {label}")
-    log("  A3 wall status:")
-    for w in agg["wall"]:
-        log(f"    C{w['community']} {w['a3_gene']} ({w['direction']}): "
-            f"{w['verdict']}")
-        log(f"      edges {w['total_edges']}: "
-            f"act-concordant {w['concordant_activator_edges']}, "
-            f"wall {w['wall_edges']}, "
-            f"rep-concordant {w['concordant_repressor_edges']}")
-    log("\n  Largest concordant subnetworks:")
-    for mode in ["activator", "repressor"]:
-        ms = [s for s in agg["subnets"] if s["mode"] == mode]
-        ms.sort(key=lambda x: -x["size"])
-        if ms:
-            top = ms[0]
-            log(f"    {mode}: C{top['community']} {top['size']} nodes, "
-                f"{top['n_harris']} Harris, "
-                f"A3={top['a3_members'] or 'none'}, "
-                f"gap_to_A3={top['gap_hops_to_a3']}")
-    n_h = len(set((h["community"], h["harris_gene"])
-                  for h in agg["harris_index"]))
-    log(f"\n  Harris interactors placed in a concordant subnetwork: {n_h}")
+    # (3) consolidated bracket report
+    consolidated_report(net_data, harvested, agg)
 
 
 def main():
-    banner("A3 NETWORK STRUCTURE DIAGNOSTIC")
-    banner("Multi-community: edge composition, subnetwork enumeration, wall")
+    banner("A3 NETWORK STRUCTURE + SECTION 4.2 NUMBERS")
     harris = load_harris()
+    load_harris.cache = harris  # for recovery count in the report
     for net_config in NETWORKS:
         log(f"\nLoading {net_config['name']}...")
         analyze_network(load_network(net_config), harris)
     banner("DIAGNOSTIC COMPLETE")
-    log(f"\nOutput: {OUTPUT_DIR}")
+    log(f"\nOutput TSVs: {OUTPUT_DIR}")
     for f in sorted(os.listdir(OUTPUT_DIR)):
         log(f"  {f}")
 

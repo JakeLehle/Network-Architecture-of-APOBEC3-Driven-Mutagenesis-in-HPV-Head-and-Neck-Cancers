@@ -98,4 +98,5 @@ echo ""
 
 conda run -n NETWORK python /master/jlehle/WORKING/MANUSCRIPTS/Network-Architecture-of-APOBEC3-Driven-Mutagenesis-in-HPV-Head-and-Neck-Cancers/scripts/NETWORK_SINGLE_CELL/Generate_Figure4_Panels.py
 
+conda run -n NETWORK python /master/jlehle/WORKING/MANUSCRIPTS/Network-Architecture-of-APOBEC3-Driven-Mutagenesis-in-HPV-Head-and-Neck-Cancers/scripts/NETWORK_SINGLE_CELL/Generate_Figure4_Supplemental.py
 exit
