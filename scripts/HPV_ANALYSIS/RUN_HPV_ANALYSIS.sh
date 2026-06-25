@@ -24,6 +24,7 @@ echo ""
 source ~/anaconda3/bin/activate 2>/dev/null || conda activate NETWORK
 
 conda run -n NETWORK python scripts/HPV_ANALYSIS/Phase1_HPV16_Data_Inventory_v2.py
+conda run -n NETWORK python scripts/HPV_ANALYSIS/Phase2_Raw_HPV16_Counts.py
 conda run -n NETWORK python scripts/HPV_ANALYSIS/Phase3_HPV16_Populations_and_Genome.py
 conda run -n NETWORK python scripts/HPV_ANALYSIS/Phase4_HPV16_Genome_Alignment.py
 conda run -n NETWORK python scripts/HPV_ANALYSIS/Phase5A_Population_Consolidation.py
