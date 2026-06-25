@@ -83,7 +83,7 @@ INTER_SCALE = 6.0
 INTRA_SCALE = 1.0
 
 # Global network only: drop gene groups (satellites) with this many nodes or fewer
-GLOBAL_DROP_GROUPS_LE = 3
+GLOBAL_DROP_GROUPS_LE = 6
 
 
 def log(msg):
