@@ -445,17 +445,22 @@ def assemble_composite():
     panels = {
         "a": "Panel_a_UMAP.png",
         "b": "Panel_b_SBS2_VS_NORMAL_chains.png",
+        "btop": "Panel_b_top_SBS2_A3A_activator.png",
+        "bbot": "Panel_b_bottom_SBS2_A3A_inhibitor.png",
+        "c": "Panel_c_CNV_VS_NORMAL_chains.png",
         "ctop": "Panel_c_top_CNV_A3A_activator.png",
         "cbot": "Panel_c_bottom_CNV_A3A_inhibitor.png",
         "d": "Panel_d_CNV_A3B_chains.png",
     }
     imgs = {k: os.path.join(FIG_DIR, v) for k, v in panels.items()}
-    fig = plt.figure(figsize=(38, 40))
+    fig = plt.figure(figsize=(38, 56))
     gs = gridspec.GridSpec(3, 2, hspace=0.06, wspace=0.04,
                            height_ratios=[1, 1, 1.1])
-    placements = [("a", gs[0, 0], "a"), ("ctop", gs[0, 1], "c"),
-                  ("b", gs[1, 0], "b"), ("cbot", gs[1, 1], ""),
-                  ("d", gs[2, :], "d")]
+    placements = [
+        ("btop", gs[0, 0], "b"), ("ctop", gs[0, 1], "c"),
+        ("bbot", gs[1, 0], ""),  ("cbot", gs[1, 1], ""),
+        ("a",    gs[2, 0], "a"), ("d",    gs[2, 1], "d"),
+    ]
     for key, cell, letter in placements:
         if not os.path.exists(imgs[key]):
             log(f"  [SKIP] missing {panels[key]}"); continue
@@ -467,7 +472,6 @@ def assemble_composite():
         plt.savefig(os.path.join(FIG_DIR, f"Figure4_composite.{ext}"), dpi=200, bbox_inches="tight")
     plt.close()
     log("  [SAVE] Figure4_composite")
-
 
 # =============================================================================
 # MAIN
@@ -488,6 +492,12 @@ def main():
 
     generate_a3_zoom(sbs2, harris, focus_gene="APOBEC3A", mode="both",
                      out_tag="b_SBS2_VS_NORMAL_chains")
+    generate_a3_zoom(sbs2, harris, focus_gene="APOBEC3A", mode="activator",
+                     out_tag="b_top_SBS2_A3A_activator", title_suffix="Activating chain")
+    generate_a3_zoom(sbs2, harris, focus_gene="APOBEC3A", mode="repressor",
+                     out_tag="b_bottom_SBS2_A3A_inhibitor", title_suffix="Inhibiting chain")
+    generate_a3_zoom(cnv, harris, focus_gene="APOBEC3A", mode="both",
+                     out_tag="c_CNV_VS_NORMAL_chains")    
     generate_a3_zoom(cnv, harris, focus_gene="APOBEC3A", mode="activator",
                      out_tag="c_top_CNV_A3A_activator", title_suffix="Activating chain")
     generate_a3_zoom(cnv, harris, focus_gene="APOBEC3A", mode="repressor",
