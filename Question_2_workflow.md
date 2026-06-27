@@ -1,156 +1,139 @@
-## Question 2: Can differential co-expression network analysis identify gene communities associated with elevated SBS2 mutagenesis in A3-matched HNSCC tumors?
+# Question 2 Workflow
+
+## Question 2: Does single-cell differential co-expression network analysis resolve A3 cofactor biology when each tumor population is compared to normal tissue?
 
 ### Rationale
 
-Figure 1 established that A3 expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC, and that the highest mutational burden requires the coordinated activity of both A3B and A3A alongside as-yet-unidentified cofactors. This question exploits a key observation from Figure 1: tumors with similar A3A+A3B expression have vastly different SBS2 levels. By constructing Spearman co-expression networks separately for high-SBS2 and low-SBS2 tumors matched for A3 expression, then computing the differential network (HIGH - LOW), we can identify gene communities whose co-expression relationships are specifically rewired in the high-mutagenesis condition.
+Question 1 resolved two divergent programs in the basal compartment, A3A-linked SBS2 point mutations and A3B-linked copy-number change. Differential expression direction alone cannot take that further: a gene moving in the same direction as tumorigenesis could belong to a coordinated A3 cofactor program or could just be part of the broad transcriptional shift of becoming a tumor, and direction says nothing about how a gene tracks A3A or A3B. To assign functional roles to the known A3 interactors, we build differential co-expression networks comparing each tumor population to normal-adjacent basal cells and look for chains of genes that gain co-expression with the enzymes in tumor (candidate activators) or lose it (candidate brakes).
 
-The pipeline was originally developed by Dr. Mohadeseh Soleimanpour (Texas Biomedical Research Institute) as a monolithic Python script. For this paper, the pipeline was refactored into modular steps (Step01-Step08), with adjustments to gene feature selection, community detection parameters, and figure generation.
+The lens here is tumor versus normal. An earlier SBS2-HIGH versus CNV-HIGH comparison was explored but dropped when the paper refocused on the tumor-to-normal contrast, so this question runs two networks: SBS2-HIGH vs NORMAL and CNV-HIGH vs NORMAL.
+
+### Population design
+
+Three basal populations of 546 cells each are defined in `Step00B`, and the two networks each compare a tumor population to NORMAL:
+
+- **SBS2-HIGH (n=546):** from SBS2 > 0 cancer-tissue basal cells, by a composite of SBS2 weight (40%), low CNV (20%), low CytoTRACE2 stemness (20%), and high A3A/(A3A+A3B) fraction (20%).
+- **CNV-HIGH (n=546):** from SBS2 == 0 cancer-tissue basal cells, by a mirror composite of high CNV (40%), total A3 (A3A+A3B) range-matched to the SBS2-HIGH mean (20%), high stemness (20%), and high A3B/(A3A+A3B) fraction (20%). After the CNV-HIGH reselection the HPV16 late-gene and anti-correlated-profile terms were removed, so selection carries no viral input and is not circular with the Question 4 virus analysis.
+- **NORMAL (n=546):** random sample of 546 of the 554 normal-adjacent basal cells.
+
+Total A3 expression is range-matched between the two tumor groups so they differ in A3A/A3B composition rather than in summed enzyme level.
 
 ### Data Sources
 
 | Source | Description |
 |--------|-------------|
-| `TCGA_master_FPKM_UQ.tsv` | Pan-cancer FPKM-UQ expression matrix from Question 1 |
-| `TCGA_SBS_signature_counts.tsv` | SigProfiler v3.4 COSMIC SBS counts (86 signatures) |
-| `Mutation_Table_Tumors_TCGA.tsv` | RNA-to-WES barcode crosswalk for SBS merge |
+| `adata_final.h5ad` | ClusterCatcher AnnData (155,650 cells, 27,736 genes) |
+| `three_group_assignments.tsv` | SBS2-HIGH / CNV-HIGH / NORMAL, 546 each (1,638 cells) |
+| `Harris_A3_interactors.txt` | 174 catalogued A3 interactors |
+| `Harris_A3_interactors_A3B_only.txt` | A3B-specific interactor subset |
+| `mmc15.xlsx` | AP-MS interactor source table (built into the interactor list) |
 
 ### Directory Structure
 
 ```
-scripts/FIG_2/
-├── RUN_NETWORK_PIPELINE.sh              # SLURM batch script (Steps 01-08)
-├── network_config.py                    # Centralized parameters (V4)
+scripts/NETWORK_SINGLE_CELL/
+├── network_config_SC.py                        # Centralized network parameters
+├── RUN_THREE_NETWORK_PIPELINE.sh               # Compute + diagnostics (SLURM); plotting deferred
+├── MAKE_FIGURES.sh                             # Plotting stage (separate from compute)
 │
-├── Step01_Load_Clean_TCGA.py            # Load & clean expression
-├── Step02_Merge_SBS_Signatures.py       # Merge expression with SBS signatures
-├── Step03_Differential_Expression.py    # Group definition & DE (fixed FDR, A3A/B force-keep)
-├── Step04_Correlation_Networks.py       # TOP/BOTTOM/DIFF correlation networks
-├── Step04.1_Sweep_DIFF_Threshold.py     # Diagnostic threshold sweep
-├── Step05_Community_Detection.py        # Max frag rate threshold + full-network Leiden
-├── Step06_Centrality_Metrics.py         # Per-gene centrality metrics
-├── Step07_Generate_Figure2_Panels.py    # Original figure gen (superseded)
-├── Step08_Pipeline_Summary.py           # Summary & KEGG enrichment
+├── Step00B_Three_Group_Selection_and_Export.py # Define 3 populations (546 each), export per-network matrices
+├── Step01_SC_Differential_Expression.py        # scanpy rank_genes_groups, FDR < 0.05
+├── Step02_SC_Correlation_Networks.py           # Spearman HIGH / LOW / DIFF matrices
+├── Step03_SC_Community_Detection.py            # Auto DIFF threshold + full-network Leiden
+├── Step04_SC_Centrality_Metrics.py            # Centrality metrics
+├── Compute_Node_Importance_Scores_SC.py        # Intra / inter community importance scoring
+├── Diagnostic_A3_Interactor_Concordance.py     # Interactor concordance across the two networks (chain inputs)
+├── Diagnostic_Chain_Validation_SBS2_VS_CNV.py  # Activating / inhibiting chain validation across the two tumor networks
 │
-├── Compute_Node_Importance_Scores.py    # Post-pipeline: intra/inter scoring
-├── Generate_Figure2_Panels.py           # Post-pipeline: publication figures (V4 two-tier)
+├── Extract_Harris_A3_Interactors.py            # Build the 174 A3 interactor list
+├── Convert_Uniprot_to_Gene_Symbol.py           # UniProt -> gene symbol mapping for the interactor list
+├── mmc15.xlsx                                  # AP-MS interactor source table
+├── uniprot_accession_list.txt                  # Interactor-list intermediates
+├── uniprot_accessions_to_convert.tsv
+├── uniprot_to_gene_symbol_mapping.tsv
 │
-└── TROUBLESHOOTING/
-    ├── network_community_analysis_pipeline.py  # Original monolithic (Dr. Soleimanpour)
-    ├── Diagnostic_Network_Community_Audit.py   # Harris/DDR/marker cross-reference
-    ├── KEGG_A3_Neighborhood_Diagnostic.py      # Community + A3 sub-network KEGG (NEW V4)
-    ├── RUN_KEGG_DIAGNOSTIC.sh                  # SLURM wrapper for KEGG diagnostic
-    └── Diagnostic_DE_Threshold_Comparison.py   # BH-FDR comparison (raw vs adj)
+├── Generate_Figure4_Panels.py                  # Figure 4 panels (plotting)
+├── Generate_Figure4_Supplemental.py            # Supplemental network figure (plotting)
+└── TROUBLESHOOTING/                            # Diagnostics and prior drafts (not documented here)
 ```
 
-### Configuration (V4)
+Note: `Step05_Generate_Figure4_Panels.py` is also present and overlaps `Generate_Figure4_Panels.py`; collapse to one canonical panel script on the per-script pass.
+
+### Configuration (`network_config_SC.py`)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| `FORCE_KEEP_A3` | True | A3A and A3B only (not full family) |
-| `RAW_P_THRESHOLD` | 0.05 | TCGA stays raw p (0 genes pass FDR) |
-| `DIFF_THRESHOLD` | 0.70 | Fallback only; auto-selection preferred |
-| `SWEEP_THRESHOLDS` | 0.30-0.90 step 0.05 | For max fragmentation rate |
-| `COMMUNITY_RESOLUTIONS` | [0.1-0.8 step 0.1] | Composite score selection |
-| `USE_LARGEST_COMPONENT` | False | Full-network Leiden |
-| `MIN_COMMUNITY_SIZE` | 10 | Satellites preserved below this |
-| `TARGET_BIG_COMMUNITIES` | 14 | Within-large-component merge |
+| DE selection | FDR < 0.05 | scanpy `rank_genes_groups`, internal BH-FDR |
+| `FORCE_KEEP_A3` | False | A3A and A3B pass FDR naturally in both networks |
+| DIFF threshold | auto | max fragmentation rate over a 0.30-0.90 sweep (fallback 0.40) |
+| Community detection | Leiden | full-network, resolution by composite-score sweep, component-aware merge |
+| `MIN_COMMUNITY_SIZE` | 10 | satellites preserved |
+| `MIN_CELLS_DETECTED` | 10 | gene detection filter |
 
-### Pipeline Overview (V4)
+### Pipeline: two stages
 
+The compute and the plotting are deliberately separated so the figure can be tweaked without rerunning the networks.
+
+**Stage A, compute and diagnostics (`RUN_THREE_NETWORK_PIPELINE.sh`):**
 ```
-Step 1: Load & clean TCGA expression (10,603 tumors, 60,616 genes)
-    │
-Step 2: Merge with SigProfiler v3.4 SBS counts (8,276 matched, 426 HNSC)
-    │
-Step 3: A3-matched groups (53/53) + DE (raw p<0.05, A3A/B force-kept -> 1,638 genes)
-    │
-Step 4: Spearman TOP/BOTTOM/DIFF matrices (1,638 x 1,638)
-    │
-Step 5: Max fragmentation rate -> 0.65 | Full-network Leiden -> res 0.50
-    │    (1,131 nodes, 2,599 edges, 11 main + 33 satellite communities)
-    │
-Step 6: Centrality metrics
-    │
-Step 8: KEGG enrichment
-    │
-Post: Node scores + Figure panels + KEGG A3 neighborhood diagnostic
+Step00B  group selection + export (3 populations, per-network matrices)
+   │
+   ├── for SBS2_VS_NORMAL and CNV_VS_NORMAL:
+   │      Step01  scanpy DE (FDR < 0.05)
+   │      Step02  Spearman HIGH / LOW / DIFF correlation matrices
+   │      Step03  auto DIFF threshold + full-network Leiden communities
+   │      Step04  centrality metrics
+   │      Compute_Node_Importance_Scores_SC  intra / inter scoring
+   │
+   └── Diagnostics: A3 interactor concordance + chain validation
+          (these produce the activating / inhibiting chain composition that
+           the figure design and the manuscript narrative are built on)
 ```
 
-### Step 3: V4 Changes
+**Stage B, plotting (`MAKE_FIGURES.sh`):** `Generate_Figure4_Panels.py` and `Generate_Figure4_Supplemental.py`.
 
-- BH-FDR bug fixed (gene order scramble in monotonicity enforcement step)
-- Force-keep scoped to A3A + A3B only (not all 7 A3 genes)
-- A3A: p=0.193 (fails DE, force-kept); A3B: p=0.483 (fails DE, force-kept)
-- This is expected: A3-controlled group design prevents A3 from being DE by construction
-- 1,636 DE genes + 2 force-kept = 1,638 total
+The interactor list itself is built once by `Extract_Harris_A3_Interactors.py` and `Convert_Uniprot_to_Gene_Symbol.py` from `mmc15.xlsx`, yielding the 174-gene catalogue used throughout.
 
-### Step 5: V4 Major Rewrite (Three Changes)
+### Key Results
 
-**1. Max Fragmentation Rate Threshold:**
-Among thresholds where A3A+A3B have degree >= 1, compute forward delta-comp between consecutive steps. Select the upper threshold of the interval with the largest positive delta-comp. Tiebreaker: lower upper threshold.
+A3A and A3B both pass DE naturally in each network (A3A log2 fold change 7.7 in SBS2-HIGH vs normal, falling to 1.2 in CNV-HIGH vs normal, reflecting the sharp drop in A3A induction once cells enter the productive state).
 
-TCGA result: 0.65 (delta-comp=+25 at 0.60->0.65 interval). At 0.65: 1,131 nodes, 2,599 edges, A3A degree=1, A3B degree=4.
+Of the 174 catalogued A3 interactors, relative to normal-adjacent tissue 52 were upregulated in SBS2-HIGH cells, 129 in CNV-HIGH, and 51 in both; only three (*HSPD1*, *RPL3*, *RPL5*) were lower in both tumor states, and none switched direction between them, so no single interactor stood out as a brake on mutagenesis from direction alone.
 
-**2. Full-Network Leiden:**
-Leiden runs on all 34 connected components (not LCC only). Large components subdivided; small satellites become their own communities.
+| Metric | SBS2-HIGH vs NORMAL | CNV-HIGH vs NORMAL |
+|--------|---------------------|--------------------|
+| Network genes | 2,948 | 4,886 |
+| Gene groups | 23 | 38 |
+| Interactors recovered (of 174) | 54 | 109 |
+| A3 arrangement | A3A and A3B share a gene group | A3A and A3B separate |
+| DIFF threshold / resolution | 0.40 / 0.70 | auto-selected |
 
-**3. Component-Aware Merge:**
-Satellites (entire small components) preserved as-is. Only within-large-component communities go through top-k merge. Gene list CSV includes `is_satellite` column.
+**Activating chains (RALY-anchored, conserved in both):**
+- SBS2-HIGH: *RALY* anchors a five-gene chain with *LCN2*, *KRT24*, *LINC00278*, and *UTY*; a second interactor, *HNRNPA2B1*, anchors a smaller chain with *CCL20* (Fig. 4b).
+- CNV-HIGH: *RALY* anchors the largest chain, a thirteen-gene module of translation and metabolic genes (*CPNE1*, *EIF6*, *CA2*, *DYNLRB1*) within the A3A group (Fig. 4d).
+- The partners turn over between states but *RALY* holds the same role even though CNV-HIGH cells carry no SBS2 and A3A induction has fallen sharply, marking *RALY* as a tumor-conserved candidate coactivator rather than a tracker of enzyme level.
 
-### Step 5: Threshold Sweep (TCGA)
+**Inhibiting chain (no catalogued interactor):**
+- A roughly seventy-gene epithelial differentiation and cornification program in the A3A group of the CNV-HIGH network (*PRSS3*, *CLIC3*, *MAB21L4*, *SBSN*, *CYSRT1*, and the *SPRR* family), tightly co-expressed in normal tissue and losing coherence in tumor, with A3A at its edge through *SPRR1A*, *SPRR2D*, and *RAB11A* (Fig. 4c). This suggests loss of a normal differentiation program as cells accumulate CNV.
 
-| Thresh | Nodes | Edges | Comp | A3A deg | A3B deg | Selected? |
-|--------|-------|-------|------|---------|---------|-----------|
-| 0.55 | 1,605 | 12,415 | 1 | 7 | 11 | |
-| 0.60 | 1,459 | 5,926 | 9 | 3 | 8 | |
-| **0.65** | **1,131** | **2,599** | **34** | **1** | **4** | **YES (delta=+25)** |
-| 0.70 | 733 | 1,140 | 48 | 0 | 1 | A3A lost |
+**The A3 wall:**
+- Nearly every edge directly linking A3A or A3B to its neighbors is negative, so each enzyme's co-expression with its partners is stronger in normal tissue even though both genes are induced in tumor. Not one enzyme edge is positive. The enzymes are induced but co-expression-decoupled from the programs they sit among, consistent with pulsatile, cell-to-cell-variable A3 bursts.
 
-### KEGG Results (V4)
+### Figure 4 Panels
 
-| Community | Genes | A3 | Sig KEGG | Top Term |
-|-----------|-------|----|----------|----------|
-| C0 | 281 | -- | 1 | Cardiac muscle contraction (0.049) |
-| C1 | 257 | -- | 2 | Dilated cardiomyopathy (0.047) |
-| C2 | 134 | A3B | 0 | Chronic myeloid leukemia (0.79) |
-| C3 | 130 | -- | 0 | Neutrophil extracellular trap (0.61) |
-| C4 | 121 | -- | 0 | Gastric cancer (0.25) |
-| C5 | 44 | -- | 0 | Glycosaminoglycan biosynthesis (0.24) |
-| C6 | 33 | -- | 1 | HSV1 infection (3.36e-05) |
-| C7 | 23 | -- | 1 | Basal transcription factors (0.018) |
-| C8 | 16 | -- | 14 | Epithelial cell signaling H. pylori (9.17e-04) |
-| C43 | 2 | A3A | -- | Too small for enrichment |
-
-**A3B sub-network KEGG:** Positive (72 genes): 0 sig. Negative (61 genes): 0 sig (ribosome at 0.056).
-
-### Figure 2 Panels (V4)
-
-| Panel | Content | Script |
+| Panel | Content | Source |
 |-------|---------|--------|
-| A | Methods overview: HIGH - LOW = DIFF -> network | `Generate_Figure2_Panels.py` |
-| B | Full network, two-tier layout (main + satellite ring) | `Generate_Figure2_Panels.py` |
-| B2 | LCC-only backup (drops satellites) | `Generate_Figure2_Panels.py` |
-| C | Community zoom insets (A3B comm, epithelial signaling, ZNF) | `Generate_Figure2_Panels.py` |
-| Supp | SBS2 vs A3 sum selection plot | `Generate_Figure2_Panels.py` |
+| a | Three-population UMAP (SBS2-HIGH / CNV-HIGH / NORMAL) | `Step00B` + plotting |
+| b | SBS2-HIGH activating chain (*RALY* five-gene + *HNRNPA2B1* / *CCL20*) | SBS2_VS_NORMAL network |
+| c | CNV-HIGH inhibiting cornification chain | CNV_VS_NORMAL network |
+| d | CNV-HIGH *RALY* activating module | CNV_VS_NORMAL network |
+| Supp Fig 6 | Full networks clustered into gene groups, non-A3 community zooms | both networks |
 
-### Key Results (V4)
+### Narrative Arc
 
-| Metric | Value |
-|--------|-------|
-| HNSC tumors | 426 |
-| Groups | 53 HIGH / 53 LOW |
-| DE genes | 1,638 (1,636 + 2 force-kept) |
-| DIFF threshold | 0.65 (max fragmentation rate) |
-| Network | 1,131 nodes, 2,599 edges |
-| Components | 34 (LCC = 1,054, 93.2%) |
-| Resolution | 0.50 (composite: mod x ARI x evenness) |
-| Modularity | 0.49 |
-| Communities | 11 main + 33 satellite |
-| A3B | C2 (134 genes, degree=4), 0 sig KEGG |
-| A3A | C43 (2-gene satellite, degree=1) |
-| Harris interactors | 0/175 |
-| Cell-type markers | 1/24 |
-
-### Narrative (V4)
-
-Bulk TCGA network does not resolve A3-specific pathway biology. A3B's 134-gene community has no significant KEGG enrichment at any level (community, positive sub-network, negative sub-network). A3A is in a 2-gene satellite. 0/175 Harris interactors recovered. The null result motivates single-cell resolution in Figure 4.
+1. DE direction alone cannot separate a coordinated cofactor program from the broad shift of tumorigenesis, so differential co-expression networks are built, each tumor population against normal-adjacent (Fig. 4a).
+2. The two networks recover 54 and 109 of the 174 catalogued A3 interactors; A3A and A3B share a gene group in SBS2-HIGH but separate in CNV-HIGH.
+3. A *RALY*-anchored activating program is conserved across both tumor states, with *HNRNPA2B1* anchoring *CCL20* in SBS2-HIGH (Fig. 4b, 4d), nominating *RALY* and *HNRNPA2B1* as functional coactivators.
+4. A cornification differentiation program forms the clearest inhibiting chain, lost as cells accumulate CNV (Fig. 4c).
+5. The A3 wall shows the enzymes induced but decoupled from stable co-expression, consistent with pulsatile A3 induction.
+6. **Motivates Question 3:** test whether the SBS2-HIGH program is a conserved cross-patient signal or driven by a few individuals, before reading the networks as biology.

@@ -1,217 +1,131 @@
-# Figure 5 Walkthrough: Patient-Specific Effects
+# Question 5 Workflow: Neoantigen Landscape (Figure 7)
 
-## Overview
+## Question 5: What therapeutic neoantigen tiers fall out of the immune-visible and immune-evasive populations?
 
-Figure 5 asks whether the SBS2-HIGH epithelial cell population identified in Figure 4 is a generalizable transcriptional program across head and neck cancer patients or an artifact driven by one or two individuals. The analysis is organized into three tiers of increasing complexity: expression profiling, somatic variant analysis, and network sensitivity testing.
+### Rationale
 
-The central finding is that while three patients (SC029, SC013, SC001) contribute 67.6% of SBS2-HIGH cells, these patients are not transcriptionally distinct. Their HIGH cells intermingle with other patients on PCA (silhouette = 0.125), and the co-expression network survives leave-one-patient-out removal with the A3 wall intact at 100%. What does distinguish high-contributor patients is somatic mutations in HPV infection and antigen presentation genes (HLA-B, HLA-C, HLA-DRB1, TAP1) that overlap with the same immune pathways enriched in the Figure 4 network. This motivates the HPV lifecycle analysis in Figures 6-7.
+Question 4 (Fig 6) split the epithelial compartment into an immune-visible, maintenance-phase SBS2-HIGH state and an immune-evasive, productive-phase CNV-HIGH state. Because tumor-specific neoantigens are attractive targets for multivalent mRNA vaccines, and because how well that strategy works depends on the tumor's immune state, the neoantigens these two populations produce are relevant to different therapeutic settings. This question builds the neoantigen landscape from the single-cell somatic calls, predicts MHC-I binding, integrates immune-escape evidence, and ranks the result into therapeutic tiers matched to a tumor's position on the lifecycle axis.
 
----
+The central finding: *ANXA1* is the top neoantigen target in SBS2-HIGH cells (best IC50 = 13.1 nM, 42 predicted peptides, expressed in 99.5% of cells), and the landscape partitions into three priority tiers by breadth of coverage and immune-escape evidence.
 
-## Directory Structure
-
-```
-scripts/PATIENT_SPECIFIC_EFFECTS/
-├── patient_config.py                              # Shared configuration (paths, parameters, utilities)
-├── RUN_PATIENT_ANALYSIS.sh                        # SLURM master script (runs all tiers overnight)
-│
-├── Tier1A_Patient_Expression_GSEA.py              # Per-patient Wilcoxon DE + KEGG GSEA
-├── Tier1B_HIGH_Cell_Transcriptional_Similarity.py # PCA, silhouette, profile correlations
-├── Tier1C_Enriched_vs_Depleted_Patient_DE.py      # High-contributor vs other patient DE
-│
-├── Tier2A_Expression_Haplotype_Proxies.py         # A3 ratios, activating chain expression
-├── Tier2B_SNP_Pattern_Analysis.py                 # SComatic variant sharing across patients
-│
-├── Tier3A_Leave_One_Patient_Out.py                # LOPO network sensitivity (V4 pipeline)
-│
-├── Generate_Supplemental_Patient_Effects.py       # Supplemental figure panels A-F
-├── Analyze_SNP_Tier_Genes.py                      # Variant-to-gene mapping + KEGG per tier
-└── Diagnostic_HC_Network_HPV_Overlap.py           # HC-exclusive x network x HPV/antigen overlap
-```
-
----
-
-## Input Data
-
-All inputs come from the Figure 4 single-cell network pipeline. The shared configuration file (`patient_config.py`) defines paths to these resources.
-
-| Input | Path | Description |
-|-------|------|-------------|
-| AnnData | `data/FIG_4/00_input/adata_final.h5ad` | 155,650 cells, 27,736 genes (ClusterCatcher output) |
-| Signature weights | `data/FIG_4/00_input/signature_weights_per_cell.txt` | Per-cell SBS signature weights (SigProfiler) |
-| Three-group assignments | `data/FIG_4/01_group_selection/three_group_assignments.tsv` | 546 SBS2-HIGH, 546 CNV-HIGH, 546 NORMAL |
-| DE genes | `data/FIG_4/NETWORK_SBS2_VS_NORMAL/02_differential_expression/` | Scanpy Wilcoxon DE results (FDR < 0.05) |
-| Network partition | `data/FIG_4/NETWORK_SBS2_VS_NORMAL/04_communities/SC_best_partition.csv` | 2,948 genes in Leiden communities |
-| Harris interactors | `data/FIG_4/00_input/Harris_A3_interactors.txt` | 175 known A3 protein interactors |
-| SComatic calls | `results_NMF_v0.1.1/all_samples.single_cell_genotype.filtered.tsv` | Per-cell somatic variant calls |
-| GTF | `SC/ref/GRCh38/genes/genes_unzipped.gtf` | GRCh38 gene annotations for variant mapping |
-
----
-
-## Pipeline Execution
-
-The entire pipeline runs as a single SLURM job. Typical runtime is 4-6 hours on 32 cores with 500 GB memory.
-
-```bash
-cd scripts/PATIENT_SPECIFIC_EFFECTS/
-sbatch RUN_PATIENT_ANALYSIS.sh
-```
-
-The SLURM script runs three phases sequentially:
-
-- **Phase 1** (~45 min): Tier 1A, 1B, 1C, 2A (expression analyses)
-- **Phase 2** (~30-60 min): Tier 2B (SNP pattern analysis)
-- **Phase 3** (~3-4 hrs): Tier 3A x3 (LOPO network sensitivity)
-
-Post-pipeline scripts are run interactively:
-
-```bash
-conda run -n NETWORK python Generate_Supplemental_Patient_Effects.py
-conda run -n NETWORK python Analyze_SNP_Tier_Genes.py
-conda run -n NETWORK python Diagnostic_HC_Network_HPV_Overlap.py
-```
-
----
-
-## Script Descriptions
-
-### Shared Configuration
-
-**`patient_config.py`** defines all paths, parameters, and utility functions imported by every script.
-
-Key design choices:
-- Three-group loading via `load_three_groups()` returns SBS2-HIGH, CNV-HIGH, and NORMAL cell sets (546 each) from `three_group_assignments.tsv`
-- Backward-compatible `load_groups()` wrapper returns (SBS2-HIGH, NORMAL) for scripts that only need the SBS2_VS_NORMAL comparison
-- Network parameters match the V4 pipeline: scanpy DE at FDR < 0.05, DIFF threshold auto-selection via max fragmentation rate, full-network Leiden with resolution sweep and component-aware merge
-- Gene sets from the Figure 4 concordance analysis: 9-gene activating chain (RALY, HNRNPA2B1, CCL20, KRT24, LCN2, LINC00278, RRAD, SMOX, UTY), 3 inhibiting chain anchors (SNHG3, THYN1, ZNG1A), 2 A3 interactor anchors (RALY, HNRNPA2B1)
-- Style constants: font sizes 28-34, hex color codes, PDF + PNG at 300 DPI
-
----
-
-### Tier 1: Expression Analyses
-
-**`Tier1A_Patient_Expression_GSEA.py`** compares each patient's basal cells against all other patients' basal cells (Wilcoxon rank-sum), then runs GSEA prerank against KEGG pathways. This is an unbiased screen for patient-specific pathway activity. Also computes per-patient A3 family expression and correlates with SBS2-HIGH fold enrichment.
-
-**`Tier1B_HIGH_Cell_Transcriptional_Similarity.py`** takes the 546 SBS2-HIGH cells and asks whether they cluster by patient or intermingle. Runs PCA on DE genes (3,907 at FDR < 0.05), computes silhouette score using patient as label, and builds a per-patient mean profile correlation matrix with hierarchical clustering. A low silhouette score (0.125) indicates a shared program rather than patient-specific clusters.
-
-**`Tier1C_Enriched_vs_Depleted_Patient_DE.py`** compares all basal cells from the three high-contributing patients (SC029, SC013, SC001) against all basal cells from the remaining 11 patients. Asks whether high contributors are constitutively different at the transcriptional level, independent of SBS2 status.
-
----
-
-### Tier 2: Variant and Haplotype Analysis
-
-**`Tier2A_Expression_Haplotype_Proxies.py`** measures per-patient expression-level proxies for germline A3 haplotype variation: A3A/A3B ratio (deletion polymorphism proxy), A3H expression (haplotype stability proxy), and the activating chain gene expression program from Figure 4. Tests whether high-contributor patients show elevated baseline expression of the mutagenic co-expression program.
-
-**`Tier2B_SNP_Pattern_Analysis.py`** maps SComatic single-cell somatic variant calls to patients and classifies variants into sharing tiers (Universal, Broadly shared, Partially shared, Patient-specific, HC-exclusive). Computes pairwise Jaccard similarity between patients, identifies germline candidates on the A3 locus, and generates per-patient variant composition profiles.
-
----
-
-### Tier 3: Network Sensitivity
-
-**`Tier3A_Leave_One_Patient_Out.py`** is the core sensitivity test. For each high-contributing patient (SC029, SC013, SC001), removes that patient's cells from both SBS2-HIGH and NORMAL groups, then re-runs the full V4 network pipeline: scanpy DE (Wilcoxon, BH-FDR < 0.05), Spearman correlation matrices, max fragmentation rate threshold auto-selection, full-network Leiden with resolution sweep (5 resolutions x 15 runs, composite score selection), and component-aware merge.
-
-Four sensitivity metrics are computed per LOPO run:
-
-| Metric | Definition | Result |
-|--------|------------|--------|
-| Activating chain recovery | Number of 9 concordant chain genes present in LOPO network | 8/9 (SC029, SC001), 3/9 (SC013) |
-| Community structure ARI | Adjusted Rand index between LOPO and full community assignments | 0.21-0.34 |
-| Gene overlap Jaccard | Jaccard index between LOPO and full node sets | 0.45-0.54 |
-| A3 wall integrity | % negative DIFF edges for A3A | 100% (all runs) |
-
----
-
-### Post-Pipeline Analysis
-
-**`Generate_Supplemental_Patient_Effects.py`** produces the six-panel supplemental figure:
-
-| Panel | Content |
-|-------|---------|
-| A | Patient distribution of SBS2-HIGH cells (sorted by HIGH count) |
-| B | Per-patient A3A and A3B expression (bar charts) |
-| C | PCA of HIGH cells colored by patient + correlation heatmap |
-| D | LOPO sensitivity (4-metric bar charts: chain recovery, ARI, Jaccard, wall) |
-| E | Variant sharing spectrum (5-tier stacked bar per patient) |
-| F | Genome ideogram with variant positions colored by sharing tier |
-
-**`Analyze_SNP_Tier_Genes.py`** maps variants to genes using the GRCh38 GTF (79.8% mapping rate) and cross-references per-tier gene lists against the SC network partition, Harris A3 interactors, A3 enzymes, activating chain genes, and inhibiting chain anchors. Runs KEGG enrichment per tier.
-
-**`Diagnostic_HC_Network_HPV_Overlap.py`** closes the loop between the network and patient-level findings. Cross-references HC-exclusive variant genes that are in significant HPV/immune KEGG pathways against the SC network partition, identifying which specific pathway genes sit inside the co-expression network and which community they belong to.
-
----
-
-## Output Structure
+## Pipeline Flow
 
 ```
-data/FIG_5/
-├── 00_diagnostics/
-│   └── patient_enrichment_SBS2_HIGH_v2.tsv
-├── 01_patient_expression/
-│   ├── patient_KEGG_NES_heatmap.pdf/png
-│   ├── patient_A3_expression_summary.tsv
-│   ├── patient_GSEA_top_pathways.tsv
-│   ├── per_patient_GSEA_results/
-│   ├── HIGH_cell_PCA_by_patient.pdf/png
-│   ├── HIGH_cell_silhouette_score.txt
-│   ├── HIGH_cell_patient_correlation_heatmap.pdf/png
-│   ├── Tier1C_volcano_high_contrib_vs_other.pdf/png
-│   └── Tier1C_high_contrib_KEGG_GSEA.tsv
-├── 02_snp_haplotype/
-│   ├── Tier2A_haplotype_proxies.tsv
-│   ├── Tier2A_haplotype_proxies.pdf/png
-│   ├── Tier2A_activating_chain_heatmap.pdf/png
-│   ├── Tier2B_patient_variant_summary.tsv
-│   ├── Tier2B_patient_variant_comparison.pdf/png
-│   ├── Tier2B_germline_candidates.tsv
-│   └── gene_analysis/
-│       ├── SNP_tier_gene_analysis_report.tsv
-│       ├── variant_to_gene_mapping.tsv
-│       └── SNP_tier_{tier}_KEGG.tsv
-├── 03_sensitivity/
-│   ├── LOPO_SC029/
-│   │   ├── LOPO_SC029_summary.tsv
-│   │   ├── LOPO_SC029_communities.tsv
-│   │   ├── LOPO_SC029_DE_all.tsv
-│   │   ├── LOPO_SC029_DE_significant.tsv
-│   │   ├── LOPO_SC029_threshold_sweep.tsv
-│   │   ├── LOPO_SC029_resolution_sweep.tsv
-│   │   └── LOPO_SC029_parameters.txt
-│   ├── LOPO_SC013/  (same structure)
-│   └── LOPO_SC001/  (same structure)
-└── FIGURE_5_PANELS/
-    ├── Supp_Panel_A_Patient_Distribution.pdf/png
-    ├── Supp_Panel_B_A3_Expression.pdf/png
-    ├── Supp_Panel_C_PCA_Correlation.pdf/png
-    ├── Supp_Panel_D_LOPO_Sensitivity.pdf/png
-    ├── Supp_Panel_E_Variant_Sharing.pdf/png
-    ├── Supp_Panel_F_Ideogram.pdf/png
-    └── variant_sharing_tiers.tsv
+Step01 (NETWORK)          Step02 (NEOANTIGEN)        Step03 (NEOANTIGEN)
+SComatic TSV              SnpEff annotation           MHCflurry binding
+  + three-group             + germline                  + real-proteome
+  assignments               subtraction                 peptide generation
+       |                        |                           |
+       v                        v                           v
+  Per-group VCFs          Somatic protein-            Neoantigen calls
+  + barcode lists         altering variants           + peptide details
+                                                           |
+                               +---------------------------+
+                               |                           |
+                               v                           v
+                    Step04 (NETWORK)              Step05 (NETWORK)
+                    Expression-weighted           STAR chimeric
+                    composite scoring             fusion analysis
+                               |                           |
+                               +---------------------------+
+                               |
+                               v
+                    Step06 (NETWORK)
+                    Immune-escape integration
+                    + therapeutic tier classification
+                               |
+                               v
+                    Generate_Figure7_Panels.py (NETWORK)
+                    4 panels: burden, Venn/tiers, ANXA1 peptides, ANXA1 track
 ```
 
----
+## Conda Environments
 
-## Key Findings
+| Environment | Scripts | Key packages |
+|-------------|---------|--------------|
+| NETWORK | Steps 01, 04, 05, 06, figure generation | scanpy, pandas, matplotlib, gseapy |
+| NEOANTIGEN | Steps 02, 03 | SnpEff (java), mhcflurry, tensorflow |
 
-1. **SBS2-HIGH cells are a shared program, not patient-specific.** Three patients contribute 67.6% of HIGH cells, but silhouette = 0.125 and mean inter-patient correlation = 0.775 indicate convergent transcriptional phenotypes.
+`RUN_NEOANTIGEN_PIEPLINE.sh` switches environments automatically between steps.
 
-2. **A3 expression does not predict patient contribution.** The highest A3A expressors (SC005, SC003) are not the highest HIGH-cell contributors, reinforcing that expression alone is insufficient.
+## Pipeline Scripts (main directory)
 
-3. **The network is robust to patient removal.** LOPO analysis preserves the A3 wall at 100%, recovers 8/9 activating chain genes (SC029, SC001), and maintains core community structure across all configurations.
+### Step01_Prep_Neoantigen_Inputs.py
+Loads the three-group assignments and the master SComatic filtered TSV, splits somatic variants into per-group VCFs (SBS2_HIGH, CNV_HIGH, NORMAL), and writes barcode lists and a config YAML. VCFs use 1-based coordinates (SComatic `Start` is 0-based, so `POS = Start + 1`). Also reports per-group APOBEC TCW-context counts. Outputs to `data/FIG_7/01_neoantigen_inputs/`.
 
-4. **High-contributor patients carry mutations in HPV/immune genes, not A3 genes.** HC-exclusive variants hit zero A3 family members, zero activating chain genes, and zero known A3 interactors. Instead, they enrich for HPV infection (p = 0.007) and antigen presentation (p = 0.031).
+### Step02_SnpEff_Annotation.py
+Runs SnpEff on the per-group VCFs, parses the ANN field (gene, effect, HGVS protein notation, transcript), and performs germline subtraction using the NORMAL group as background: any variant present in NORMAL is dropped from the disease groups. Produces the germline-subtracted protein-altering variant lists. Outputs to `data/FIG_7/02_snpeff_annotation/`.
 
-5. **HC-exclusive HPV/immune pathway genes overlap with the SC network.** 15 of 33 HC-exclusive HPV/immune pathway genes are present in the Figure 4 network, including HLA-B, HLA-C (MHC class I, community 2), HLA-DRB1 (MHC class II, community 1), and TAP1 (peptide transporter, community 0). Mutations in antigen presentation machinery could impair immune clearance of HPV-infected cells, allowing them to persist and accumulate APOBEC-driven mutations.
+### Step03_MHCflurry_Binding.py
+The core prediction step. For each somatic missense variant it builds mutant and wild-type peptides (lengths 8-11) from real protein context in the Ensembl GRCh38 release 115 proteome (`pep.all.fa`, 245,535 isoforms), replacing the earlier poly-alanine flanking that gave systematically wrong IC50 values. Protein lookup uses a six-layer chain (ENST, gene symbol, alias, ENSG, isoform scan, and a +/-30 offset scan), reaching 98.6-98.7% mapping. The offset scan matters: *ANXA1* was missing from the first two runs because SnpEff positions differ from the proteome by -30 due to signal-peptide numbering, and the scan recovered *ANXA1* and 76 other variants. Peptides are scored against a 10-allele HLA panel (~80% population coverage) with MHCflurry `Class1AffinityPredictor`; binders are IC50 < 500 nM, strong binders < 50 nM, and differential neoantigens have mutant < 500 nM with wild-type > 500 nM. Outputs to `data/FIG_7/03_mhc_binding/`.
 
----
+### Step04_Expression_Weighted_Ranking.py
+Ranks neoantigens by an expression-weighted composite, `composite = mean_expression * (500 / best_IC50)`, where expression is log1p-normalized. This deprioritizes immunoglobulin genes that have high APOBEC-motif density but low epithelial expression. Produces per-group and group-unique rankings. Outputs alongside the binding results in `data/FIG_7/03_mhc_binding/`.
 
-## Environment
+### Step05_Fusion_Analysis.py
+Re-parses STAR chimeric junctions across all cells, filters to high-confidence fusions, and computes per-group fusion rates. Identifies group-exclusive fusion pairs and runs pathway enrichment (gseapy with backoff for Enrichr rate limiting), then cross-references fusion-disrupted genes against the neoantigen lists to find asymmetric escape (for example SBS2-exclusive fusions hitting *B2M* and *HLA-B*, CNV-exclusive fusions hitting *PSMB8* and *PSME2*). Fusion rates are similar across groups, so fusions do not differentiate the populations; specific partners do. Outputs to `data/FIG_7/04_fusion_analysis/`.
 
-All scripts run in the `NETWORK` conda environment. Key dependencies: scanpy, scipy, scikit-learn, matplotlib, igraph, leidenalg, networkx, statsmodels, gseapy. The SLURM script checks all dependencies before execution and installs gseapy if missing.
+### Step06_Integrated_Neoantigen_Analysis.py
+Integrates neoantigen, fusion, and expression data into the immune-escape analysis: antigen-loss mutations (variants that destroy a neoantigen), expression silencing (neoantigen genes downregulated more than two-fold in the opposite group), and multi-mechanism escape. It computes vaccine target scores (a 1.5x breadth bonus for shared targets and 25% per escape mechanism, interpretive weights, not statistical) and classifies the 516 neoantigen-producing genes into four internal categories that the manuscript presents as three tiers (see below). Outputs to `data/FIG_7/05_summary/` and `.../THERAPEUTIC_TIERS/`.
 
----
+### Generate_Figure7_Panels.py
+Builds the four Figure 7 panels: A, neoantigen and fusion burden (SBS2-HIGH vs CNV-HIGH); B, the neoantigen-gene Venn with tier annotations; C, the *ANXA1* top peptides grouped by hotspot region and sorted by IC50 drop; D, the *ANXA1* gene track with domains and lollipop mutations colored by hotspot, linked to Panel C. Saved as PDF and PNG at 300 DPI.
 
-## Relationship to Other Figures
+### diagnostic_section7_numbers.py
+Section 4.5 number-audit script: recomputes the burden, binder, TCW-context, fusion, tier, and *ANXA1* numbers from the pipeline outputs so each quantitative claim in the text is confirmable against one source.
 
-- **Figure 4** provides the network partition, DE genes, concordant chains, and three-group assignments used throughout
-- **Figure 5** validates that the network is not a patient-specific artifact and identifies HPV/immune mutations as the patient-level differentiator
-- **Figures 6-7** follow up on the HPV infection signal, investigating the viral lifecycle framework and neoantigen landscape motivated by the HC-exclusive variant enrichment
+### RUN_NEOANTIGEN_PIEPLINE.sh
+SLURM wrapper that runs the six steps sequentially with environment switching, fail-fast handling, and pre-flight input checks.
+
+## Therapeutic Tiers
+
+Step06 computes four internal categories, which the manuscript collapses into three priority tiers:
+
+| Manuscript tier | Genes | Internal categories | Lead | Setting |
+|-----------------|-------|---------------------|------|---------|
+| Tier 1 (highest) | 105 shared | 1A_hot_shared_escaped (22) + 3_broad_coverage (83) | *MDK* | Broadly conserved across tumor states |
+| Tier 2 | 276 SBS2-specific | 1B_hot_sbs2_specific | *ANXA1* | Hot, immune-visible tumors |
+| Tier 3 | 135 CNV-specific | 2_cold_cnv_specific | - | Cold, immune-evasive tumors |
+
+Tier 1 is highest priority because its targets apply across the lifecycle axis; within it, the 22-gene escape subset (*KRT6A*, *PI3*, *KRT5*, *SERPINB2*) carries direct evidence of immune selection (in some CNV-HIGH cells the neoantigen-forming mutation has been removed by a correcting mutation or a fusion that deletes the junction, or the gene is downregulated), which de-risks immunogenicity. Tier 2 is immunostimulatory but unique to hot tumors. Tier 3 ranks last given the immunosuppressive state, but retains value because cold tumors otherwise lack targets. The three tiers sum to 516 genes; the Venn regions are 276 SBS2-specific / 105 shared / 135 CNV-specific (circle totals 381 SBS2, 240 CNV).
+
+## Key Results
+
+| Finding | Evidence |
+|---------|----------|
+| SBS2-HIGH carries more protein-altering variants | 1.13 vs 0.60 per cell |
+| SBS2-HIGH produces more predicted neoantigens | 2,361 vs 1,331, 1.77-fold (Fig 7a) |
+| SBS2-HIGH has more strong binders and differential neoantigens | 287 vs 164 (IC50 < 50 nM); 591 vs 352 |
+| Neoantigen background is A3-skewed in SBS2-HIGH | TCW context 18.9% vs 9.0% (Fisher OR = 2.36, p = 0.0037); neoantigen-forming subset 17.8% vs 9.0% (p = 0.015) |
+| Fusions do not track the immune divergence | CNV-HIGH 5,558 (10.2/cell), SBS2-HIGH 5,092 (9.3/cell), NORMAL 6,625 (12.1/cell) |
+| Three tiers from 516 neoantigen genes | Tier 1 = 105 shared (*MDK*), Tier 2 = 276 SBS2-specific (*ANXA1*), Tier 3 = 135 CNV-specific |
+| *ANXA1* is the top target | composite 324.9 (rank 1), 42 peptides, 8 strong binders, best IC50 = 13.1 nM, expressed in 99.5% of SBS2-HIGH cells (mean 8.48) |
+| *ANXA1* mutations are not A3 products | seven somatic mutations across six positions, none in TCW context |
+
+*ANXA1*'s mutations cluster in two hotspots within the annexin repeat domains: position 289 at the repeat 3/4 boundary (Phe289Leu, Phe289Ile) and positions 321 to 327 in repeat 4 (Asp321Glu, Ile322Val, Gln327Arg), with two more in repeat 3 (Asp258Glu, Met259Val). It ranks highly because it is recurrently mutated, near-uniformly expressed, and immune-visible, not because it is an A3 substrate.
+
+## Figure 7 Panels
+
+| Panel | Content | Manuscript |
+|-------|---------|------------|
+| A | Neoantigen and RNA fusion burden, SBS2-HIGH vs CNV-HIGH (1.77-fold neoantigen enrichment) | Fig 7a |
+| B | Neoantigen-gene Venn (276 / 105 / 135) with tier breakout | Fig 7b |
+| C | *ANXA1* top peptides by hotspot region, sorted by IC50 drop | Fig 7c |
+| D | *ANXA1* gene track with domains and lollipop mutations | Fig 7d |
+
+## Key Output Files
+
+| File | Location | Description |
+|------|----------|-------------|
+| `pipeline_config.yaml` | `01_neoantigen_inputs/` | Paths, parameters, group sizes |
+| `{group}.somatic_protein_altering.tsv` | `02_snpeff_annotation/` | Germline-subtracted missense variants |
+| `{group}_neoantigens.tsv` | `03_mhc_binding/` | Predicted binders with peptide detail |
+| `{group}_expression_weighted_ranking.tsv` | `03_mhc_binding/` | Composite-scored rankings |
+| `per_group_junction_summary.tsv` | `04_fusion_analysis/` | Fusion rates per group |
+| `vaccine_target_scores.tsv` | `05_summary/` | Integrated scoring with escape bonuses |
+| `all_genes_tiered.tsv` | `05_summary/THERAPEUTIC_TIERS/` | Complete tier assignments |
+| `Figure7_Combined.pdf` | `FIGURE_7_PANELS/` | Combined 4-panel figure |
+
+## Reference Data
+
+Ensembl GRCh38 release 115 proteome: `data/reference/Homo_sapiens.GRCh38.pep.all.fa` (245,535 isoforms, 19,885 gene symbols). The `pep.canonical.fa` file does not exist for release 115, so `pep.all.fa` is the correct source and selection is by longest isoform (the `Ensembl_canonical` tag is not present in release 115 headers).

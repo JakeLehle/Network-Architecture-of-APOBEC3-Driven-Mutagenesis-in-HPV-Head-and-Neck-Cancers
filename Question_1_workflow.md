@@ -1,384 +1,195 @@
 # Question 1 Workflow
 
-## Question 1: What is the fundamental relationship between A3 expression and observed A3-induced mutations in HNSCC?
+## Question 1: At single-cell resolution, where does A3-driven mutagenesis localize, and do A3A and A3B drive divergent mutational programs?
 
 ### Rationale
 
-APOBEC3 (A3) cytidine deaminases with access to the nuclear compartment (A3A, A3B, A3C, A3H) are capable of editing genomic DNA, producing characteristic C>T and C>G mutations captured by the COSMIC SBS2 mutational signature. However, the presence of A3 enzyme expression alone does not guarantee that A3-driven mutagenesis will occur in a given tumor. This question establishes the foundational observation of the paper: **A3A and A3B expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC**, implying the existence of unknown cofactors that regulate A3 enzymatic activity on genomic DNA. Additionally, this question dissects the individual and combinatorial contributions of A3A and A3B, establishing that A3B provides a baseline mutagenic state that saturates at high expression, while A3A continues to amplify mutagenesis without plateau.
+A3A and A3B are necessary but not sufficient for SBS2, and bulk tissue cannot say why because it averages over two layers of heterogeneity at once. First, A3A and A3B are not confined to tumor cells. A3A is expressed in macrophages and dendritic cells and A3B in plasma and CD10+ B cells, so a signature measured in bulk cannot be cleanly attributed to the cells that produced it. Second, even a pure population of tumor epithelial cells is not uniform, because the infecting virus sits at a different phase of its lifecycle from one cell to the next. As a result, no tumor presents an uncontaminated SBS2 signal in bulk, and the comparison against normal tissue cannot be made there.
 
-Beyond the expression-SBS2 relationship, this question systematically excludes genetic explanations for the differential SBS2 burden. Germline analysis (pan-cancer, 7 cancer types) found no inherited variants in A3 coding regions or genome-wide that explain the HIGH/LOW split. Somatic analysis (HNSC, 53 vs 53 TMB-controlled) found that the mutations distinguishing HIGH from LOW tumors reflect consequences of high mutation burden (immune evasion, apoptosis resistance) and tumor subtype differences, not causal cofactors enabling A3 activity. Together, these negative results narrow the search space to **transcriptional regulation**, motivating the network analysis in Question 2.
-
-### Key Results (v3, April 2026)
-
-| Metric | Value |
-|--------|-------|
-| HNSC tumors matched (DIRECT only) | 426 |
-| SBS2 range | 0 -- 728 mutations |
-| SBS2 median | 18 |
-| Tumors with SBS2 > 0 | 275 (64.6%) |
-| Coral region (A3 + SBS2 HIGH) | ~213 |
-| Cream region (A3 + SBS2 LOW) | ~213 |
-| Teal region (no A3 + high SBS2) | 0 |
-| Low-A3 outliers (A3A+A3B < 1.0, SBS2 > median) | 3 (0.7%) |
-| Median-split quadrant medians | 5.5 / 18.0 / 24.0 / 20.5 |
-| Both-high vs neither p-value | See diagnostic output |
-| A3A-high-alone vs both-high p-value | ns (p=0.11, saturation signal) |
-| SBS signature source | SigProfilerAssignment, COSMIC v3.4, exome mode |
-| Germline enrichment (HNSC, 6938 tested) | 0 BH-significant variants |
-| Pan-cancer germline (7 cancers, 728 patients) | 0 BH-significant A3 variants |
-| Somatic enrichment (53 vs 53, TMB-adjusted) | CASP8 and HLA-A enriched in HIGH; 16 genes depleted |
+This question moves to single-cell resolution to resolve both layers. Using the HPV16-positive HNSCC dataset GSE173468, with tumor and matched normal-adjacent tissue, we call somatic mutations and assign SBS2 to each cell, then ask two things: whether A3-driven mutagenesis localizes to a specific epithelial compartment, and whether A3A and A3B drive divergent classes of genomic damage within that compartment, point mutations (SBS2) versus copy-number change (CNV). This section establishes the localization and the divergence that the rest of the paper builds on.
 
 ### Data Sources
 
 | Source | Description |
 |--------|-------------|
-| [GDC Data Portal](https://portal.gdc.cancer.gov/) | TCGA RNA-seq gene expression (STAR - Counts, FPKM-UQ) across 33 cancer types |
-| [GDC Data Portal](https://portal.gdc.cancer.gov/) | TCGA MuTect2 Annotated Somatic Mutation MAFs across 33 cancer types (controlled access) |
-| SigProfilerAssignment | COSMIC v3.4 SBS signature weights computed from PASS-filtered somatic SNVs |
+| [SRA / GEO](https://www.ncbi.nlm.nih.gov/geo/) | GSE173468, HPV16-positive HNSCC scRNA-seq from tumor and matched normal-adjacent tissue (downloaded via SRAscraper) |
+| [COSMIC SBS Signatures](https://cancer.sanger.ac.uk/signatures/) | COSMIC v3.4 SBS reference signatures (`COSMIC_v3.4_SBS_GRCh38.txt`) |
+| [10x Genomics](https://support.10xgenomics.com/) | GRCh38 Cell Ranger reference genome (`refdata-gex-GRCh38-2020-A`) |
+| [Tabula Sapiens](https://huggingface.co/popV/tabula_sapiens_All_Cells) | Pre-trained popV HubModel for cell type annotation |
 
 ### Directory Structure
 
 ```
-scripts/TCGA/
-├── DOWNLOAD_TCGA_COUNT_DATA.sh              # SLURM Job 1: RNA-seq data acquisition
-├── Download_RNA-seq_Counts_TCGA.R           #   Step 1 -- Download from GDC
-├── Organize_RNA-seq_Counts_TCGA.R           #   Step 2 -- Organize & build manifest
-├── Master_TCGA_RNA-seq_Counts_Table.R       #   Step 3 -- Build master expression tables
-│
-├── ANALYZE_TCGA_COUNT_DATA.sh               # SLURM Job 2: Original analysis (Steps 4-8)
-├── Prep_mutation_analysis_files.R           #   Step 4 -- Match A3 expression <-> SBS signatures
-├── Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R  #   Step 5 (ORIGINAL) -- 6-panel Fig 1a
-├── Diagnostic_A3C_A3H_bystander.R          #   Step 6 (ORIGINAL) -- ROC/AUC (Fig 1b)
-├── Patient_Level_HNSCC_TCGA_3D_A3s.R       #   Step 7 (ORIGINAL) -- 3D scatter (Fig 1c)
-├── A3A_A3B_additive_SBS2.R                 #   Step 8 (ORIGINAL) -- Additive model (Fig 1d-f)
-│
-├── Step05_Revised_HNSC_A3_vs_SBS2_v3.py    #   Step 5 (v3) -- 4-panel Fig 1 + supplemental
-│                                            #     Uses new SigProfiler v3.4 SBS2 counts
-│                                            #     DIRECT-only crosswalk (426 tumors)
-│                                            #     Replaces Steps 5-8 R scripts for figure gen
-│
-├── Step05_Panel_1d_Saturation.py            #   Panel 1d -- A3B saturation fan + threshold sweep
-│
-├── HNSC_Somatic_Enrichment_Analysis.py      #   Somatic mutation enrichment (HIGH vs LOW)
-│                                            #     Gene-level burden + TMB adjustment + KEGG
-│                                            #     Uses Step03 groups from network pipeline
-│
-├── VCF/                                     # Branch B: Somatic mutation & SBS signature pipeline
-│   ├── Diagnostic_TCGA_SNV_Availability.R   #   Step 0 -- Check GDC data availability
-│   ├── Download_MuTect2_VCFs_TCGA.R         #   Step 1 -- Download MuTect2 MAFs (10,939 samples)
-│   ├── Download_Pindel_VCFs_TCGA.R          #   Step 2 -- Download Pindel MAFs
-│   ├── Organize_SNV_VCFs_TCGA.R             #   Step 3 -- Build unified manifest
-│   ├── Consolidate_MAFs_TCGA.R              #   Step 4 -- Consolidate to pan-cancer master MAF
-│   ├── Run_SigProfiler.py                   #   Step 5 -- Build SBS96 matrix + COSMIC assignment
-│   ├── SIG_PROFILER_SCRIPT.sh               #   SLURM batch script for Steps 4-5
-│   │
-│   ├── Germline_SNP_Enrichment_Analysis.py          # HNSC-only germline (Tier 1+2)
-│   ├── Germline_SNP_Enrichment_Analysis_Tier_1.py   # HNSC-only germline (Tier 1 only)
-│   ├── Pan_Cancer_Germline_Feasibility_Diagnostic.py # Pan-cancer Phase 1: feasibility
-│   └── Pan_Cancer_Germline_Enrichment.py             # Pan-cancer Phase 2: enrichment
-│
-└── TROUBLESHOOTING/
-    ├── Diagnostic_Check_SBS2_Weight_Normalization.py   # Verified original SBS2 weights are
-    │                                                    # absolute counts (CV=4.22), not ratios
-    ├── Diagnostic_Compare_SBS_Weight_Sources.py        # Compared original vs new SigProfiler
-    │                                                    # outputs (Spearman rho=0.90 for HNSC)
-    ├── Diagnostic_Verify_Barcode_Matching.py           # Audited all 504 RNA-seq<->WES barcode
-    │                                                    # pairs; verified 3 low-A3 outliers
-    ├── Diagnostic_Figure1_Text_Numbers.py              # Extracted all text-ready numbers
-    ├── Diagnostic_Verify_CONTEXT_Indexing.py           # Verified CONTEXT[5] == ref base (20/20)
-    ├── Diagnostic_barcode_ambiguity_and_group_overlap.py # Compared 426 vs 502 group overlap
-    ├── TCGA_troubleshooting.R
-    ├── Compare_A3_Expression_Sources.R
-    ├── FILTER_MASTER_TCGA_TSV.R
-    ├── Global_TCGA_A3s_vs_SBS2.R
-    ├── Patient_Level_HNSCC_TCGA_Network_Analysis.R
-    ├── A3_Contribution_to_SBS2.R
-    └── Diagnose_nonlinear_A3_Relationships.R
+scripts/SINGLE_CELL/
+├── ClusterCatcher/                          # Full pipeline (engine for Figs 1, 2, and early supplementals)
+│   ├── README.md                            #   Comprehensive pipeline documentation (parameters live here)
+│   ├── environment.yml
+│   ├── cli/                                 #   sample-information, create-config, run-config
+│   └── snakemake_wrapper/                   #   Snakefile, per-module scripts, per-rule envs, rules
+├── Run_Cluster_Catcher_Pipeline.sh          # SLURM runner: install, configure, and execute ClusterCatcher
+├── Generate_Figure3_A3_Dominance_Slider.py  # Figure 3: A3A/A3B dominance divergence slider
+├── Step02_Supplemental_Marker_Validation.py # Supplemental: classical-marker validation of popV annotation
+├── Step01_Generate_Figure3_Panels.py        # Panel helper; its UMAP/COSMIC panels feed the ClusterCatcher-derived Fig 1/2 assembly (not a defined figure step)
+└── TROUBLESHOOTING/                          # Diagnostics and development scripts (not documented here)
 ```
+
+### External Dependencies
+
+| Software | Version | Purpose | Installation |
+|----------|---------|---------|--------------|
+| **ClusterCatcher** | >=1.3.0 | End-to-end scRNA-seq pipeline | `git clone https://github.com/Diako-Lab/ClusterCatcher.git && pip install -e .` |
+| **SRAscraper** | latest | Automated SRA data download | `git clone https://github.com/Diako-Lab/SRAscraper.git && pip install -e .` |
+| **Cell Ranger** | >=7.0 | FASTQ alignment and counting | [10x Genomics](https://support.10xgenomics.com/) |
+| **SComatic** | latest | Somatic mutation calling | `git clone https://github.com/cortes-ciriano-lab/SComatic.git` |
+| **CytoTRACE2** | latest | Stemness/potency scoring | `git clone https://github.com/digitalcytometry/cytotrace2.git` |
+| **Snakemake** | >=7.0 | Pipeline orchestration | `conda install -c bioconda snakemake` |
+
+---
 
 ### Pipeline Overview
 
-The analysis has three branches that converge:
+This question is engine-plus-two-analyses. ClusterCatcher does all of the heavy data processing and produces a single fully annotated AnnData object, `adata_final.h5ad`, that carries cell-type annotations, cancer/normal status, per-cell somatic mutations, and per-cell signature weights. Figures 1 and 2 and the early supplementals (cell-type annotation, A3 family localization, the mutation, SBS2, A3A, A3B and CNV UMAPs, and the aggregated COSMIC comparison) are assembled from these ClusterCatcher outputs separately, so there is no single repo script that "makes Figure 1" or "makes Figure 2."
 
-```
- BRANCH A: RNA-seq Expression (SLURM Jobs 1-2)
- ──────────────────────────────────────────────
-   Step 1-3: Download & build TCGA_master_FPKM_UQ.tsv
-   Step 4: Extract A3 expression, match to mutation data
-       |
-       +---> TCGA_master_FPKM_UQ.tsv (11,505 samples)
-            TCGA_sample_metadata_final.tsv (Project_ID)
-            Mutation_Table_Tumors_TCGA.tsv (barcode crosswalk)
+Two bespoke analyses live in this directory as standalone main-dir scripts:
 
+- **`Generate_Figure3_A3_Dominance_Slider.py`** produces Figure 3, the within-tissue SBS2-versus-CNV divergence axis split by A3A versus A3B dominance.
+- **`Step02_Supplemental_Marker_Validation.py`** produces the supplemental classical-marker validation of the popV annotations.
 
- BRANCH B: Somatic Mutation SBS Signatures (scripts/TCGA/VCF/)
- ──────────────────────────────────────────────────────────────
-   Step 0: Diagnostic -- check GDC availability
-   Step 1: Download MuTect2 MAFs (10,939 samples, 33 cancer types)
-   Step 2: Download Pindel MAFs
-   Step 3: Organize & verify files, build unified manifest
-   Step 4: Consolidate per-sample MAFs -> pan-cancer master MAF
-           + per-cancer MAFs + SigProfiler input files (PASS + ALL)
-   Step 5: Build SBS96 matrix from CONTEXT column -> SigProfilerAssignment
-       |
-       +---> TCGA_SBS_signature_counts.tsv (absolute counts per sig)
-            TCGA_SBS_signature_weights.tsv
-            TCGA_MuTect2_master_manifest.tsv (Entity_ID -> Cancer_Type)
-            per_cancer/TCGA-HNSC_mutations.maf.tsv (full annotated MAF)
-
-
- BRANCH C: Network Pipeline Group Selection (scripts/NETWORK/)
- ──────────────────────────────────────────────────────────────
-   Step01: Clean expression matrix
-   Step02: Merge expression + SBS signatures via crosswalk (UPDATED)
-   Step03: Define HIGH/LOW groups (A3 median + SBS2 top/bottom 25%)
-       |
-       +---> TCGA-HNSC_SBS2_HIGH_group.pkl (53 tumors)
-            TCGA-HNSC_SBS2_LOW_group.pkl (53 tumors)
-
-
- CONVERGENCE: Figure 1 + Enrichment Analyses
- ────────────────────────────────────────────
-   Step05_Revised_HNSC_A3_vs_SBS2_v3.py
-     Inputs: Branches A + B
-     Output: 4-panel Figure 1, HNSC_A3_SBS2_matched_v3.tsv (426 tumors)
-
-   Germline_SNP_Enrichment_Analysis.py (HNSC) +
-   Pan_Cancer_Germline_Enrichment.py (7 cancers)
-     Inputs: Branches A + B + per-cancer MAFs
-     Output: 0 BH-significant germline variants
-
-   HNSC_Somatic_Enrichment_Analysis.py
-     Inputs: Branch C groups + per-cancer MAF + per-sample MAFs
-     Output: CASP8/HLA-A enriched; NSD1/TP53 depleted; Apoptosis KEGG
-       |
-       v
-   NARRATIVE: Genetic sequence (germline + somatic) cannot explain
-   differential SBS2 -> cofactors must be transcriptional
-   -> MOTIVATES QUESTION 2 (network analysis)
-```
-
-### Environments
-
-| Environment | Scripts | Purpose |
-|-------------|---------|---------|
-| `RNA-seq_NovoGene` | Steps 1-4 (R), VCF Steps 0-4 (R) | TCGA data download, processing |
-| `SComatic` | VCF Step 5 (Python) | SigProfilerAssignment |
-| `NETWORK` | Revised Step 5, enrichment scripts, diagnostics | Figure generation, analysis |
+`Step01_Generate_Figure3_Panels.py` remains in the directory as a panel helper. Its UMAP and COSMIC panels feed the ClusterCatcher-derived Figure 1 and 2 assembly rather than standing as a defined figure step, so it is not written up as one below.
 
 ---
 
-### Revised Step 5 (v3): Figure 1 Generation (CURRENT)
+### ClusterCatcher: the engine
 
-**Script:** `Step05_Revised_HNSC_A3_vs_SBS2_v3.py`
+ClusterCatcher (v1.3.0) runs as a seven-module Snakemake pipeline launched by `Run_Cluster_Catcher_Pipeline.sh`. Full parameter documentation is in the [ClusterCatcher README](https://github.com/Diako-Lab/ClusterCatcher); the condensed view of what each module contributes to this question is below.
 
-The primary Figure 1 generation script. Replaces the original R scripts (Steps 5-8) with a single Python script. v3 uses DIRECT-only crosswalk matches (426 tumors), dropping all 76 CASE_ID matches which had ambiguous WES manifest entries.
+| Module | Script | Produces |
+|--------|--------|----------|
+| 1. Alignment | `cellranger_count.py` | GRCh38 alignment, filtered feature-barcode matrices, CB-tagged BAMs |
+| 2-3. QC + annotation | `scanpy_qc_annotation.py` | Adaptive MAD QC, Scrublet doublet removal, popV annotation with cluster-level refinement; annotation and composition UMAPs that feed Figure 1 and Supplemental Figure 1 |
+| 4. Cancer detection | `cancer_cell_detection.py` | CytoTRACE2 + inferCNV dual-model consensus; `cnv_score` and stemness per cell, feeding Supplemental Figure 5 |
+| 5. Viral detection | `kraken2_viral_detection.py` | Per-cell organism counts including HPV16 (used downstream in Question 4) |
+| 6. Mutation calling | `scomatic_mutation_calling.py` | Cell-type-pooled, germline-filtered somatic variants, per-cell callable sites |
+| 7. Signature deconvolution | `signature_analysis.py` | 96-context matrix, semi-supervised NNLS refit against COSMIC v3.4, per-cell signature weights; writes `adata_final.h5ad` |
 
-**Change from v2 to v3:** After the barcode diagnostic (`Diagnostic_barcode_ambiguity_and_group_overlap.py`) showed all 76 CASE_ID matches have ambiguous WES manifest entries (duplicate rows) and were absent from the original analysis crosswalk file, v3 filters to DIRECT crosswalk matches only. This reduced the dataset from 502 to 426 tumors but provides verified RNA-to-WES barcode provenance for every sample.
+Key processing choices that matter for interpretation: somatic calls are pooled within each annotated cell type and normalized to each cell's callable sites (depth >= 5); signature refitting always retains SBS2, SBS13, and SBS5 and adds other HNSCC-relevant COSMIC signatures by scree-plot elbow on reconstruction error; the basal annotation in `adata.obs` is lowercase `basal cell`.
 
-**Dependencies:** `pandas`, `numpy`, `matplotlib`, `scipy`
-
-**Input:**
-- `TCGA_master_FPKM_UQ.tsv` -- full pan-cancer expression matrix (from Step 3)
-- `TCGA_sample_metadata_final.tsv` -- Project_ID for cancer type filtering
-- `Mutation_Table_Tumors_TCGA.tsv` -- barcode crosswalk (RNA-seq <-> WES), DIRECT matches only
-- `TCGA_SBS_signature_counts.tsv` -- SigProfiler v3.4 absolute SBS counts (from VCF Step 5)
-- `TCGA_MuTect2_master_manifest.tsv` -- HNSC WES Entity_IDs
-
-**Output (-> `data/FIG_1/`):**
-- `HNSC_A3_SBS2_matched_v3.tsv` -- 426 matched tumors (canonical dataset)
-- `FIGURE_1_PANELS/Panel_1a_A3sum_vs_SBS2.pdf/.png`
-- `FIGURE_1_PANELS/Panel_1b_A3A_vs_A3B_SBS2.pdf/.png`
-- `FIGURE_1_PANELS/Panel_1c_Boxplot_Heatmap.pdf/.png`
-- `FIGURE_1_PANELS/Supplemental_Low_A3_High_SBS2_Zoom.pdf/.png`
-- `TROUBLESHOOTING/figure1_v3_pipeline_report.txt`
-
-**Panel 1d (separate script):** `Step05_Panel_1d_Saturation.py` generates the A3B saturation fan chart and percentile threshold sweep, showing that A3B's contribution to SBS2 saturates (rho collapses around the 79th percentile) while A3A's does not (P90 keeps rising).
-
-**v3 Key Numbers:**
-- n = 426 tumors (DIRECT-only), quadrant medians: 5.5 / 18.0 / 24.0 / 20.5
-- Both-high does NOT exceed A3A-high-alone (ns, p=0.11) -- the saturation signal
-- A3B saturates, A3A does not
-
-**Usage:**
-```bash
-conda run -n NETWORK python scripts/TCGA/Step05_Revised_HNSC_A3_vs_SBS2_v3.py
-conda run -n NETWORK python scripts/TCGA/Step05_Panel_1d_Saturation.py
-```
+**Engine outputs used in this question:** `signatures/adata_final.h5ad` and `signatures/signature_weights_per_cell.txt`.
 
 ---
 
-### Network Pipeline Step02 Update (April 2026)
+### Figure 3: A3 dominance divergence slider
 
-**Script:** `scripts/NETWORK/Step02_Merge_SBS_Signatures.py` (UPDATED)
+**Script:** `Generate_Figure3_A3_Dominance_Slider.py`
 
-The network pipeline's Step02 was updated to use the new SigProfiler v3.4 counts with the DIRECT crosswalk merge strategy, replacing the old direct inner join on the legacy `Mutation_Table_Tumors_TCGA.tsv`.
+This is the one bespoke analysis behind a main figure in this section. It tests whether the A3A-to-SBS2 and A3B-to-CNV link, which is visible in the Figure 2 UMAPs but weak at the level of global expression, sharpens when cells are split by which enzyme dominates.
 
-**What changed:**
-- Old: merged expression directly with `Mutation_Table_Tumors_TCGA.tsv` (unknown provenance, 65 COSMIC sigs, RNA-barcode-indexed) via inner join on Entity_ID
-- New: loads SigProfiler v3.4 counts (WES-barcode-indexed), uses old file ONLY as crosswalk (RNA -> WES barcode mapping), DIRECT matches only
+**Approach:**
+- Restrict to basal cells expressing either enzyme (A3A + A3B > 0).
+- Define an A3A dominance fraction, A3A / (A3A + A3B); cells above 0.5 are A3A-dominant, below 0.5 A3B-dominant.
+- Place each cell on a within-tissue axis, z(SBS2) minus z(CNV), where SBS2 and the inferCNV `cnv_score` are each standardized within that tissue's expressing-either population. Standardizing within tissue keeps "center" at each tissue's own median so the tumor/normal marginal differences do not push normal off-center artefactually.
+- Plot four rows: A3A-dominant tumor, A3B-dominant tumor, A3A-dominant normal-adjacent, A3B-dominant normal-adjacent. The right pole is SBS2-high, the left pole is CNV-high (productive).
 
-**Why:** Ensures the network pipeline (Steps 03-08) uses the same SBS2 values with documented provenance as Figure 1. The old pipeline got ~425 HNSC tumors with old SBS2 values; the updated pipeline gets 426 with v3.4 SBS2 values.
+**Design notes carried in the script header (worth keeping in mind for the text):**
+- Stemness (CytoTRACE2) is deliberately not blended into the productive pole, because the A3A fraction anti-correlates with stemness in both tumor and normal, so stemness is not tumor-specific. The productive pole is CNV alone.
+- The per-enzyme A3 > 0 conditioning is gone; conditioning on expressing cells deleted the co-occurrence signal. Dominance is defined among cells expressing either enzyme.
+- Absolute A3 level is not the axis driver. SBS2 does not separate the two enzymes at the level of absolute expression; dominance does.
 
-**Impact on downstream:** Steps 03-08 run unchanged. The output pkl has the same column structure (Entity_ID, Project_ID, SBS2, ENSG columns, A3 aliases). Two informational columns added (WES_Barcode, match_source) for audit trail.
+**Input:** `data/FIG_4/00_input/adata_final.h5ad`, `data/FIG_4/00_input/signature_weights_per_cell.txt`. `TARGET_CELL_TYPE = "basal cell"`.
 
----
+**Output (-> `data/FIG_3/figures/`):**
+- `Figure3_A3_dominance_slider.pdf` / `.png` (300 DPI). SBS2 pole `#ed6a5a`, CNV pole `#F6D155`.
 
-### Germline SNP Enrichment Analysis
-
-**Goal:** Test whether inherited germline variants in A3 coding regions or genome-wide explain why some A3-expressing tumors accumulate high SBS2 while others do not.
-
-**HNSC-only scripts:**
-- `Germline_SNP_Enrichment_Analysis.py` -- Tier 1 + Tier 2 combined
-- `Germline_SNP_Enrichment_Analysis_Tier_1.py` -- Tier 1 only (high confidence)
-
-**Pan-cancer scripts:**
-- `Pan_Cancer_Germline_Feasibility_Diagnostic.py` -- Phase 1: feasibility across 33 cancers
-- `Pan_Cancer_Germline_Enrichment.py` -- Phase 2: two-track enrichment across testable cancers
-
-**Group selection:** Identical to network pipeline Step03 (above-median A3A+A3B, rank by SBS2, top/bottom 25%, equal-sized groups).
-
-**Germline identification:** Two-tiered from MuTect2 FILTER column:
-- Tier 1 (high confidence): `alt_allele_in_normal` flag
-- Tier 2 (moderate confidence): `germline_risk` flag only
-
-**Results (HNSC):**
-- Track A (general): 6,938 recurrent germline SNPs tested, 93 nominal (p<0.05), 0 BH-significant
-- Track B (A3-specific): 33 A3 gene variants cataloged, none significant
-
-**Results (pan-cancer, 7 cancers, 728 patients):**
-- Track A: 0 BH-significant variants in any cancer
-- Track B: 187 unique A3 variants across 281 observations, none significant
-- Suggestive patterns: A3H variants cluster in LOW (protective), A3D/A3B in HIGH (activity-enhancing), but underpowered
-
-**Key limitation:** MuTect2 is a somatic caller; germline flags are incidental annotations, not a systematic germline survey. A definitive test would require dedicated germline calls (e.g., GATK HaplotypeCaller from MC3/dbGaP). This limitation is documented in the methods.
-
-**Interpretation:** Common germline variation cannot explain differential SBS2 burden at detectable effect sizes.
+**Honest caveat for the text:** the separation is carried mainly by CNV, low CNV on the A3A-dominant side, rather than by high SBS2, since SBS2 is shared between the two enzymes. This fits the maintenance (low-CNV) versus productive (high-CNV) framing that Question 4 develops.
 
 ---
 
-### Somatic Mutation Enrichment Analysis (NEW, April 2026)
+### Supplemental: classical-marker annotation validation
 
-**Script:** `HNSC_Somatic_Enrichment_Analysis.py`
+**Script:** `Step02_Supplemental_Marker_Validation.py`
 
-**Goal:** Test whether tumors with high SBS2 acquire different somatic mutations that could enable higher A3 activity. Uses MuTect2 for its intended purpose (somatic calling), addressing the primary limitation of the germline analysis.
+Validates the popV cell-type annotations with classical markers, providing an audit trail for how the 12 populations were assigned.
 
-**Groups:** Loaded from Step03 output pkls (53 HIGH + 53 LOW), ensuring identical patient sets with the network pipeline.
+**Approach:**
+1. Load `adata_final.h5ad` and confirm `final_annotation` in `.obs`.
+2. Run Wilcoxon rank-sum differential expression to find the top 20 markers per cell type.
+3. Save the full marker table; log where each curated marker ranks within the top 20.
+4. Generate a UMAP grid of two curated markers per cell type.
 
-**Somatic variant selection:** FILTER == "PASS" from per-cancer MAF. Keeps SNPs and indels.
+**Input:** `adata_final.h5ad`.
 
-**Phases:**
-1. TMB computation and comparison (HIGH vs LOW)
-2. Track A: gene-level burden (non-silent, damaging/LOF, silent control) + TMB-adjusted logistic regression
-3. Track B: A3-specific somatic variant catalog
-4. APOBEC trinucleotide context from per-sample MAF CONTEXT column
-5. Track C: gene set enrichment (Harris interactors, network communities, DDR, chromatin remodelers) + KEGG via Enrichr
+**Output (-> `data/FIG_3/`):**
+- `Supplemental_Marker_Genes_Top20_Per_CellType.tsv`, `selected_marker_genes.tsv`
+- `Supplemental_Figure_Marker_Validation.pdf` / `.png` (Supplemental Figure 3)
 
-**Key Results:**
+**Curated markers (12 cell types x 2):**
 
-*TMB confounding:* HIGH tumors have 1.5x more mutations (median 470 vs 232, p=4.7e-9). TMB adjustment is essential.
-
-*Enriched in HIGH (TMB-adjusted):*
-- CASP8 (15H/2L, Fisher p=0.001, LR p=0.008) -- apoptosis; loss allows heavily mutated cells to survive
-- HLA-A (9H/2L, LR p=0.046) -- antigen presentation; loss enables immune evasion
-- KEGG: Apoptosis only significant pathway (adj p=0.0006)
-
-*Depleted in HIGH (TMB-adjusted, 16 genes):*
-- NSD1 (4H/10L, LR p=0.001) -- histone H3K36 methyltransferase; loss defines a different HNSCC subtype
-- TP53 (14H/25L in damaging track, p=0.04) -- more common in LOW, associated with NSD1-mutant subtype
-
-*Silent control:* 1/311 nominal (AHNAK, giant gene). Confirms non-silent signal is not TMB artifact.
-
-*A3 somatic:* 15 variants across 10 patients, scattered, no pattern. A3 genes are not somatic targets.
-
-*APOBEC context:* 43.9% of all PASS SNPs at TCW motifs (expected for HNSC).
-
-*Track C:* Community 10 nominally enriched (1 hit in 3 tested genes, p=0.026) but does not survive BH. No gene set reaches significance.
-
-**Interpretation:** Somatic mutations distinguishing HIGH from LOW reflect consequences of high mutation burden (CASP8/HLA-A = survival and immune evasion) and tumor subtype differences (NSD1/TP53 depletion), NOT causal cofactors enabling A3 activity. This narrows the search to transcriptional regulation.
-
-**Output (-> `data/FIG_1/SOMATIC_ENRICHMENT/`):**
-- `HNSC_somatic_track_A_nonsilent.tsv` (with frac_apobec_context column)
-- `HNSC_somatic_track_A_damaging.tsv`
-- `HNSC_somatic_track_A_silent.tsv`
-- `HNSC_somatic_track_A_tmb_adjusted.tsv` (with LR BH correction)
-- `HNSC_somatic_track_B_a3_variants.tsv`
-- `HNSC_somatic_track_C_geneset_enrichment.tsv`
-- `HNSC_somatic_track_C_kegg_enrichr.tsv`
-- `HNSC_somatic_tmb_comparison.tsv`
-- `HNSC_somatic_apobec_context_by_gene.tsv`
-- `HNSC_somatic_enrichment_report.txt`
-
-**Usage:**
-```bash
-conda run -n NETWORK python scripts/TCGA/HNSC_Somatic_Enrichment_Analysis.py
-```
+| Cell Type | Marker 1 | Marker 2 |
+|-----------|----------|----------|
+| CD4+ T cell | *IL7R* | *CD3E* |
+| B cell | *CD79A* | *MS4A1* |
+| CD8+ T cell | *CD8A* | *CCL5* |
+| Regulatory T cell | *TIGIT* | *CTLA4* |
+| Macrophage | *CD68* | *SPI1* |
+| Myeloid DC | *LAMP3* | *CCR7* |
+| Plasmacytoid DC | *IL3RA* | *LILRA4* |
+| Mast cell | *TPSAB1* | *CPA3* |
+| Fibroblast | *DCN* | *COL1A1* |
+| Smooth muscle | *TAGLN* | *RGS5* |
+| Basal cell | *KRT5* | *TACSTD2* |
+| Endothelial cell | *PECAM1* | *VWF* |
 
 ---
 
-### VCF Pipeline (scripts/TCGA/VCF/)
+### Figure and Supplemental Summary
 
-Independent pipeline that downloads all TCGA somatic mutation data and recomputes COSMIC SBS signature weights. This replaced a pre-processed signature file of unknown provenance.
-
-**Scale:** 10,939 samples across 33 cancer types, 87.6 million total mutations, 6.58 million PASS-filtered somatic SNVs.
-
-**Key output:** `TCGA_SBS_signature_counts.tsv` -- absolute mutation count attributions per COSMIC v3.4 signature per sample. Used as input to the revised Step 5 and the updated network pipeline Step02.
-
-**CONTEXT column verification:** `Diagnostic_Verify_CONTEXT_Indexing.py` confirmed that the 11-mer CONTEXT column has the reference base at 0-indexed position [5] (1-indexed position 6). The trinucleotide extraction in `Run_SigProfiler.py` using positions [4],[5],[6] is correct (20/20 match in test).
-
-**Comparison with original file (Diagnostic_Compare_SBS_Weight_Sources.py):**
-- Original: 8,465 samples, 65 signatures (older COSMIC version), integer counts
-- New: 10,936 samples, 86 signatures (COSMIC v3.4), integer counts
-- HNSC-specific Spearman rho = 0.90 (strong rank agreement despite different decompositions)
-- Decision: Use new counts for documented provenance and current COSMIC version
-
-For full VCF pipeline documentation, see the `TCGA_Analysis` reference document.
-
----
-
-### Original R Scripts (Steps 5-8, SUPERSEDED)
-
-These R scripts produced the original 6-panel Figure 1. They are retained in the repository for reference but are superseded by `Step05_Revised_HNSC_A3_vs_SBS2_v3.py` for the current manuscript.
-
-| Script | Original Panel | Status |
-|--------|---------------|--------|
-| `Patient_Level_HNSCC_TCGA_A3s_vs_SBS2.R` | Fig 1a (scatter) | Superseded by Step05 v3 Panel 1a |
-| `Diagnostic_A3C_A3H_bystander.R` | Fig 1b (ROC) | Dropped per PI directive (4/2) |
-| `Patient_Level_HNSCC_TCGA_3D_A3s.R` | Fig 1c (3D) | Dropped per PI directive (4/2) |
-| `A3A_A3B_additive_SBS2.R` | Fig 1d-f (additive) | Superseded by Step05 v3 Panels 1b-c |
-
----
-
-### Troubleshooting Scripts
-
-| Script | Purpose | Key Finding |
-|--------|---------|-------------|
-| `Diagnostic_Check_SBS2_Weight_Normalization.py` | Check if original SBS2 weights are ratio-based | CV=4.22, absolute counts confirmed |
-| `Diagnostic_Compare_SBS_Weight_Sources.py` | Compare original vs new SigProfiler outputs | HNSC rho=0.90, different COSMIC versions |
-| `Diagnostic_Verify_Barcode_Matching.py` | Audit all RNA-seq<->WES barcode pairs | 502/502 pass, 3 outliers verified |
-| `Diagnostic_Figure1_Text_Numbers.py` | Extract text-ready numbers for results section | All quadrant medians, p-values, region counts |
-| `Diagnostic_Verify_CONTEXT_Indexing.py` | Verify CONTEXT column indexing in MAF files | Position [5] (0-indexed) == ref base, 20/20 confirmed |
-| `Diagnostic_barcode_ambiguity_and_group_overlap.py` | Compare 426-only vs 502 groups, check CASE_ID ambiguity | All 76 CASE_ID matches ambiguous; HIGH Jaccard=0.82, LOW=0.80 |
-
----
-
-### Figure 1 Summary (v3)
-
-**Title:** A3A and A3B expression is necessary but not sufficient for SBS2 mutagenesis in HNSCC.
-
-| Panel | Content | Script |
-|-------|---------|--------|
-| a | HNSC summed A3A+A3B vs SBS2 scatter with colored regions | `Step05_Revised_HNSC_A3_vs_SBS2_v3.py` |
-| b | A3A vs A3B per tumor, colored by SBS2 (depth-sorted) | `Step05_Revised_HNSC_A3_vs_SBS2_v3.py` |
-| c | Box-and-whisker + 2x2 heatmap of median-split quadrants | `Step05_Revised_HNSC_A3_vs_SBS2_v3.py` |
-| d | A3B saturation fan + percentile threshold sweep | `Step05_Panel_1d_Saturation.py` |
-| Supp | Zoomed view of low-A3/high-SBS2 boundary (4 tumors labeled) | `Step05_Revised_HNSC_A3_vs_SBS2_v3.py` |
+| Figure | Content | Source |
+|--------|---------|--------|
+| Fig 1 | Cell-type annotation and A3A/A3B localization to the basal compartment | Assembled from ClusterCatcher annotation outputs |
+| Fig 2 | A3-association multipanel: normalized mutations, SBS2, A3A, A3B UMAPs; SBS2 and CNV associations; aggregated 96-context versus COSMIC SBS2 | Assembled from ClusterCatcher outputs (mutations, weights, expression, inferCNV) |
+| Fig 3 | A3A/A3B dominance divergence slider (within-tissue SBS2-vs-CNV axis) | `Generate_Figure3_A3_Dominance_Slider.py` |
+| Supp Fig 1 | Per-cell popV prediction UMAP | ClusterCatcher annotation |
+| Supp Fig 2 | A3 family expression across cell types | Assembled from ClusterCatcher outputs |
+| Supp Fig 3 | Classical-marker validation UMAPs (12 cell types x 2) | `Step02_Supplemental_Marker_Validation.py` |
+| Supp Fig 5 | CytoTRACE2 and inferCNV per cell | ClusterCatcher cancer detection |
 
 **Narrative arc:**
-1. A3A+A3B expression is necessary but not sufficient for SBS2 (Panel a)
-2. Both A3A and A3B contribute, with SBS2 signal concentrated where both are high (Panel b)
-3. A3B provides a baseline that A3A amplifies, with the highest burden requiring both (Panel c)
-4. A3B saturates at high expression while A3A does not, explaining the "necessary but not sufficient" pattern (Panel d)
-5. Germline variation (A3 coding + genome-wide) cannot explain differential SBS2 (germline analysis)
-6. Somatic mutations in HIGH reflect consequences (CASP8/HLA-A) and subtype (NSD1/TP53), not causes (somatic analysis)
-7. Unknown cofactors must regulate A3 activity at the transcriptional level -> **motivates Question 2 (network analysis)**
+1. Twelve cell populations resolve from the HPV16-positive HNSCC data; cluster-level popV annotation is validated by classical markers (Fig 1, Supplemental Figures 1 and 3).
+2. A3A and A3B expression concentrates almost exclusively in basal epithelial cells, with only low-level A3A in macrophages and myeloid dendritic cells (Fig 1, Fig 2a-c).
+3. Among basal cells, SBS2 burden associates with A3A more than A3B, but the global association is weak, and the aggregated trinucleotide profile of the highest-SBS2 cells matches the COSMIC SBS2 reference (Fig 2d-f).
+4. A subset of SBS2-positive basal cells carries no detectable A3A or A3B at capture, consistent with pulsatile A3 induction.
+5. Elevated CNV and stemness map instead to an A3B-associated basal subpopulation, so A3A-linked point mutations and A3B-linked chromosomal instability occupy separable subregions of the same compartment (Fig 2g-h).
+6. Splitting basal cells by A3 dominance and placing them on a within-tissue SBS2-vs-CNV axis resolves the divergence that global expression obscures: A3A-dominant cells shift toward SBS2, A3B-dominant cells toward CNV, and only in tumor (Fig 3).
+7. **Motivates Question 2:** apply differential co-expression network analysis to these populations to resolve the cofactor biology behind the divergence.
+
+### Key Results
+
+| Metric | Value |
+|--------|-------|
+| Total cells | 155,650 (129,828 tumor; 25,822 normal-adjacent) |
+| Samples / patients | 44 / 14 |
+| Cell populations resolved | 12 |
+| Basal epithelial cells | 52,126 (33.5%) |
+| A3A in basal | mean 1.62, 25.7% positive |
+| A3B in basal | mean 1.69, 33.2% positive |
+| A3A (low-level, off-target) | macrophages (mean 0.62, 10.7%), myeloid DC (mean 0.40, 7.3%) |
+| Basal cells with somatic calls + signature refitting | 31,912 |
+| Basal cells with SBS2 > 0 | 5,911 (18.5%) |
+| Spearman A3A vs SBS2 (all basal) | rho = 0.149, p = 3.06e-158 |
+| Spearman A3B vs SBS2 (all basal) | rho = 0.052, p = 1.86e-20 |
+| Spearman A3B vs CNV (all basal) | rho = 0.147, p = 9.85e-154 |
+| Spearman A3A vs CNV (all basal) | rho = -0.199, p = 3.35e-283 |
+| SBS2+ basal cells with no detectable A3A/A3B | 1,899 (32.1%) |
+| Divergence axis, A3A-dominant tumor | median +0.60 (n = 11,252) |
+| Divergence axis, A3B-dominant tumor | median -0.77 (n = 12,438) |
+| Divergence axis, normal-adjacent | overlapping near center (A3A-dom n = 119, A3B-dom n = 57) |
+| A3A fraction vs CNV (tumor vs normal) | rho = -0.44 vs +0.07 |
+| A3A fraction vs SBS2 (tumor vs normal) | rho = +0.05 vs +0.04 (weak in both) |
+
+| Method | Detail |
+|--------|--------|
+| Annotation | popV (Tabula Sapiens) + cluster-level refinement |
+| Cancer detection | CytoTRACE2 + inferCNV dual-model consensus |
+| Somatic mutation calling | SComatic (cell-type-pooled, germline-filtered) |
+| Signature deconvolution | Semi-supervised NNLS against COSMIC v3.4 |
+| Core signatures (always retained) | SBS2, SBS13, SBS5 |

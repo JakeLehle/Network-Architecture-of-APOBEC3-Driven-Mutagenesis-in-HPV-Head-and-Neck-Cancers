@@ -1,101 +1,63 @@
-# Network Architecture of APOBEC3-Driven Mutagenesis in HPV Head and Neck Cancers
+# Deciphering the Network Architecture of APOBEC3-Driven Mutagenesis in HPV+ Head and Neck Cancers
 
 ## Overview
 
-APOBEC3 (A3) cytidine deaminases are major drivers of somatic mutagenesis in head and neck squamous cell carcinoma (HNSCC), producing the characteristic SBS2 mutational signature. However, A3 expression alone fails to predict mutational burden: approximately 51% of A3-high tumors accumulate little SBS2. This paper uses differential co-expression network analysis across bulk TCGA and single-cell RNA-seq data to identify the transcriptional cofactors, HPV lifecycle context, and neoantigen consequences of APOBEC3-driven mutagenesis.
+APOBEC3A (A3A) and APOBEC3B (A3B) are controlled in normal epithelium, but human papillomavirus (HPV) infection dismantles that control and turns the enzymes against the host genome in head and neck squamous cell carcinoma (HNSCC). A3 expression is necessary but not sufficient for the SBS2 mutational signature, and bulk tissue cannot resolve why, because it averages across immune-compartment A3 expression and across tumor cells caught at different stages of the viral lifecycle. This study profiles single cells from HPV16-positive HNSCC tumors and matched normal-adjacent tissue (GSE173468) to resolve the cofactors, lifecycle context, and neoantigen consequences of A3-driven mutagenesis.
 
-The central finding is that the HPV16 viral lifecycle organizes the entire host mutagenic program. During E2-regulated maintenance, interferon-driven A3A mutagenesis generates SBS2 point mutations through a co-expression network anchored by the RNA-binding proteins RALY and HNRNPA2B1. As cells transition to productive infection, ATM-dependent replication stress shifts mutagenesis to A3B-driven chromosomal instability. This lifecycle framework explains why A3 expression is necessary but not sufficient for SBS2: the cofactor network must be co-activated, and that activation depends on the cell's position in the viral lifecycle.
+Within the basal epithelial compartment, A3A-linked SBS2 point mutations and A3B-linked copy-number change (CNV) diverge into two states. Differential co-expression networks built tumor against normal support a functional coactivator role for the A3 interactors *RALY* and *HNRNPA2B1*, and the enzymes themselves are co-expression-decoupled from their partners in tumor (the A3 wall), consistent with pulsatile A3 induction. The SBS2 and CNV programs track the maintenance and productive stages of the HPV16 lifecycle, so the SBS2:CNV ratio offers a molecular estimate of tumor age, and the neoantigens of the immune-visible SBS2-HIGH and immune-evasive CNV-HIGH states define tiered candidates for lifecycle-matched mRNA vaccines.
+
+The cohort-level TCGA validation of these findings is tracked separately in a companion repository; this repository covers the single-cell study only.
 
 ## Manuscript Structure
 
-The paper is organized as eight figures, each addressing a specific question. Every figure has a corresponding analysis directory with a detailed walkthrough file documenting the pipeline architecture, scripts, input/output files, key results, and troubleshooting.
+The paper is organized as seven figures across five analysis questions. Each question has an analysis directory under `scripts/` and a walkthrough documenting the pipeline architecture, scripts, inputs and outputs, and key results.
 
-| Figure | Question | Analysis Directory | Walkthrough |
-|--------|----------|-------------------|-------------|
-| 1 | [A3 expression vs SBS2 mutagenesis](#figure-1-a3-expression-vs-sbs2-mutagenesis) | [`scripts/TCGA/`](scripts/TCGA/) | [`Question_1_workflow.md`](scripts/TCGA/Question_1_workflow.md) |
-| 2 | [Bulk co-expression network](#figure-2-bulk-tcga-co-expression-network) | [`scripts/NETWORK/`](scripts/NETWORK/) | [`Question_2_workflow.md`](scripts/NETWORK/Question_2_workflow.md) |
-| 3 | [Single-cell resolution](#figure-3-single-cell-resolution) | [`scripts/SINGLE_CELL/`](scripts/SINGLE_CELL/) | [`Question_3_workflow.md`](scripts/SINGLE_CELL/Question_3_workflow.md) |
-| 4 | [Single-cell network analysis](#figure-4-single-cell-network-analysis) | [`scripts/NETWORK_SINGLE_CELL/`](scripts/NETWORK_SINGLE_CELL/) | [`Question_4_workflow.md`](scripts/NETWORK_SINGLE_CELL/Question_4_workflow.md) |
-| 5 | [Patient-specific effects](#figure-5-patient-specific-effects) | [`scripts/PATIENT_SPECIFIC_EFFECTS/`](scripts/PATIENT_SPECIFIC_EFFECTS/) | [`Question_5_workflow.md`](scripts/PATIENT_SPECIFIC_EFFECTS/Question_5_workflow.md) |
-| 6 | [HPV lifecycle](#figure-6-hpv-lifecycle) | [`scripts/HPV_ANALYSIS/`](scripts/HPV_ANALYSIS/) | [`Question_6_workflow.md`](scripts/HPV_ANALYSIS/Question_6_workflow.md) |
-| 7 | [Neoantigen landscape](#figure-7-neoantigen-landscape) | [`scripts/NEOANTIGEN/`](scripts/NEOANTIGEN/) | [`NEOANTIGEN_WALKTHROUGH.md`](scripts/NEOANTIGEN/NEOANTIGEN_WALKTHROUGH.md) |
+| Question | Figures | Analysis Directory | Walkthrough |
+|----------|---------|--------------------|-------------|
+| 1. [Single-cell localization and divergence](#question-1-single-cell-localization-and-divergence) | 1-3 | [`scripts/SINGLE_CELL/`](scripts/SINGLE_CELL/) | [`Question_1_workflow.md`](Question_1_workflow.md) |
+| 2. [Single-cell co-expression networks](#question-2-single-cell-co-expression-networks) | 4 | [`scripts/NETWORK_SINGLE_CELL/`](scripts/NETWORK_SINGLE_CELL/) | [`Question_2_workflow.md`](Question_2_workflow.md) |
+| 3. [Patient-specific effects](#question-3-patient-specific-effects) | 5 | [`scripts/PATIENT_SPECIFIC_EFFECTS/`](scripts/PATIENT_SPECIFIC_EFFECTS/) | [`Question_3_workflow.md`](Question_3_workflow.md) |
+| 4. [HPV16 lifecycle](#question-4-hpv16-lifecycle) | 6 | [`scripts/HPV_ANALYSIS/`](scripts/HPV_ANALYSIS/) | [`Question_4_workflow.md`](Question_4_workflow.md) |
+| 5. [Neoantigen landscape](#question-5-neoantigen-landscape) | 7 | [`scripts/NEOANTIGEN/`](scripts/NEOANTIGEN/) | [`Question_5_workflow.md`](Question_5_workflow.md) |
 
 ## Figure Summaries
 
-### Figure 1: A3 Expression vs SBS2 Mutagenesis
+### Question 1: Single-Cell Localization and Divergence
 
-**Question:** What is the fundamental relationship between A3 expression and observed A3-induced mutations in HNSCC?
+**Figures 1-3.** From 155,650 cells across 14 patients, A3A and A3B expression concentrates almost exclusively in the 52,126 basal epithelial cells. SBS2 burden localizes to that compartment, associating with A3A more than A3B, while CNV and stemness map instead to an A3B-associated subpopulation. Splitting basal cells by A3 dominance and placing them on a within-tissue SBS2-versus-CNV axis resolves the divergence that global expression obscures, and only in tumor. A subset of SBS2-positive cells carry no detectable A3A or A3B at capture, consistent with pulsatile A3 induction. All single-cell processing runs through ClusterCatcher (v1.3.0) and SRAscraper. See [`Question_1_workflow.md`](Question_1_workflow.md).
 
-A3A and A3B expression is necessary but not sufficient for SBS2 mutagenesis. A3A drives the SBS2 association in bulk (rho=0.149); A3B contributes minimally (rho=0.052) and saturates at the 79th percentile. Germline SNP analysis across 6,938 variants found zero BH-significant hits. Somatic enrichment analysis found that mutations distinguishing HIGH from LOW tumors (CASP8, HLA-A) reflect consequences of mutagenesis, not causes. Together, these negative results narrow the cofactor search to transcriptional regulation.
+### Question 2: Single-Cell Co-expression Networks
 
-**Pipeline:** Three-branch architecture (RNA-seq expression, somatic mutation signatures, network group selection) converging on Figure 1 generation and enrichment analyses. See [`Question_1_workflow.md`](scripts/TCGA/Question_1_workflow.md).
+**Figure 4.** Differential co-expression networks compare each tumor population to normal-adjacent basal cells. The SBS2-HIGH network (2,948 genes, 23 gene groups) and the CNV-HIGH network (4,886 genes, 38 gene groups) recover 54 and 109 of the 174 catalogued A3 interactors. A *RALY*-anchored activating program is conserved across both states, with *HNRNPA2B1* anchoring *CCL20* in SBS2-HIGH, nominating both as functional coactivators. A cornification differentiation program forms the clearest inhibiting chain, and every edge linking A3A or A3B to its neighbors is negative (the A3 wall), consistent with pulsatile induction. See [`Question_2_workflow.md`](Question_2_workflow.md).
 
-### Figure 2: Bulk TCGA Co-expression Network
+### Question 3: Patient-Specific Effects
 
-**Question:** Can differential co-expression network analysis identify gene communities associated with elevated SBS2 mutagenesis in A3-matched HNSCC tumors?
+**Figure 5.** Three patients contribute 74.1% of the SBS2-HIGH cells, but they are not transcriptionally distinct: their cells intermingle with everyone else's (silhouette = 0.021), and the network survives leave-one-patient-out removal with the A3 wall intact at 100%. What distinguishes the high contributors is somatic variants in HPV16-associated genes rather than the A3 program, several of which sit inside the network (*HLA-C*, *MX1*, *MDM2*), pointing toward the virus. See [`Question_3_workflow.md`](Question_3_workflow.md).
 
-Differential co-expression network (HIGH minus LOW, 53 vs 53 tumors matched for A3 sum) identifies 11 main communities plus 33 satellites (1,131 genes, 2,599 edges). A3B lands in a 134-gene community with no significant KEGG enrichment. Zero Harris A3 interactors and only 1/24 cell-type markers are recovered. Bulk data cannot resolve A3-specific pathway biology, motivating the single-cell approach.
+### Question 4: HPV16 Lifecycle
 
-**Pipeline:** Eight-step modular pipeline (clean, merge, DE, correlation, threshold sweep, Leiden, centrality, figure generation). See [`Question_2_workflow.md`](scripts/NETWORK/Question_2_workflow.md).
+**Figure 6.** SBS2-HIGH cells carry HPV16 in maintenance (more E1-driven maintenance reads, immune-visible, A3A-dominant), while CNV-HIGH cells carry it in productive infection (more L1/L2 capsid reads, an ATM-dependent damage response, G2/M arrest, A3B-dominant), at roughly 2.6-fold higher viral load. E6/E7 dosage does not differ and E2 is intact, so both populations carry episomal virus. A cell's lifecycle position sets both the active enzyme and the class of damage, and the SBS2:CNV ratio estimates tumor age along the maintenance-to-productive axis. See [`Question_4_workflow.md`](Question_4_workflow.md).
 
-### Figure 3: Single-Cell Resolution
+### Question 5: Neoantigen Landscape
 
-**Question:** At single-cell resolution, are SBS2 mutational signatures localized to a specific cell type in HNSCC?
-
-SBS2 mutagenesis localizes to basal epithelial cells co-expressing A3A and A3B. High SBS2 weight associates with A3A while high CNV burden associates with A3B, revealing divergent mutagenic fates within the basal compartment. 32.1% of SBS2-positive basal cells show no detectable A3A/A3B expression, consistent with pulsatile APOBEC induction. All single-cell data processed with ClusterCatcher (v1.3.0) and SRAscraper.
-
-**Pipeline:** ClusterCatcher Snakemake pipeline (Cell Ranger, popV annotation, CytoTRACE2 + inferCNV, SComatic, SigProfiler) plus two post-pipeline figure generation scripts. See [`Question_3_workflow.md`](scripts/SINGLE_CELL/Question_3_workflow.md).
-
-### Figure 4: Single-Cell Network Analysis
-
-**Question:** Does single-cell differential co-expression network analysis resolve A3-specific cofactor biology that bulk data cannot?
-
-Three pairwise networks (SBS2 vs CNV, SBS2 vs NORMAL, CNV vs NORMAL) recover what bulk cannot: RALY is the top hub across all three networks, 54-116 Harris A3 interactors are recovered (vs 0 in bulk), and a directionally coherent activating chain links A3A to immune/inflammatory genes (CCL20, LCN2, SMOX) through RALY and HNRNPA2B1. A3A and A3B show 100% negative DIFF edges (the "A3 wall"), consistent with their roles in opposing mutagenic programs.
-
-**Pipeline:** Unified three-network pipeline using the same threshold selection and Leiden community detection framework as Figure 2. See [`Question_4_workflow.md`](scripts/NETWORK_SINGLE_CELL/Question_4_workflow.md).
-
-### Figure 5: Patient-Specific Effects
-
-**Question:** Is the SBS2-HIGH population a generalizable transcriptional program or an artifact of individual patients?
-
-Three patients contribute 67.6% of SBS2-HIGH cells but are not transcriptionally distinct (PCA silhouette = 0.125). The co-expression network survives leave-one-patient-out removal with the A3 wall intact at 100%. What distinguishes high-contributor patients is somatic mutations in HPV infection and antigen presentation genes (HLA-B, HLA-C, TAP1), motivating the HPV lifecycle analysis.
-
-**Pipeline:** Three-tier analysis (expression profiling, somatic variant analysis, network sensitivity testing) with six main scripts plus figure generation. See [`Question_5_workflow.md`](scripts/PATIENT_SPECIFIC_EFFECTS/Question_5_workflow.md).
-
-### Figure 6: HPV Lifecycle
-
-**Question:** How does HPV16 viral lifecycle stage determine the divergent mutagenic programs observed in APOBEC3-active epithelial cells?
-
-SBS2-HIGH cells carry HPV16 in E2-regulated maintenance (25.7% reads to E1/E2, immune-visible, A3A-dominant). CNV-HIGH cells carry HPV16 in ATM-dependent productive infection (23.4% reads to L1/L2, 2x viral load, A3B-dominant). E6/E7 dosage is identical between groups. E2 is intact (not disrupted by integration). A panel of 53 host marker genes validates predictions from established HPV biology (Doorbar, Laimins, McBride labs).
-
-**Pipeline:** Four-phase HPV data extraction pipeline (inventory, raw UMI recovery, threshold detection, genome alignment) plus lifecycle diagnostic and figure generation. See [`Question_6_workflow.md`](scripts/HPV_ANALYSIS/Question_6_workflow.md).
-
-### Figure 7: Neoantigen Landscape
-
-**Question:** How does HPV lifecycle stage shape the neoantigen landscape and therapeutic vulnerability of each population?
-
-SBS2-HIGH cells produce 1.77x more predicted neoantigens per cell (2,361 vs 1,331). ANXA1 is the top target (IC50 = 13.1 nM, 42 neoantigen peptides, 99.5% cell coverage). The neoantigen landscape partitions into four therapeutic tiers: Tier 1A (22 shared + escaped, hot tumor targets), Tier 1B (276 SBS2-specific, ANXA1 leads), Tier 2 (135 CNV-specific + checkpoint blockade), Tier 3 (83 broad coverage backbone). RNA fusion rates are similar across groups; specific fusion partners drive asymmetric immune escape.
-
-**Pipeline:** Six-step pipeline (prep, SnpEff annotation, MHCflurry binding with proteome-based peptides, expression-weighted ranking, fusion analysis, immune escape integration) plus figure generation. See [`NEOANTIGEN_WALKTHROUGH.md`](scripts/NEOANTIGEN/NEOANTIGEN_WALKTHROUGH.md).
+**Figure 7.** SBS2-HIGH cells produce 1.77-fold more predicted neoantigens than CNV-HIGH cells (2,361 vs 1,331) on an A3-skewed mutational background. The 516 neoantigen-producing genes partition into three priority tiers: Tier 1, 105 broadly conserved shared targets led by *MDK* (with a 22-gene escape subset under direct immune selection); Tier 2, 276 SBS2-specific hot-tumor targets led by *ANXA1*; and Tier 3, 135 CNV-specific cold-tumor targets. *ANXA1* is the top single target, expressed in 99.5% of SBS2-HIGH cells with a best IC50 of 13.1 nM. See [`Question_5_workflow.md`](Question_5_workflow.md).
 
 ## Computational Environment
 
-All analyses were performed on the titan/zeus HPC cluster at Texas Biomedical Research Institute using SLURM job scheduling.
+All analyses ran on the titan/zeus HPC cluster at Texas Biomedical Research Institute under SLURM.
 
 | Environment | Primary Use |
-|-------------|------------|
-| `NETWORK` | Network analysis, figure generation, scanpy, matplotlib |
-| `NEOANTIGEN` | SnpEff annotation, MHCflurry binding prediction |
-| `sc_pre` | Single-cell preprocessing (ClusterCatcher) |
-| `SComatic` | Somatic mutation calling, SigProfiler |
-| `RNA-seq_NovoGene` | TCGA data download and processing (R) |
+|-------------|-------------|
+| `ClusterCatcher` | Single-cell preprocessing, annotation, mutation calling, signatures (bundles its own sub-environments) |
+| `NETWORK` | Co-expression networks, patient and lifecycle analysis, figure generation |
+| `NEOANTIGEN` | SnpEff annotation and MHCflurry binding prediction |
 
 ## Data
 
-All TCGA data were accessed through the GDC API under dbGaP authorization. Single-cell RNA-seq data are from GSE173468 (31 HPV+ HNSCC samples). The Ensembl GRCh38 release 115 reference proteome is used for neoantigen peptide generation.
+Single-cell RNA-seq data are from GSE173468: 14 patients, 44 samples, 155,650 cells, of which 52,126 are basal epithelial. Somatic signatures are refit against COSMIC v3.4, and neoantigen peptides are generated against the Ensembl GRCh38 release 115 reference proteome. Raw reads are retrieved with SRAscraper and processed through the ClusterCatcher pipeline.
 
 ## Authors
 
-Jake D. Lehle, Mohadeseh Soleimanpour, Niloofar Haghjoo, Colin Rorex, Feng Li, Armando Mendez, Diako Ebrahimi
+Jake D. Lehle, Mohadeseh Soleimanpour, Niloofar Haghjoo, Colin Rorex, Feng Li, Armando Mendez, Rachael Rodriguez, Elizabeth Sommer, Diako Ebrahimi
 
 Texas Biomedical Research Institute
