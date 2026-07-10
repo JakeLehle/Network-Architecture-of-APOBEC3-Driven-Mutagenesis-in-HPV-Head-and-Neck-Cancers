@@ -17,11 +17,17 @@ This version adds four validation items requested for the manuscript update:
       manuscript taxonomy, with MDK's tier location made explicit, plus a
       reconciliation check on the small tier4_dual_neo_fusion bucket
 
+BEAT 5 additionally reports TCW-context prevalence under TWO substitution
+scopes so both can be kept on hand for the manuscript:
+  - C>T and C>G  (SBS2 + SBS13; the current manuscript text)
+  - C>T only     (SBS2 arm; if the C>G/SBS13 arm is dropped)
+
 Verifies:
   BEAT 1: Neoantigen + fusion burden (Panel A)
   BEAT 2: Venn overlap + tier framework (Panel B), mapped to 3 text tiers
   BEAT 3: ANXA1 deep dive (Panels C-D), incl. TCW context
   BEAT 4: Summary stats for closing
+  BEAT 5: TCW-context prevalence across groups (both substitution scopes)
 
 Usage:
     conda run -n NETWORK python diagnostic_section7_numbers.py
@@ -385,6 +391,21 @@ def classify_tcw(ref, alt, tri):
     return False, False
 
 
+def classify_tcw_ctonly(ref, alt, tri):
+    """C>T-only APOBEC TCW classification (SBS2 arm; excludes the C>G/SBS13 arm).
+    Returns (is_tcw, is_c_class) where is_c_class flags C>T only
+    (incl. G>A on the minus strand).
+    """
+    if tri is None or len(tri) != 3:
+        return False, False
+    if ref == 'C' and alt == 'T':
+        return (tri[0] == 'T' and tri[2] in ('A', 'T')), True
+    if ref == 'G' and alt == 'A':
+        rc = ''.join(_COMP[b] for b in reversed(tri))
+        return (rc[0] == 'T' and rc[2] in ('A', 'T')), True
+    return False, False
+
+
 def _anxa1_domain(aa_pos):
     for s, e, name in ANXA1_DOMAINS:
         if s <= aa_pos <= e:
@@ -655,7 +676,11 @@ def _load_scomatic_tri_index(needed_keys):
 def beat5_tcw_prevalence():
     """Compare TCW-context prevalence between SBS2-HIGH and CNV-HIGH across
     two variant sets (protein-altering, neoantigen-producing) and two
-    fraction denominators (of C>T/C>G class, of all variants).
+    fraction denominators (of C-substitution class, of all variants).
+
+    Runs under TWO substitution scopes so both stay on hand for the manuscript:
+      - C>T and C>G  (SBS2 + SBS13; the current manuscript text)
+      - C>T only     (SBS2 arm; if the C>G/SBS13 arm is dropped)
 
     Supports the claim: while ANXA1 itself is non-TCW, SBS2-HIGH may carry a
     higher overall TCW fraction, tying its neoantigen excess to A3 activity.
@@ -731,13 +756,10 @@ def beat5_tcw_prevalence():
     tri_idx = _load_scomatic_tri_index(needed)
     log(f"  Resolved {len(tri_idx)}/{len(needed)} positions")
 
-    # ---- Step 4: classify and tabulate
-    def tabulate(df, subset_keys=None, label=""):
-        """Return dict of counts for a variant set."""
-        n_total = 0
-        n_cclass = 0
-        n_tcw = 0
-        n_resolved = 0
+    # ---- Step 4: tabulator (substitution scope selectable via classifier)
+    def tabulate(df, subset_keys, label, classifier):
+        """Return dict of counts for a variant set under a given classifier."""
+        n_total = n_cclass = n_tcw = n_resolved = 0
         for _, r in df.iterrows():
             if subset_keys is not None:
                 k = (str(r['location']), str(r.get('hgvs_p', '')))
@@ -748,7 +770,7 @@ def beat5_tcw_prevalence():
             if tri is None:
                 continue
             n_resolved += 1
-            is_tcw, is_c = classify_tcw(str(r['ref']), str(r['alt']), tri)
+            is_tcw, is_c = classifier(str(r['ref']), str(r['alt']), tri)
             if is_c:
                 n_cclass += 1
             if is_tcw:
@@ -760,50 +782,53 @@ def beat5_tcw_prevalence():
             'frac_of_all': (n_tcw / n_total) if n_total else float('nan'),
         }
 
-    rows = []
-    for group in ['SBS2_HIGH', 'CNV_HIGH']:
-        if group not in pa:
-            continue
-        rows.append((group, 'protein_altering',
-                     tabulate(pa[group], None, f"{group} / protein-altering")))
-        rows.append((group, 'neoantigen_producing',
-                     tabulate(pa[group], neo_variant_keys.get(group, set()),
-                              f"{group} / neoantigen-producing")))
+    # ---- Steps 5-6: run, print matrix, and Fisher-test under one definition
+    def run_definition(def_label, classifier):
+        rows = []
+        for group in ['SBS2_HIGH', 'CNV_HIGH']:
+            if group not in pa:
+                continue
+            rows.append((group, 'protein_altering',
+                         tabulate(pa[group], None,
+                                  f"{group} / protein-altering", classifier)))
+            rows.append((group, 'neoantigen_producing',
+                         tabulate(pa[group], neo_variant_keys.get(group, set()),
+                                  f"{group} / neoantigen-producing", classifier)))
 
-    # ---- Step 5: print matrix
-    banner("TCW PREVALENCE MATRIX", char="-")
-    log(f"  {'group':10s}  {'set':22s}  {'n':>5s}  {'C>T/G':>6s}  "
-        f"{'TCW':>4s}  {'TCW/Cclass':>11s}  {'TCW/all':>8s}")
-    log(f"  {'-'*10}  {'-'*22}  {'-'*5}  {'-'*6}  {'-'*4}  {'-'*11}  {'-'*8}")
-    for group, vset, t in rows:
-        log(f"  {group:10s}  {vset:22s}  {t['n_total']:5d}  {t['n_cclass']:6d}  "
-            f"{t['n_tcw']:4d}  {t['frac_of_c']:11.3f}  {t['frac_of_all']:8.3f}")
+        banner(f"TCW PREVALENCE MATRIX -- {def_label}", char="-")
+        log(f"  {'group':10s}  {'set':22s}  {'n':>5s}  {'Cclass':>6s}  "
+            f"{'TCW':>4s}  {'TCW/Cclass':>11s}  {'TCW/all':>8s}")
+        log(f"  {'-'*10}  {'-'*22}  {'-'*5}  {'-'*6}  {'-'*4}  {'-'*11}  {'-'*8}")
+        for group, vset, t in rows:
+            log(f"  {group:10s}  {vset:22s}  {t['n_total']:5d}  {t['n_cclass']:6d}  "
+                f"{t['n_tcw']:4d}  {t['frac_of_c']:11.3f}  {t['frac_of_all']:8.3f}")
 
-    # ---- Step 6: Fisher tests SBS2 vs CNV for each variant set
-    banner("SBS2 vs CNV FISHER TESTS (TCW vs non-TCW)", char="-")
-    by_set = {}
-    for group, vset, t in rows:
-        by_set.setdefault(vset, {})[group] = t
+        banner(f"SBS2 vs CNV FISHER TESTS -- {def_label}", char="-")
+        by_set = {}
+        for group, vset, t in rows:
+            by_set.setdefault(vset, {})[group] = t
+        for vset, gd in by_set.items():
+            if 'SBS2_HIGH' not in gd or 'CNV_HIGH' not in gd:
+                continue
+            s = gd['SBS2_HIGH']; c = gd['CNV_HIGH']
+            a = s['n_tcw']; b = s['n_cclass'] - s['n_tcw']
+            cc = c['n_tcw']; d = c['n_cclass'] - c['n_tcw']
+            log(f"\n  {vset} (denominator: C-substitution class):")
+            log(f"    SBS2: {a} TCW / {s['n_cclass']} C-class ({s['frac_of_c']:.1%})")
+            log(f"    CNV:  {cc} TCW / {c['n_cclass']} C-class ({c['frac_of_c']:.1%})")
+            if have_scipy and (a + b) > 0 and (cc + d) > 0:
+                try:
+                    odds, p = fisher_exact([[a, b], [cc, d]])
+                    direction = "SBS2 > CNV" if s['frac_of_c'] > c['frac_of_c'] else "CNV >= SBS2"
+                    log(f"    Fisher exact: OR={odds:.2f}, p={p:.3g}  ({direction})")
+                    log(f"    -> {'higher TCW fraction in SBS2-HIGH, suggesting A3-driven excess' if (s['frac_of_c'] > c['frac_of_c'] and p < 0.05) else 'no significant TCW-fraction difference at p<0.05'}")
+                except Exception as e:
+                    log(f"    Fisher failed: {e}")
+        return rows
 
-    for vset, gd in by_set.items():
-        if 'SBS2_HIGH' not in gd or 'CNV_HIGH' not in gd:
-            continue
-        s = gd['SBS2_HIGH']
-        c = gd['CNV_HIGH']
-        # 2x2 on the C-class denominator (the conventional APOBEC test)
-        a = s['n_tcw']; b = s['n_cclass'] - s['n_tcw']
-        cc = c['n_tcw']; d = c['n_cclass'] - c['n_tcw']
-        log(f"\n  {vset} (denominator: C>T/C>G class):")
-        log(f"    SBS2: {a} TCW / {s['n_cclass']} C-class ({s['frac_of_c']:.1%})")
-        log(f"    CNV:  {cc} TCW / {c['n_cclass']} C-class ({c['frac_of_c']:.1%})")
-        if have_scipy and (a + b) > 0 and (cc + d) > 0:
-            try:
-                odds, p = fisher_exact([[a, b], [cc, d]])
-                direction = "SBS2 > CNV" if s['frac_of_c'] > c['frac_of_c'] else "CNV >= SBS2"
-                log(f"    Fisher exact: OR={odds:.2f}, p={p:.3g}  ({direction})")
-                log(f"    -> {'higher TCW fraction in SBS2-HIGH, suggesting A3-driven excess' if (s['frac_of_c'] > c['frac_of_c'] and p < 0.05) else 'no significant TCW-fraction difference at p<0.05'}")
-            except Exception as e:
-                log(f"    Fisher failed: {e}")
+    # Both definitions: current text (C>T + C>G) and the SBS2-only (C>T) variant
+    run_definition("C>T and C>G  (SBS2 + SBS13; current manuscript text)", classify_tcw)
+    run_definition("C>T only  (SBS2 arm)", classify_tcw_ctonly)
 
     log(f"\n  NOTE: TCW fraction is reported per VARIANT (deduped), not per peptide,")
     log(f"  so a variant producing many binders is counted once.")

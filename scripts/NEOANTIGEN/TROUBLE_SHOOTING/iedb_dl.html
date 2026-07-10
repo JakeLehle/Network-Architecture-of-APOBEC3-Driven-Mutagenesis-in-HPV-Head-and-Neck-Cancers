@@ -1,0 +1,549 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<!--[if IE 7 ]> <html lang="en" class="ie7"> <![endif]-->
+<!--[if IE 8 ]> <html lang="en" class="ie8"> <![endif]-->
+<!--[if IE 9 ]> <html lang="en" class="ie9"> <![endif]-->
+<!--[if (gt IE 9)|!(IE)]><!--> <html lang="en"> <!--<![endif]-->
+<head>
+	<meta http-equiv="X-UA-Compatible" content="IE=10; IE=9; IE=8; IE=7; IE=EDGE" />
+	<link rel="shortcut icon" href="/static/images/favicon.ico">
+	<title>Population Coverage Download</title>	
+	<!-- css -->
+	<link rel="stylesheet" href="/static/css/reset.css">
+	<link rel="stylesheet" href="/static/css/base.css">
+	
+	<!-- javascript -->
+	<script type="text/javascript" src="/static/js/jquery.js"></script>
+	<script type="text/javascript" src="/static/js/base.js"></script>
+	<script type="text/javascript" src="/static/js/sequence_validation.js"></script>
+
+	<script type="text/javascript">
+	$(document).ready(function(){
+		$(".iedb-nav .download").addClass("selected");
+	});
+</script>
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-S56K1PCVZE"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-S56K1PCVZE');
+</script>
+
+<!-- UA analytics - expiring June 2023 -->
+<script type="text/javascript">
+ 
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-21275858-2']);
+  _gaq.push(['_trackPageview']);
+ 
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+ 
+</script>
+</head>
+<body>
+	<style>
+		.alertbase {
+			padding: 15px;
+			/* margin-bottom: 20px; */
+			border: 1px solid transparent;
+			border-radius: 4px;
+			
+		}
+		
+		.alertbase.warning {
+			color: #8a6d3b;
+			background-color: #fcf8e3;
+			border-color: #faebcc;
+		}
+		
+		.closebtn {
+			margin-left: 15px;
+			color: #8a6d3b !important;
+			font-weight: bold !important;
+			float: right;
+			font-size: 22px;
+			line-height: 20px;
+			cursor: pointer;
+			transition: 0.3s;
+
+			/* vertically center the button */
+			transform: translate(-50%, -35%); 
+		}
+		
+		.closebtn:hover {
+			color: black !important;
+		}
+	</style>
+
+	<div class="header-wrap">
+		<a href="/"><span>IEDB Analysis Resource</span></a>
+
+		<!-- Next-Generation Tools Website Announcement -->
+		
+		
+		<div class="iedb-nav">
+			<ul>
+
+<li><a href="/population/" class="home" title="www.iedb.org &raquo; home">Home</a></li><li><a href="/population/help/" class="help">Help</a></li><li><a href="/population/example/" class="example">Example</a></li><li><a href="/population/reference/" class="reference">Reference</a></li><li><a href="/population/download/" class="download">Download</a></li><li><a href="/population/contact/" class="contact">Contact</a></li>
+</ul>
+		</div>
+	</div><!-- end of header-wrap -->
+		
+	<div style="clear:both;"></div>
+	
+	<div id="content">
+		
+		
+	<h2>Population Coverage - Download</h2>
+	<div class = "section">
+		Population Coverage tool contains collection of python scripts, a 'deps' directory as required/dependency,
+		which includes a pickled file containing all population coverage data (various population, alleles and
+		frequencies) and necessary python scripts.
+	</div>
+	<table id="license">
+	<tr>
+		<td>
+			<b>License Agreements</b><br>
+			By downloading the standalone tool, you are consenting to be bound by and become 
+			a party as the "Licensee" for the use of NetMHC 3.0".<br/>
+			Also you are consenting the terms and conditions of the Non-Profit Open Software License 
+			("Non-Profit OSL") version 3.0<br/>
+			Please read folowing two agreements before proceeding. If you
+			do not agree to all of the terms of these two agreements, you must
+			not click the download button, not install the product nor use the
+			product, and you do not become a LICENSEE under these agreements.<br/>
+
+<form>
+<textarea class="text" readonly="readonly">
+ACADEMIC SOFTWARE LICENSE AGREEMENT FOR END-USERS AT PUBLICLY FUNDED
+ACADEMIC, EDUCATION OR RESEARCH INSTITUTIONS FOR THE USE OF NetMHC 3.0
+By downloading the Software you are consenting to be bound by and become
+a party to this agreement as the "Licensee". If you do not agree to all
+of the terms of this agreement, you must not click the Acceptance
+button, not install the product nor use the product, and you do not
+become a LICENSEE under this agreement.
+
+If you are not a member of a publicly funded Academic and/or Education
+and/or Research Institution you must obtain a commercial license, please
+send mail to (software@cbs.dtu.dk). This software license agreement is
+entered into by and between Center for Biological Sequence Analysis,
+Technical University of Denmark (hereinafter "CBS") and the "LICENSEE".
+WHEREAS CBS has the right to license all copyrights and other property
+rights in the Licensed Software identified as NetMHC 3.0 and developed
+by CBS and CBS desires to license the Software so that it becomes
+available for public use and benefit.
+WHEREAS LICENSEE is a public funded Academic and/or Education and/or
+Research Institution.
+WHEREAS LICENSEE desires to acquire a free non-exclusive license to use
+the Software for internal research purposes only.
+NOW, THEREFORE, in consideration of the mutual promises and covenants
+contained herein, the parties agree as follows:
+
+1. Definitions
+"Licensed Software" means the specific version NetMHC 3.0 pursuant
+to this Agreement. Any opinion, findings, conclusions or recommendations
+expressed in the Licensed Software are those of the authors and do not
+necessarily reflect the views of CBS.
+
+2. License
+Subject to the terms and conditions of this Agreement a non-exclusive,
+non-transferable License to use and copy the Licensed Software is made
+available free of charge for the LICENSEE which is a non-profit
+educational, academic and/or research institution. The License is only
+granted for personal and internal use in research only at one Site,
+where a Site is defined as a set of contiguous buildings in one
+location. The software will be used at only one location of LICENSEE.
+This license does not entitle Licensee to receive from CBS copies of the
+Licensed software on disks, tapes or CD's, hard-copy documentation,
+technical support, telephone assistance, or enhancements or updates to
+the Licensed Software.
+The user and any research assistants, co-workers or other workers who
+may use the Software agree to not give the program to third parties or
+grant licenses on software, which include the Software, alone or
+integrated into other software, to third parties. Modification of the
+source code is prohibited without the prior written consent of CBS.
+
+3. Ownership
+Except as expressly licensed in this Agreement, CBS shall retain title
+to the Licensed Software, and any upgrades and modifications created by
+CBS.
+
+4. Consideration
+In consideration for the license rights granted by CBS, LICENSEE will
+obtain this academic license free of charge.
+
+5. Copies
+LICENSEE shall have the right to make copies of the Licensed Software
+for internal use at the Site and for back-up purposes under this
+Agreement, but agrees that all such copies shall contain the copyright
+notices and all other reasonable and appropriate proprietary markings or
+confidential legends that appear on the Licensed Software provided
+hereunder.
+
+6. Support
+CBS shall have no obligation to offer support services to LICENSEE, and
+nothing contained herein shall be interpreted as to require CBS to
+provide maintenance, installation services, version updates, debugging,
+consultation or end-user support of any kind.
+
+7. Software Protection
+LICENSEE acknowledges that the Licensed Software is proprietary to CBS.
+The software code shall be treated as trade secrets and confidential
+information of CBS, and LICENSEE agrees to use best efforts to hold the
+same in confidence. LICENSEE's obligation for confidentiality shall not
+extend to any information which is or becomes generally available to the
+public, is already known to or subsequently disclosed by third parties
+to LICENSEE and at its free disposal, or is independently developed by
+LICENSEE or its affiliates without the use of the confidential
+information disclosed by CBS, or is required by law or legal process.
+Except as other wise expressly permitted in this Agreement, Licensee my
+not (i) modify or create any derivative works of the Licensed Software
+or documentation, including customization, translation or localization;
+(ii) decompile, disassemble, reverse engineer, or otherwise attempt to
+derive the source code for the Product; (iii) redistribute, encumber,
+sell, rent, lease, sublicense, or otherwise transfer rights to the
+Licensed Software; (iv) remove or alter any trademark, logo, copyright
+or other proprietary notices, legends, symbols or labels in the Product;
+or (v) publish any results of benchmark tests run on the Product to a
+third party without CBS's prior written consent.
+
+8. Representations of CBS to LICENSEE
+CBS represents to LICENSEE that (i) CBS has the right to grant the
+License and to enter into this agreement, (ii) that, to the best of
+CBS's knowledge, the Licensed software does not infringe any patent,
+copyright or trade secrets of any third party, provided however that
+such representation and warranty shall not apply to any addition to, or
+modifications or adaptation of, the Licensed Software made by LICENSEE
+and (iii) CBS undertakes to use best efforts to cooperate with and
+assist LICENSEE, at LICENSEE's expense, in defending itself against any
+action based on the alleged infringement of any third party patent,
+copyright or trade secret rights resulting from or relating to the use
+or licensing of the Licensed Software by LICENSEE.
+
+9. Indemnity and Disclaimer of Warranties
+Except as expressly set forth in this agreement, CBS makes no
+representations or warranties, express or implied.
+The product is provided free of charge, and, therefore, on an "as is"
+basis, without warranty of any kind, express or implied, including
+without limitation the warranties that it is free of defects, virus
+free, able to operate on an uninterrupted basis, merchantable, fit for a
+particular purpose or non-interfering. The entire risk as to the quality
+and performance of the Licensed Software is borne by LICENSEE.
+By way of example, but not limitation, CBS makes no representations or
+warranties of merchantability or fitness for any particular application
+or, except as set forth in paragraph 8, that the use of the Software
+will not infringe any patents, copyrights or trademarks or other rights
+of third parties. The entire risk as to the quality and performance of
+the product is borne by LICENSEE. CBS shall not be liable for any
+liability or damages with respect to any claim by LICENSEE or any third
+party on account of, or arising from the license or use of the Software.
+Should the Licensed Software prove defective in any respect, LICENSEE
+and not LICENSOR or it's affiliates should assume the entire cost of any
+service and repair. This disclaimer of warranty constitutes an essential
+part of this agreement. No use of the licensed product is authorized
+hereunder except under this disclaimer.
+In no event will LICENSOR or its affiliates be liable for any indirect,
+special, incidental or consequential damages arising out of the use of
+or inability to use the product, including, without limitation, damages
+for lost profits, loss of goodwill, work stoppage, computer failure or
+malfunction, or any and all other commercial damages or losses, even if
+advised of the possibility thereof, and regardless of the legal or
+equitable theory (contract, tort or otherwise) upon which the claim is
+based.
+
+10. Promotional Advertising & References
+LICENSEE may not use the name of the Licensed Software in its
+promotional advertising, product literature, and other similar
+promotional materials to be disseminated to the public or any portion
+thereof. LICENSEE agrees not to identify CBS in any promotional
+advertising or other promotional materials to be disseminated to the
+public, or any portion thereof without CBS's prior written consent.
+LICENSEE agrees that any reference to the software for crystallographic
+computations will cite one or more publications as set forth in the
+manual and in agreement with common scientific practice. CBS shall not
+use LICENSEE's name in publicity or advertising involving this Agreement
+or otherwise without LICENSEE's prior written consent which may be
+withheld at LICENSEE's sole discretion.
+
+11. Term
+This Agreement and the license rights granted herein shall become
+effective as of the date this Agreement is executed by both parties and
+shall be perpetual unless terminated in accordance with this Section.
+CBS may terminate this Agreement at any time.
+Either party may terminate this Agreement at any time effective upon the
+other party's breach of any agreement, covenant, or representation made
+in this Agreement, such breach remaining uncorrected sixty (60) days
+after written notice thereof.
+LICENSEE shall have the right, at any time, to terminate this Agreement
+without cause by written notice to CBS specifying the date of
+termination.
+Upon termination, LICENSEE shall destroy all full and partial copies of
+the Licensed Software.
+
+12. Governing Law
+This Agreement shall be construed in accordance with the laws of
+Denmark.
+
+13. General
+The parties agree that this Agreement is the complete and exclusive
+agreement among the parties and supersedes all proposals and prior
+agreements whether written or oral, and all other communications among
+the parties relating to the subject matter of this Agreement. This
+Agreement cannot be modified except in writing and signed by both
+parties. Failure by either party at any time to enforce any of the
+provisions of this Agreement shall not constitute a waiver by such party
+of such provision nor in any way affect the validity of this Agreement.
+The invalidity of singular provisions does not affect the validity of
+the entire understanding. The parties are obligated, however, to replace
+the invalid provisions by a regulation which comes closest to the
+economic intent of the invalid provision. The same shall apply mutatis
+mutandis in case of a gap.
+IN WITNESS WHEREOF, the LICENSEE hereto have caused this Agreement to be
+duly executed on the date of the download of the software and by
+accepting the license conditions by pressing the Acceptance button.
+</textarea>
+
+<br/>
+
+<textarea class="text" readonly="readonly">
+This Non-Profit Open Software License ("Non-Profit OSL") version 3.0 (the "Licen
+se") applies to any original work of authorship (the "Original Work") whose owne
+r (the "Licensor") has placed the following licensing notice adjacent to the cop
+yright notice for the Original Work:
+
+Licensed under the Non-Profit Open Software License version 3.0
+
+1) Grant of Copyright License. Licensor grants You a worldwide, royalty-free, no
+n-exclusive, sublicensable license, for the duration of the copyright, to do the
+following:
+
+a) to reproduce the Original Work in copies, either alone or as part of a collec
+tive work;
+
+b) to translate, adapt, alter, transform, modify, or arrange the Original Work,
+thereby creating derivative works ("Derivative Works") based upon the Original W
+ork;
+
+c) to distribute or communicate copies of the Original Work and Derivative Works
+to the public, with the proviso that copies of Original Work or Derivative Work
+s that You distribute or communicate shall be licensed under this Non-Profit Ope
+n Software License or as provided in section 17(d);
+
+d) to perform the Original Work publicly; and
+
+e) to display the Original Work publicly.
+
+2) Grant of Patent License. Licensor grants You a worldwide, royalty-free, non-e
+xclusive, sublicensable license, under patent claims owned or controlled by the
+Licensor that are embodied in the Original Work as furnished by the Licensor, fo
+r the duration of the patents, to make, use, sell, offer for sale, have made, an
+d import the Original Work and Derivative Works.
+
+3) Grant of Source Code License. The term "Source Code" means the preferred form
+of the Original Work for making modifications to it and all available documenta
+tion describing how to modify the Original Work. Licensor agrees to provide a ma
+chine-readable copy of the Source Code of the Original Work along with each copy
+of the Original Work that Licensor distributes. Licensor reserves the right to
+satisfy this obligation by placing a machine-readable copy of the Source Code in
+an information repository reasonably calculated to permit inexpensive and conve
+nient access by You for as long as Licensor continues to distribute the Original
+Work.
+
+4) Exclusions From License Grant. Neither the names of Licensor, nor the names o
+f any contributors to the Original Work, nor any of their trademarks or service
+marks, may be used to endorse or promote products derived from this Original Wor
+k without express prior permission of the Licensor. Except as expressly stated h
+erein, nothing in this License grants any license to Licensor's trademarks, copy
+rights, patents, trade secrets or any other intellectual property. No patent lic
+ense is granted to make, use, sell, offer for sale, have made, or import embodim
+ents of any patent claims other than the licensed claims defined in Section 2. N
+o license is granted to the trademarks of Licensor even if such marks are includ
+ed in the Original Work. Nothing in this License shall be interpreted to prohibi
+t Licensor from licensing under terms different from this License any Original W
+ork that Licensor otherwise would have a right to license.
+
+5) External Deployment. The term "External Deployment" means the use, distributi
+on, or communication of the Original Work or Derivative Works in any way such th
+at the Original Work or Derivative Works may be used by anyone other than You, w
+hether those works are distributed or communicated to those persons or made avai
+lable as an application intended for use over a network. As an express condition
+for the grants of license hereunder, You must treat any External Deployment by
+You of the Original Work or a Derivative Work as a distribution under section 1(
+c).
+
+6) Attribution Rights. You must retain, in the Source Code of any Derivative Wor
+ks that You create, all copyright, patent, or trademark notices from the Source
+Code of the Original Work, as well as any notices of licensing and any descripti
+ve text identified therein as an "Attribution Notice." You must cause the Source
+Code for any Derivative Works that You create to carry a prominent Attribution
+Notice reasonably calculated to inform recipients that You have modified the Ori
+ginal Work.
+
+7) Warranty of Provenance and Disclaimer of Warranty. The Original Work is provi
+ded under this License on an "AS IS" BASIS and WITHOUT WARRANTY, either express
+or implied, including, without limitation, the warranties of non-infringement, m
+erchantability or fitness for a particular purpose. THE ENTIRE RISK AS TO THE QU
+ALITY OF THE ORIGINAL WORK IS WITH YOU. This DISCLAIMER OF WARRANTY constitutes
+an essential part of this License. No license to the Original Work is granted by
+this License except under this disclaimer.
+
+8) Limitation of Liability. Under no circumstances and under no legal theory, wh
+ether in tort (including negligence), contract, or otherwise, shall the Licensor
+be liable to anyone for any direct, indirect, special, incidental, or consequen
+tial damages of any character arising as a result of this License or the use of
+the Original Work including, without limitation, damages for loss of goodwill, w
+ork stoppage, computer failure or malfunction, or any and all other commercial d
+amages or losses. This limitation of liability shall not apply to the extent app
+licable law prohibits such limitation.
+
+9) Acceptance and Termination. If, at any time, You expressly assented to this L
+icense, that assent indicates your clear and irrevocable acceptance of this Lice
+nse and all of its terms and conditions. If You distribute or communicate copies
+of the Original Work or a Derivative Work, You must make a reasonable effort un
+der the circumstances to obtain the express assent of recipients to the terms of
+this License. This License conditions your rights to undertake the activities l
+isted in Section 1, including your right to create Derivative Works based upon t
+he Original Work, and doing so without honoring these terms and conditions is pr
+ohibited by copyright law and international treaty. Nothing in this License is i
+ntended to affect copyright exceptions and limitations (including "fair use" or
+"fair dealing"). This License shall terminate immediately and You may no longer
+exercise any of the rights granted to You by this License upon your failure to h
+onor the conditions in Section 1(c).
+
+10) Termination for Patent Action. This License shall terminate automatically an
+d You may no longer exercise any of the rights granted to You by this License as
+of the date You commence an action, including a cross-claim or counterclaim, ag
+ainst Licensor or any licensee alleging that the Original Work infringes a paten
+t. This termination provision shall not apply for an action alleging patent infr
+ingement by combinations of the Original Work with other software or hardware.
+
+11) Jurisdiction, Venue and Governing Law. Any action or suit relating to this L
+icense may be brought only in the courts of a jurisdiction wherein the Licensor
+resides or in which Licensor conducts its primary business, and under the laws o
+f that jurisdiction excluding its conflict-of-law provisions. The application of
+the United Nations Convention on Contracts for the International Sale of Goods
+is expressly excluded. Any use of the Original Work outside the scope of this Li
+cense or after its termination shall be subject to the requirements and penaltie
+s of copyright or patent law in the appropriate jurisdiction. This section shall
+survive the termination of this License.
+
+12) Attorneys' Fees. In any action to enforce the terms of this License or seeki
+ng damages relating thereto, the prevailing party shall be entitled to recover i
+ts costs and expenses, including, without limitation, reasonable attorneys' fees
+and costs incurred in connection with such action, including any appeal of such
+action. This section shall survive the termination of this License.
+
+13) Miscellaneous. If any provision of this License is held to be unenforceable,
+such provision shall be reformed only to the extent necessary to make it enforc
+eable.
+
+14) Definition of "You" in This License. "You" throughout this License, whether
+in upper or lower case, means an individual or a legal entity exercising rights
+under, and complying with all of the terms of, this License. For legal entities,
+"You" includes any entity that controls, is controlled by, or is under common c
+ontrol with you. For purposes of this definition, "control" means (i) the power,
+direct or indirect, to cause the direction or management of such entity, whethe
+r by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of
+the outstanding shares, or (iii) beneficial ownership of such entity.
+
+15) Right to Use. You may use the Original Work in all ways not otherwise restri
+cted or conditioned by this License or by law, and Licensor promises not to inte
+rfere with or be responsible for such uses by You.
+
+16) Modification of This License. This License is Copyright © 2005 Lawrence Ros
+en. Permission is granted to copy, distribute, or communicate this License witho
+ut modification. Nothing in this License permits You to modify this License as a
+pplied to the Original Work or to Derivative Works. However, You may modify the
+text of this License and copy, distribute or communicate your modified version (
+the "Modified License") and apply it to other original works of authorship subje
+ct to the following conditions: (i) You may not indicate in any way that your Mo
+dified License is the "Open Software License" or "OSL" and you may not use those
+names in the name of your Modified License; (ii) You must replace the notice sp
+ecified in the first paragraph above with the notice "Licensed under <insert
+your license name here>" or with a notice of your own that is not confusingly 
+similar to the notice in this License; and (iii) You may not claim that your original
+works are open source software unless your Modified License has been approved b
+y Open Source Initiative (OSI) and You comply with its license review and certif
+ication process.
+
+17) Non-Profit Amendment. The name of this amended version of the Open Software
+License ("OSL 3.0") is "Non-Profit Open Software License 3.0". The original OSL
+3.0 license has been amended as follows:
+
+(a) Licensor represents and declares that it is a not-for-profit organization th
+at derives no revenue whatsoever from the distribution of the Original Work or D
+erivative Works thereof, or from support or services relating thereto.
+
+(b) The first sentence of Section 7 ["Warranty of Provenance"] of OSL 3.0 has be
+en stricken. For Original Works licensed under this Non-Profit OSL 3.0, LICENSOR
+OFFERS NO WARRANTIES WHATSOEVER.
+
+(c) In the first sentence of Section 8 ["Limitation of Liability"] of this Non-P
+rofit OSL 3.0, the list of damages for which LIABILITY IS LIMITED now includes "
+direct" damages.
+
+(d) The proviso in Section 1(c) of this License now refers to this "Non-Profit O
+pen Software License" rather than the "Open Software License". You may distribut
+e or communicate the Original Work or Derivative Works thereof under this Non-Pr
+ofit OSL 3.0 license only if You make the representation and declaration in para
+graph (a) of this Section 17. Otherwise, You shall distribute or communicate the
+Original Work or Derivative Works thereof only under the OSL 3.0 license and Yo
+u shall publish clear licensing notices so stating. Also by way of clarification
+, this License does not authorize You to distribute or communicate works under t
+his Non-Profit OSL 3.0 if You received them under the original OSL 3.0 license.
+
+(e) Original Works licensed under this license shall reference "Non-Profit OSL 3
+.0" in licensing notices to distinguish them from works licensed under the origi
+nal OSL 3.0 license.
+</textarea>
+</form>
+
+		</td>
+	</tr>
+</table>
+	<div class = "section">
+		To download the tools in tar.gz format:
+		<input type="button" value="Agree and Download" onClick="window.location.href='https://downloads.iedb.org/tools/retrieve_package.php?tool=population'" />
+		<br/>
+		To return to the main page:
+		<input type="button" value="Decline" onclick="location.href='/population/';" />
+		<br/>
+		For previous versions, please click <a href="https://downloads.iedb.org/tools/population" target="_blank">here</a>.
+	</div>
+	<br/><br/>
+	<h2>All IEDB Tools Downloads</h2>
+<div id="generic-downloads">
+	<style>
+		#generic-downloads {
+			margin-top: 1em;
+		}
+	</style>
+	<!-- 
+	The only thing remaining should be a link to the downloads page on the new site that will open in a new tab, but a bit cleaner:
+	-->
+	Download and licensing information for all IEDB Tools is available on the <a href="https://nextgen-tools.iedb.org/download-all" target="_blank" rel="noopener noreferrer">Next-Generation Tools</a> site.
+	<br>
+</div>
+
+	</div>
+	
+	<hr width="100%">
+
+	<div id="footer">
+		<p style="line-height:1.4;"><small>&copy; 2005-2026 | <a href="https://www.iedb.org/">IEDB Home</a> | <a style="width: 100px;" class="uline" href="https://help.iedb.org">Help</a> | <a style="width: 100px;" class="uline" href="mailto:help@iedb.org">Contact</a><br>
+	Supported by a contract from the <a href="https://www.niaid.nih.gov/">National Institute of Allergy and Infectious Diseases</a>,
+	a component of the National Institutes of Health in the Department of Health and Human Services.</small></p></div>
+</body>
+
+</html>
