@@ -53,6 +53,15 @@ GROUPS = ['SBS2_HIGH', 'CNV_HIGH', 'NORMAL']
 # Standard chromosomes for VCF output
 STANDARD_CHROMS = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY']
 
+# STAR chimeric fusion detection (Step05a generates junctions into these paths).
+# Everything for the fusion sub-story lives under FIG_7 so it stays self-contained
+# and backup-able as one subtree. FASTQs share the same SRR base as the BAMs.
+FASTQ_BASE = BAM_BASE  # {FASTQ_BASE}/{SRR}/{SRR}_S1_L001_R[12]_001.fastq.gz
+STAR_CHIMERIC_DIR = os.path.join(PROJECT_ROOT, "data/FIG_7/04_fusion_analysis/star_chimeric")
+STAR_INDEX_DIR = os.path.join(STAR_CHIMERIC_DIR, "genome_index_2.7.11b")
+WHITELIST_PATH = os.path.join(STAR_CHIMERIC_DIR, "3M-february-2018.txt")
+WHITELIST_SRC = "/master/jlehle/cellranger-8.0.1/lib/python/cellranger/barcodes/3M-february-2018.txt.gz"
+
 # =============================================================================
 # LOGGING
 # =============================================================================
@@ -131,7 +140,24 @@ for grp in GROUPS:
 
 
 def write_vcf(variants_df, output_path, sample_name="SAMPLE"):
-    """Write minimal VCF from SComatic variants."""
+    """Write minimal VCF from SComatic variants.
+
+    COORDINATE NOTE (fixed 2026-07):
+    SComatic's `Start` column is ALREADY the 1-based genomic position of the
+    variant, so VCF POS is written as `Start` directly (no +1).
+
+    A prior version wrote `Start + 1`, assuming `Start` was 0-based (BED
+    convention). That shifted every variant one base 3', so SnpEff annotated the
+    base one position downstream, producing wrong effect/hgvs_p calls and
+    emitting WARNING_REF_DOES_NOT_MATCH_GENOME on nearly every record
+    (SBS2 3296, CNV 2713, NORMAL 3438). Evidence the shift was real and uniform:
+      - the reference genome carries the SComatic REF allele at `Start`, not at
+        `Start+1`, for 100% of variants (332/332 in the Fig 7 differential set);
+      - reported genomic substitutions were inconsistent with their SnpEff
+        protein changes (e.g. AUP1 recorded as G>C yet annotated Leu->Arg, which
+        is a T>G change, i.e. the DNA and protein calls sat one base apart).
+    Do NOT reintroduce the +1.
+    """
     filtered = variants_df[variants_df['#CHROM'].isin(STANDARD_CHROMS)].copy()
     filtered = filtered.drop_duplicates(subset=['#CHROM', 'Start', 'REF', 'Base_observed'])
 
@@ -150,7 +176,7 @@ def write_vcf(variants_df, output_path, sample_name="SAMPLE"):
         f.write(f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{sample_name}\n")
 
         for _, row in filtered.iterrows():
-            pos = int(row['Start']) + 1
+            pos = int(row['Start'])  # SComatic Start is already 1-based; do NOT +1 (see docstring)
             n_cells = len(variants_df[
                 (variants_df['#CHROM'] == row['#CHROM']) &
                 (variants_df['Start'] == row['Start']) &
@@ -193,6 +219,9 @@ def classify_apobec_context(ref_tri, ref, alt):
     """
     Classify whether a C>T or C>G mutation is in APOBEC (TCW) context.
     TCW = T[C>T/G]A or T[C>T/G]T (W = A or T)
+
+    Uses REF_TRI directly from the SComatic row, so this classification is
+    independent of the VCF POS convention and was unaffected by the Start+1 bug.
     """
     if ref not in ['C', 'G']:
         return 'non_C'
@@ -307,6 +336,56 @@ manifest_df.to_csv(manifest_path, sep='\t', index=False)
 log(f"  BAM manifest: {len(manifest_df)} samples -> {manifest_path}")
 
 # =============================================================================
+# STEP 5.5: STAR CHIMERIC SAMPLE LIST + WHITELIST (for the Step05a generator)
+# =============================================================================
+log_sep("STEP 5.5: STAR chimeric sample list and whitelist")
+
+os.makedirs(STAR_CHIMERIC_DIR, exist_ok=True)
+
+# Derive the samples to align at runtime FROM THE CURRENT GROUPS, so the fusion
+# alignment always covers exactly the SRRs the current cells live in (never a
+# stale hand-kept list). Barcodes are formatted BASE-1-SRRxxxxxxxx, so the SRR
+# is the third '-' field.
+group_srrs = set()
+for bc in all_group_bcs:
+    parts = bc.split('-')
+    if len(parts) >= 3:
+        group_srrs.add(parts[2])
+
+# Keep only SRRs whose R1+R2 FASTQs are present; the array cannot align without them.
+alignable, missing_fastq = [], []
+for srr in sorted(group_srrs):
+    r1 = os.path.join(FASTQ_BASE, srr, f"{srr}_S1_L001_R1_001.fastq.gz")
+    r2 = os.path.join(FASTQ_BASE, srr, f"{srr}_S1_L001_R2_001.fastq.gz")
+    if os.path.exists(r1) and os.path.exists(r2):
+        alignable.append(srr)
+    else:
+        missing_fastq.append(srr)
+
+sample_list_path = os.path.join(STAR_CHIMERIC_DIR, "sample_list.txt")
+with open(sample_list_path, 'w') as f:
+    for srr in alignable:
+        f.write(f"{srr}\n")
+
+log(f"  SRRs in current groups:    {len(group_srrs)}")
+log(f"  Alignable (R1+R2 present): {len(alignable)} -> {sample_list_path}")
+if missing_fastq:
+    log(f"  WARNING: {len(missing_fastq)} group SRR(s) lack FASTQs and were skipped: {missing_fastq}")
+
+# Decompress the 10x barcode whitelist once (STAR needs it as plain text).
+if os.path.exists(WHITELIST_PATH):
+    log(f"  Whitelist present: {WHITELIST_PATH}")
+elif os.path.exists(WHITELIST_SRC):
+    log(f"  Decompressing whitelist: {WHITELIST_SRC}")
+    import gzip, shutil
+    with gzip.open(WHITELIST_SRC, 'rb') as fin, open(WHITELIST_PATH, 'wb') as fout:
+        shutil.copyfileobj(fin, fout)
+    n_wl = sum(1 for _ in open(WHITELIST_PATH))
+    log(f"  Whitelist -> {WHITELIST_PATH} ({n_wl} barcodes)")
+else:
+    log(f"  WARNING: whitelist source not found at {WHITELIST_SRC}; Step05a will fail until present")
+
+# =============================================================================
 # STEP 6: PIPELINE CONFIG
 # =============================================================================
 log_sep("STEP 6: Pipeline config")
@@ -329,6 +408,8 @@ config = {
         'snpeff_annotation': os.path.join(PROJECT_ROOT, "data/FIG_7/02_snpeff_annotation"),
         'mhc_binding': os.path.join(PROJECT_ROOT, "data/FIG_7/03_mhc_binding"),
         'fusion_analysis': os.path.join(PROJECT_ROOT, "data/FIG_7/04_fusion_analysis"),
+        'star_chimeric': STAR_CHIMERIC_DIR,
+        'star_chimeric_index': STAR_INDEX_DIR,
         'neoantigen_summary': os.path.join(PROJECT_ROOT, "data/FIG_7/05_summary"),
     },
     'parameters': {
@@ -354,6 +435,9 @@ for group in GROUPS:
 for group in GROUPS:
     config['inputs'][f'vcf_{group.lower()}'] = os.path.join(OUTPUT_DIR, f"scomatic_{group}.vcf")
 config['inputs']['vcf_disease_combined'] = os.path.join(OUTPUT_DIR, "scomatic_disease_combined.vcf")
+config['inputs']['fastq_base'] = FASTQ_BASE
+config['inputs']['star_whitelist'] = WHITELIST_PATH
+config['inputs']['star_chimeric_sample_list'] = sample_list_path
 
 config_path = os.path.join(OUTPUT_DIR, "pipeline_config.yaml")
 with open(config_path, 'w') as f:

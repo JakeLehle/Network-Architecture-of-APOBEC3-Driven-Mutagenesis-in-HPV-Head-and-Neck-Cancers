@@ -69,8 +69,8 @@ with open(CONFIG_PATH) as f:
 GROUP_PATH = os.path.join(PROJECT_ROOT, "data/FIG_4/01_group_selection/three_group_assignments.tsv")
 GTF_PATH = config['reference']['gtf']
 
-# STAR chimeric output directory (from previous pipeline run)
-STAR_DIR = os.path.join(PROJECT_ROOT, "data/FIG_6/05_neoantigen/fusion_detection/star_chimeric")
+# STAR chimeric junctions, regenerated at runtime by Step05a (config-driven)
+STAR_DIR = config['outputs']['star_chimeric']
 
 # Neoantigen ranking from Step04 (for cross-reference)
 MHC_DIR = config['outputs']['mhc_binding']

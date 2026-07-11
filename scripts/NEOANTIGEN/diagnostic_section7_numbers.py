@@ -9,8 +9,8 @@ Neoantigen Landscape and Therapeutic Target Identification.
 This version adds four validation items requested for the manuscript update:
   (A) Per-cell RNA fusion rates (not just totals)
   (B) ANXA1 TCW / APOBEC trinucleotide-context check (ported from
-      Diagnostic_ANXA1_TCW_Context.py, with the 0-based SComatic Start
-      vs 1-based VCF pos offset handled correctly)
+      Diagnostic_ANXA1_TCW_Context.py; SComatic Start is matched directly to
+      the annotation pos, i.e. Start == pos after the Step01 Start+1 fix)
   (C) Tier 1A escape-mechanism breakdown (antigen loss / silencing /
       fusion, plus multi-mechanism counts) over the 22 shared+escaped genes
   (D) Explicit mapping of the on-disk 4-tier classifier onto the 3-tier
@@ -493,8 +493,8 @@ def beat3_anxa1():
 
     # -------------------------------------------------------------------------
     # ANXA1 TCW / APOBEC context check  [ADD B]
-    # Ported from Diagnostic_ANXA1_TCW_Context.py, with the 0-based SComatic
-    # Start vs 1-based VCF pos offset handled (SComatic Start == pos - 1).
+    # Ported from Diagnostic_ANXA1_TCW_Context.py. After the Step01 Start+1 fix
+    # the annotation pos equals the SComatic Start directly (Start == pos).
     # -------------------------------------------------------------------------
     banner("ANXA1 TCW / APOBEC CONTEXT CHECK", char="-")
     if len(anxa1_var) == 0:
@@ -508,7 +508,7 @@ def beat3_anxa1():
     ref_c = cols.get('ref', 'ref')
     alt_c = cols.get('alt', 'alt')
 
-    # Build a 0-based coordinate set (SComatic Start) from the 1-based VCF pos
+    # Build the SComatic Start key set from the annotation pos (Start == pos)
     want = {}
     for _, row in anxa1_var.iterrows():
         try:
@@ -516,7 +516,7 @@ def beat3_anxa1():
             vcf_pos = int(row[pos_c])
         except Exception:
             continue
-        scomatic_start = vcf_pos - 1  # 1-based VCF -> 0-based SComatic Start
+        scomatic_start = vcf_pos  # annotation pos == SComatic Start (after Step01 Start+1 fix)
         want[(chrom, scomatic_start)] = {
             'vcf_pos': vcf_pos,
             'ref': str(row[ref_c]),
@@ -525,7 +525,7 @@ def beat3_anxa1():
         }
 
     log(f"  Looking up REF_TRI for {len(want)} ANXA1 variants in SComatic master")
-    log(f"  (matching SComatic Start == VCF pos - 1)")
+    log(f"  (matching SComatic Start == annotation pos)")
 
     found = {}
     if os.path.exists(SCOMATIC_TSV):
@@ -714,7 +714,7 @@ def beat5_tcw_prevalence():
         df = df.rename(columns={chrom_c: 'chrom', pos_c: 'pos',
                                 ref_c: 'ref', alt_c: 'alt'})
         # Unique variant per (chrom,pos,ref,alt). Keep hgvs_p + location key.
-        df['scstart'] = df['pos'].astype(int) - 1  # 1-based VCF -> 0-based SComatic
+        df['scstart'] = df['pos'].astype(int)  # annotation pos == SComatic Start (after Step01 Start+1 fix)
         df['location'] = df['chrom'].astype(str) + ':' + df['pos'].astype(str)
         df = df.drop_duplicates(subset=['chrom', 'pos', 'ref', 'alt'])
         pa[group] = df
