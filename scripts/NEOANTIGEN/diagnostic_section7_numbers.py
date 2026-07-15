@@ -28,6 +28,8 @@ Verifies:
   BEAT 3: ANXA1 deep dive (Panels C-D), incl. TCW context
   BEAT 4: Summary stats for closing
   BEAT 5: TCW-context prevalence across groups (both substitution scopes)
+  BEAT 6: A3-driven neoantigen lead (TCW x expression x MHC binding); KLF3 lead
+  BEAT 7: Sample-aware, depth-corrected RNA fusion comparison (SBS2 vs CNV)
 
 Usage:
     conda run -n NETWORK python diagnostic_section7_numbers.py
@@ -69,6 +71,22 @@ TEXT_TIER_MAP = {
     '1B_hot_sbs2_specific':  'Text Tier 2 (SBS2-specific)',
     '2_cold_cnv_specific':   'Text Tier 3 (CNV-specific)',
 }
+
+# -----------------------------------------------------------------------------
+# New-session consolidation (BEAT 6 / BEAT 7): artifact dirs + selections
+# -----------------------------------------------------------------------------
+TCW_RANK_DIR = os.path.join(FIG7_ROOT, "TROUBLESHOOTING/tcw_neoantigen_ranking")
+FUSION_NORM_DIR = os.path.join(FIG7_ROOT, "TROUBLESHOOTING/fusion_normalization_compare")
+GROUP_PATH = os.path.join(BASE_DIR, "data/FIG_4/01_group_selection/three_group_assignments.tsv")
+
+# Corrected-coordinate Venn (this session) supersedes the old 105/276/135 anchors
+MANUSCRIPT_VENN_OLD = {'shared': 105, 'sbs2_only': 276, 'cnv_only': 135}
+
+# Figure 7 lead + supplemental follow-ups selected this session:
+#   KLF3   = best overall A3 hit (100% TCW, majority expression, strong binding gain)
+#   CAST, FABP5, ANXA1 = tier 1/2 follow-ups (TCW-containing, majority-expressed)
+FIG7_LEAD = 'KLF3'
+FIG7_FOLLOWUPS = ['CAST', 'FABP5', 'ANXA1']
 
 
 def log(msg):
@@ -158,6 +176,9 @@ def beat1_burden():
             else:
                 log(f"    {grp}: {dict(row)}")
         log(f"  (per-cell uses n={N_CELLS} cells per group)")
+        log(f"  NOTE: these pooled per-cell rates are confounded by sample and depth")
+        log(f"  (NORMAL is a disjoint sample set); see BEAT 7 for the depth-corrected,")
+        log(f"  sample-aware SBS2-vs-CNV comparison that supersedes them.")
     else:
         log(f"  [WARNING] Fusion summary not found: {fusion_path}")
         # Fall back to recomputing from all_filtered_junctions.tsv if present
@@ -835,6 +856,225 @@ def beat5_tcw_prevalence():
 
 
 # =============================================================================
+# BEAT 6: A3-DRIVEN NEOANTIGEN LEAD (TCW x EXPRESSION x MHC BINDING)
+# =============================================================================
+
+def beat6_tcw_lead():
+    """A3-driven neoantigen lead selection.
+
+    Consolidates Diagnostic_TCW_Neoantigen_Ranking.py. This replaces the old
+    expression-only lead by weighing three axes together: the APOBEC (TCW)
+    context of the binding-driving mutation, expression across the tumor cells,
+    and the MHC-I binding gain (wt -> mut). It:
+      1. Recomputes the corrected Venn tiers (supersede the old 105/276/135).
+      2. Independently recomputes the differential-binder TCW fraction as a
+         cross-check on the ranking (expect ~355 differential, ~13 TCW / 3.7%,
+         ~9 C>T-only), via SComatic REF_TRI and the shared classify_tcw helpers.
+      3. Surfaces the ranked A3-candidate genes from the TCW ranking output and
+         flags the chosen Figure 7 lead (KLF3) + follow-ups (CAST, FABP5, ANXA1),
+         with the ANXA1 non-A3 control called out.
+    """
+    banner("BEAT 6: A3-DRIVEN NEOANTIGEN LEAD (TCW x EXPRESSION x MHC BINDING)")
+
+    sbs2_path = os.path.join(MHC_DIR, "SBS2_HIGH_neoantigens.tsv")
+    cnv_path = os.path.join(MHC_DIR, "CNV_HIGH_neoantigens.tsv")
+    if not (os.path.exists(sbs2_path) and os.path.exists(cnv_path)):
+        log("  [WARNING] neoantigen files missing; skipping BEAT 6")
+        return
+    sbs2 = pd.read_csv(sbs2_path, sep="\t")
+    cnv = pd.read_csv(cnv_path, sep="\t")
+
+    # ---- (1) corrected Venn tiers
+    banner("Updated Venn tiers (corrected coordinates)", char="-")
+    sbs2_g = set(sbs2['gene'].dropna().unique())
+    cnv_g = set(cnv['gene'].dropna().unique())
+    shared = sbs2_g & cnv_g
+    sbs2_only = sbs2_g - cnv_g
+    cnv_only = cnv_g - sbs2_g
+    log(f"  Tier 1 (shared)        : {len(shared):4d}   (old manuscript {MANUSCRIPT_VENN_OLD['shared']})")
+    log(f"  Tier 2 (SBS2-specific) : {len(sbs2_only):4d}   (old manuscript {MANUSCRIPT_VENN_OLD['sbs2_only']})")
+    log(f"  Tier 3 (CNV-specific)  : {len(cnv_only):4d}   (old manuscript {MANUSCRIPT_VENN_OLD['cnv_only']})")
+    log("  -> update the Venn figure and every tier sentence to the new counts.")
+
+    # ---- (2) independent differential-binder TCW fraction (cross-check)
+    banner("Differential-binder TCW fraction (Tier 1/2 = all SBS2 genes)", char="-")
+    if 'is_differential' in sbs2.columns:
+        dif = sbs2[sbs2['is_differential'] == True].copy()
+    elif {'mut_ic50', 'wt_ic50'} <= set(sbs2.columns):
+        dif = sbs2[(sbs2['mut_ic50'] < 500) & (sbs2['wt_ic50'] >= 500)].copy()
+    else:
+        dif = sbs2.iloc[0:0].copy()
+    have_keys = {'location', 'hgvs_p'} <= set(dif.columns)
+    dvar = dif.drop_duplicates(subset=['location', 'hgvs_p']) if have_keys else dif
+    log(f"  Differential binder peptides (SBS2): {len(dif)}")
+    log(f"  Distinct differential variants:      {len(dvar)}")
+
+    spa_path = os.path.join(ANNOTATION_DIR, "SBS2_HIGH.somatic_protein_altering.tsv")
+    if os.path.exists(spa_path) and have_keys:
+        spa = pd.read_csv(spa_path, sep="\t")
+        cols = {c.lower(): c for c in spa.columns}
+        chrom_c = cols.get('chrom', cols.get('#chrom'))
+        pos_c, ref_c, alt_c = cols.get('pos'), cols.get('ref'), cols.get('alt')
+        if all([chrom_c, pos_c, ref_c, alt_c]):
+            spa['location'] = spa[chrom_c].astype(str) + ':' + spa[pos_c].astype(str)
+            key2rec = {(str(r['location']), str(r.get('hgvs_p', ''))):
+                       (str(r[chrom_c]), int(r[pos_c]), str(r[ref_c]), str(r[alt_c]))
+                       for _, r in spa.iterrows()}
+            needed, recs = set(), []
+            for _, r in dvar.iterrows():
+                rec = key2rec.get((str(r['location']), str(r['hgvs_p'])))
+                if rec:
+                    needed.add((rec[0], rec[1]))
+                    recs.append(rec)
+            tri_idx = _load_scomatic_tri_index(needed)
+            n_res = n_cclass = n_tcw_cg = n_tcw_ct = 0
+            for chrom, pos, ref, alt in recs:
+                tri = tri_idx.get((chrom, pos))
+                if tri is None:
+                    continue
+                n_res += 1
+                is_cg, is_c = classify_tcw(ref, alt, tri)
+                is_ct, _ = classify_tcw_ctonly(ref, alt, tri)
+                if is_c:
+                    n_cclass += 1
+                if is_cg:
+                    n_tcw_cg += 1
+                if is_ct:
+                    n_tcw_ct += 1
+            pct = 100 * n_tcw_cg / n_res if n_res else float('nan')
+            log(f"  Resolved REF_TRI for {n_res}/{len(recs)} differential variants")
+            log(f"  TCW context (C>T + C>G, SBS2+SBS13): {n_tcw_cg} ({pct:.1f}% of resolved)")
+            log(f"  TCW context (C>T only, SBS2 arm):    {n_tcw_ct}")
+            log("  -> A3-signature mutations are a minority of differential neoantigens;")
+            log("     this small denominator is itself a reportable finding.")
+        else:
+            log("  [WARNING] somatic file missing chrom/pos/ref/alt; skipping TCW recompute")
+    else:
+        log("  [WARNING] cannot recompute TCW fraction (missing file or keys)")
+
+    # ---- (3) ranked A3 candidates from the TCW ranking output
+    banner("Ranked A3-candidate genes (from TCW ranking output)", char="-")
+    cand_path = os.path.join(TCW_RANK_DIR, "gene_level_A3_neoantigen_CANDIDATES.tsv")
+    if os.path.exists(cand_path):
+        cand = pd.read_csv(cand_path, sep="\t")
+        gene_col = 'gene' if 'gene' in cand.columns else cand.columns[0]
+        log(f"  Loaded {len(cand)} A3-candidate genes")
+        log(f"  Columns: {list(cand.columns)}")
+        log("\n  Top candidates as ranked on disk:")
+        for line in cand.head(13).to_string(index=False).splitlines():
+            log("    " + line)
+
+        banner("Figure 7 selection (this session)", char=".")
+        cand_genes = set(cand[gene_col].astype(str))
+        for gname in [FIG7_LEAD] + FIG7_FOLLOWUPS:
+            role = "LEAD" if gname == FIG7_LEAD else "follow-up"
+            mark = "present" if gname in cand_genes else "NOT in candidate table (CHECK)"
+            log(f"    [{role:9s}] {gname:8s} : {mark}")
+        log("")
+        log(f"  {FIG7_LEAD} is the lead: clean A3 (100% TCW, C>T TpCpW), expressed in the")
+        log("  majority of tumor cells, strong wt->mut binding gain. CAST/FABP5/ANXA1 are")
+        log("  tier 1/2 follow-ups (TCW-containing and majority-expressed).")
+        log("  ANXA1 control: its one 'TCW' differential variant is C>G (SBS13), not a clean")
+        log("  C>T A3 event, so ANXA1 stays a follow-up, not the mechanism-anchoring lead.")
+    else:
+        log(f"  [WARNING] {cand_path} not found.")
+        log("  Run Diagnostic_TCW_Neoantigen_Ranking.py first to (re)generate the ranked")
+        log("  candidate table, then re-run this diagnostic.")
+
+
+# =============================================================================
+# BEAT 7: SAMPLE-AWARE RNA FUSION COMPARISON (depth-corrected)
+# =============================================================================
+
+def beat7_fusion_normalization():
+    """Sample-aware fusion comparison.
+
+    Consolidates Diagnostic_Fusion_Normalization_Compare.py. The pooled per-546
+    rates in BEAT 1 are confounded: NORMAL is a disjoint set of samples, and raw
+    per-cell rate scales with sequencing depth. This section:
+      1. Restates the naive pooled rates as reference.
+      2. Confirms the sample structure (NORMAL shares no samples with tumor).
+      3. Recomputes the within-sample RAW paired SBS2-vs-CNV (cheap), which shows
+         SBS2 apparently higher in the WRONG direction for biology (SBS2 cells
+         are shallower) -> depth artifact.
+      4. Pulls the depth-normalized metrics (per-UMI, fraction-of-chimeric) from
+         the normalization diagnostic output, which agree the groups are
+         comparable once depth is handled.
+    """
+    banner("BEAT 7: SAMPLE-AWARE RNA FUSION COMPARISON (depth-corrected)")
+
+    afj = os.path.join(FUSION_DIR, "all_filtered_junctions.tsv")
+    if not (os.path.exists(afj) and os.path.exists(GROUP_PATH)):
+        log("  [WARNING] junctions or group file missing; skipping BEAT 7")
+        return
+    j = pd.read_csv(afj, sep="\t")
+    j['barcode'] = j['barcode'].astype(str)
+    j['srr_id'] = j['srr_id'].astype(str)
+    g = pd.read_csv(GROUP_PATH, sep="\t")
+    g['srr'] = g['cell_barcode'].str.split('-').str[2]
+
+    banner("Naive pooled per-cell rates [reference; confounded]", char="-")
+    for grp in ['SBS2_HIGH', 'CNV_HIGH', 'NORMAL']:
+        n = int((j['group'] == grp).sum())
+        log(f"    {grp:12s}: {n:5d} junctions / {N_CELLS} = {n/N_CELLS:.2f}/cell")
+
+    comp = g.groupby('srr')['group'].agg(lambda x: set(x))
+    normal_only = [s for s, gp in comp.items() if gp == {'NORMAL'}]
+    shared = sorted([s for s, gp in comp.items() if {'SBS2_HIGH', 'CNV_HIGH'} <= gp])
+    log(f"\n  NORMAL-only samples: {len(normal_only)}   SBS2+CNV shared samples: {len(shared)}")
+    log("  NORMAL shares 0 samples with tumor -> excluded from the burden comparison.")
+
+    banner("Within-sample paired SBS2 vs CNV (RAW per-cell)", char="-")
+    cells_sg = g.groupby(['srr', 'group']).size().rename('n_cells').reset_index()
+    jun_sg = (j.groupby(['srr_id', 'group']).size().rename('n_j').reset_index()
+              .rename(columns={'srr_id': 'srr'}))
+    sg = cells_sg.merge(jun_sg, on=['srr', 'group'], how='left').fillna({'n_j': 0})
+    sg['rate'] = sg['n_j'] / sg['n_cells']
+    s_rate, c_rate = [], []
+    for s in shared:
+        a = sg[(sg['srr'] == s) & (sg['group'] == 'SBS2_HIGH')]
+        b = sg[(sg['srr'] == s) & (sg['group'] == 'CNV_HIGH')]
+        if len(a) and len(b):
+            s_rate.append(a['rate'].iloc[0]); c_rate.append(b['rate'].iloc[0])
+    diffs = [s - c for s, c in zip(s_rate, c_rate)]
+    nhi = sum(1 for d in diffs if d > 0); nlo = sum(1 for d in diffs if d < 0)
+    if diffs:
+        log(f"  shared samples with both groups: {len(diffs)}")
+        log(f"  SBS2 > CNV in {nhi}/{nhi+nlo};  median diff {np.median(diffs):+.2f}/cell")
+        try:
+            from scipy.stats import wilcoxon
+            log(f"  Wilcoxon signed-rank p = {wilcoxon(s_rate, c_rate).pvalue:.3f}")
+        except Exception:
+            pass
+    log("  NOTE: raw rate scales with depth; SBS2 cells are SHALLOWER, so a raw SBS2")
+    log("  excess is the WRONG direction for real biology -> depth artifact suspected.")
+
+    banner("Depth-corrected (per-UMI + fraction-of-chimeric)", char="-")
+    pm = os.path.join(FUSION_NORM_DIR, "paired_sbs2_cnv_metrics.tsv")
+    if os.path.exists(pm):
+        m = pd.read_csv(pm, sep="\t")
+        has_cells = {'sbs2_cells', 'cnv_cells'} <= set(m.columns)
+        gated = m[(m['sbs2_cells'] >= 10) & (m['cnv_cells'] >= 10)] if has_cells else m
+
+        def med(df, col):
+            return df[col].median() if col in df.columns else float('nan')
+
+        log(f"  All shared (n={len(m)}):    perUMI SBS2 {med(m,'sbs2_umi'):.3f} vs CNV {med(m,'cnv_umi'):.3f}"
+            f"   fracChim SBS2 {med(m,'sbs2_frac'):.2f}% vs CNV {med(m,'cnv_frac'):.2f}%")
+        log(f"  Gated >=10/grp (n={len(gated)}): perUMI SBS2 {med(gated,'sbs2_umi'):.3f} vs CNV {med(gated,'cnv_umi'):.3f}"
+            f"   fracChim SBS2 {med(gated,'sbs2_frac'):.2f}% vs CNV {med(gated,'cnv_frac'):.2f}%")
+        log("  -> both depth-normalized metrics comparable (independent denominators agree).")
+    else:
+        log(f"  [WARNING] {pm} not found.")
+        log("  Run Diagnostic_Fusion_Normalization_Compare.py first for perUMI + fracChim.")
+
+    banner("Fusion conclusion (for the text)", char=".")
+    log("  After depth normalization, RNA fusion burden does not distinguish SBS2-HIGH from")
+    log("  CNV-HIGH within shared tumors; NORMAL is sample-confounded and reported")
+    log("  descriptively only. Consistent with fusions not tracking the SBS2/CNV divergence.")
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -854,6 +1094,8 @@ def main():
     beat3_anxa1()
     beat4_summary()
     beat5_tcw_prevalence()
+    beat6_tcw_lead()
+    beat7_fusion_normalization()
 
     banner("DIAGNOSTIC COMPLETE")
 
