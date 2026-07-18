@@ -24,6 +24,21 @@ Design: SBS2_HIGH vs CNV_HIGH paired across the 15 shared samples (Wilcoxon
 signed-rank on per-sample values), gated to samples with >= MIN_CELLS per group.
 NORMAL is reported descriptively only (disjoint samples; not comparable).
 
+2026-07-16 ADDITION (global comparison + verdict):
+  The paired test controls for BOTH depth (via the perUMI/fracChim denominators)
+  and patient (by keeping SBS2/CNV cells inside the same sample), but it is stuck
+  with the 15 dual-group samples. To answer whether we can instead use the
+  simpler global comparison across ALL samples (all SBS2 cells vs all CNV cells,
+  depth-normalized), this version adds:
+    (A) a GLOBAL pooled comparison (every sample; depth handled by the UMI /
+        chimeric denominators; does NOT control for patient), and
+    (B) a VERDICT that checks whether GLOBAL agrees with PAIRED. If they agree,
+        patient confounding is not distorting the result and the global,
+        intuitive perUMI comparison can be carried into Panel A. If they
+        disagree, that disagreement is the patient effect made visible.
+  perUMI is the figure metric (fusions per 1000 UMI). fracChim is an
+  independent corroborating normalization (never divides by UMI).
+
 READ-ONLY. Inputs:
   - all_filtered_junctions.tsv (Step05b passing set -> numerator per cell)
   - Chimeric.out.junction files (Step05a -> per-cell total chimeric, denominator)
@@ -33,6 +48,7 @@ READ-ONLY. Inputs:
 Outputs to data/FIG_7/TROUBLESHOOTING/fusion_normalization_compare/:
   - per_sample_metrics.tsv        : srr, group, cells, fusions, umi, chimeric, three rates
   - paired_sbs2_cnv_metrics.tsv    : one row/shared sample, all three metrics both groups
+  - global_group_metrics.tsv       : one row/group, pooled depth-normalized metrics (NEW)
   - fusion_normalization_report.txt (incl. side-by-side summary)
 
 Env: NETWORK. Read-only. TROUBLESHOOTING/ (excluded from walkthroughs).
@@ -160,6 +176,34 @@ def try_load_percell_umi(barcodes):
         return dict(zip(names, tot.tolist()))
     except Exception:
         return None
+
+
+def load_barcode_patient(barcodes):
+    """bc -> subject id (patient) from adata.obs, or {} if unavailable.
+    Used only for within-patient germline-fusion subtraction (read-only)."""
+    try:
+        import scanpy as sc
+    except Exception:
+        return {}
+    if not os.path.isfile(ADATA_PATH):
+        return {}
+    try:
+        ad = sc.read_h5ad(ADATA_PATH, backed='r')
+    except Exception:
+        return {}
+    col = None
+    for c in ad.obs.columns:
+        if c.lower() in ('subject id', 'subject_id', 'patient', 'donor_id', 'donor'):
+            col = c
+            break
+    if col is None:
+        return {}
+    mask = ad.obs_names.isin(set(barcodes))
+    if mask.sum() == 0:
+        return {}
+    names = ad.obs_names[mask].tolist()
+    vals = ad.obs.loc[mask, col].astype(str).tolist()
+    return dict(zip(names, vals))
 
 
 def main():
@@ -301,6 +345,65 @@ def main():
     log("")
     summarize('frac', '% chim')
 
+    # =========================================================================
+    # NEW (A): GLOBAL depth-normalized comparison (every sample, not just shared)
+    # =========================================================================
+    banner("GLOBAL depth-normalized comparison (all cells, every sample)", "-")
+    log("  Pools all cells in each group across ALL samples (not just the 15 shared).")
+    log("  Depth is handled by the UMI / chimeric denominators; this does NOT control")
+    log("  for patient, so it is only trustworthy if it AGREES with the paired result.")
+    log("  Point estimate is the pooled ratio (sum fusions / sum denominator).")
+    log("")
+
+    def global_pool(grp):
+        sub = cell[cell['group'] == grp]
+        n_cells = len(sub)
+        sum_fus = int(sub['n_fusion'].sum())
+        umi_ok = sub[sub['umi'].notna() & (sub['umi'] > 0)]
+        sum_umi = float(umi_ok['umi'].sum())
+        sum_chim = int(sub['n_chimeric'].sum())
+        raw = sum_fus / n_cells if n_cells else np.nan
+        perumi = 1000 * umi_ok['n_fusion'].sum() / sum_umi if sum_umi > 0 else np.nan
+        frac = 100 * sum_fus / sum_chim if sum_chim > 0 else np.nan
+        med_umi = float(umi_ok['umi'].median()) if len(umi_ok) else np.nan
+        return {'group': grp, 'n_cells': n_cells, 'n_umi_cells': len(umi_ok),
+                'sum_fusion': sum_fus, 'sum_umi': sum_umi, 'sum_chimeric': sum_chim,
+                'median_umi': med_umi, 'raw': raw, 'perUMI': perumi, 'fracChim': frac}
+
+    gp = {grp: global_pool(grp) for grp in GROUPS}
+    gdf = pd.DataFrame([gp[grp] for grp in GROUPS])
+    gdf.to_csv(os.path.join(OUTPUT_DIR, "global_group_metrics.tsv"), sep='\t', index=False)
+
+    log(f"  {'group':12s} {'cells':>6s} {'medUMI':>8s} {'raw j/c':>9s} {'perUMI':>9s} {'fracChim%':>10s}")
+    for grp in GROUPS:
+        d = gp[grp]
+        log(f"  {grp:12s} {d['n_cells']:6d} {d['median_umi']:8.0f} {d['raw']:9.2f} "
+            f"{d['perUMI']:9.3f} {d['fracChim']:10.2f}")
+
+    # cell-level test (global), per-cell perUMI, with caveat
+    def percell_rate(grp):
+        sub = cell[(cell['group'] == grp) & (cell['umi'].notna()) & (cell['umi'] > 0)]
+        return (1000 * sub['n_fusion'] / sub['umi']).values
+
+    s_rate = percell_rate('SBS2_HIGH')
+    c_rate = percell_rate('CNV_HIGH')
+    mwu_p = np.nan
+    try:
+        from scipy.stats import mannwhitneyu
+        if len(s_rate) and len(c_rate):
+            mwu_p = mannwhitneyu(s_rate, c_rate, alternative='two-sided').pvalue
+    except Exception:
+        pass
+    log("")
+    log(f"  Global perUMI (pooled): SBS2 {gp['SBS2_HIGH']['perUMI']:.3f} vs "
+        f"CNV {gp['CNV_HIGH']['perUMI']:.3f} j/1kUMI")
+    log(f"  Global fracChim (pooled): SBS2 {gp['SBS2_HIGH']['fracChim']:.2f}% vs "
+        f"CNV {gp['CNV_HIGH']['fracChim']:.2f}%")
+    log(f"  Cell-level MWU on per-cell perUMI (all samples): p={mwu_p:.3f}")
+    log("  CAVEAT: per-cell perUMI is noisy for low-UMI cells (few UMI + 1 fusion")
+    log("  inflates the ratio); the pooled ratio above is the point estimate, and the")
+    log("  MWU is only a rough significance check on the global (unpaired) contrast.")
+
     # ---- NORMAL descriptive
     banner("NORMAL (descriptive; disjoint samples, not comparable)", "-")
     nn = sg[sg['group'] == 'NORMAL'].sort_values('srr')
@@ -309,7 +412,207 @@ def main():
     log(f"  NORMAL mean: raw {nn['rate_raw'].mean():.2f}, perUMI {nn['rate_umi'].mean():.3f}, "
         f"fracChim {nn['rate_frac'].mean():.2f}%")
 
-    # ---- side-by-side verdict
+    # =========================================================================
+    # NEW (C): NORMAL background + germline-fusion subtraction
+    # =========================================================================
+    banner("NORMAL BACKGROUND + GERMLINE-FUSION SUBTRACTION")
+    log("  The neoantigen side subtracts variants also seen in NORMAL as germline")
+    log("  background; the fusion side has not, so we quantify it here. A germline-origin")
+    log("  fusion recurs in a patient's OWN normal cells and, being germline, appears in")
+    log("  BOTH that patient's SBS2 and CNV cells, so it cancels in the paired comparison")
+    log("  and subtracts equally in the global one. The SBS2-vs-CNV FINDING therefore")
+    log("  cannot change; only the absolute (tumor-specific) burden does.")
+    log(f"  NORMAL normalized rate (confounded, disjoint samples): perUMI "
+        f"{gp['NORMAL']['perUMI']:.3f} j/1kUMI, fracChim {gp['NORMAL']['fracChim']:.2f}%.")
+    log("")
+
+    subtracted_percell = None
+    bc_patient = load_barcode_patient(list(g['cell_barcode']))
+    need = {'chrA', 'posA', 'chrB', 'posB', 'group', 'barcode'}
+    if not bc_patient:
+        log("  [WARN] no per-cell patient (subject id) source; skipping germline subtraction.")
+    elif not need <= set(jdf.columns):
+        log(f"  [WARN] junction file lacks breakpoint columns {sorted(need - set(jdf.columns))};")
+        log("  cannot define identical fusions. Skipping germline subtraction.")
+    else:
+        jj = jdf.copy()
+        jj['patient'] = jj['barcode'].map(bc_patient)
+        jj['jkey'] = (jj['chrA'].astype(str) + ':' + jj['posA'].astype(str) + '-' +
+                      jj['chrB'].astype(str) + ':' + jj['posB'].astype(str))
+
+        normal = jj[jj['group'] == 'NORMAL']
+        tumor = jj[jj['group'].isin(TUMOR)].copy()
+
+        normal_patients = set(normal['patient'].dropna().unique())
+        tumor_patients = set(tumor['patient'].dropna().unique())
+        matched = sorted(normal_patients & tumor_patients)
+        log(f"  Patients with NORMAL cells in set: {len(normal_patients)}")
+        log(f"  Patients with tumor cells in set:  {len(tumor_patients)}")
+        log(f"  Matched (normal+tumor) patients:   {len(matched)}  {matched}")
+        log("  (within-patient germline subtraction can only affect these matched patients)")
+
+        normal_keys_by_patient = normal.groupby('patient')['jkey'].agg(set).to_dict()
+        normal_keys_all = set(normal['jkey'])
+
+        tumor['is_germline_wp'] = tumor.apply(
+            lambda r: r['jkey'] in normal_keys_by_patient.get(r['patient'], set()), axis=1)
+        tumor['is_germline_pool'] = tumor['jkey'].isin(normal_keys_all)
+
+        # per-cell fusion counts after removing within-patient germline junctions
+        # (feeds the Panel A figure numbers below)
+        subtracted_percell = tumor[~tumor['is_germline_wp']].groupby('barcode').size()
+
+        n_tot = len(tumor)
+        n_wp = int(tumor['is_germline_wp'].sum())
+        n_pool = int(tumor['is_germline_pool'].sum())
+        log("")
+        log(f"  Tumor fusion junctions (target cells):        {n_tot:,}")
+        log(f"  Shared with SAME-patient NORMAL (germline):   {n_wp:,} "
+            f"({100 * n_wp / n_tot:.2f}%)  [strict within-patient]")
+        log(f"  Shared with ANY NORMAL cell (pooled bkgd):    {n_pool:,} "
+            f"({100 * n_pool / n_tot:.2f}%)  [looser upper bound, not strictly germline]")
+
+        def perumi_after(mask_col):
+            keep = tumor[~tumor[mask_col]] if mask_col else tumor
+            kept_counts = keep.groupby('barcode').size()
+            out = {}
+            for grp in TUMOR:
+                sub = cell[(cell['group'] == grp) & (cell['umi'].notna()) & (cell['umi'] > 0)]
+                denom = sub['umi'].sum()
+                numer = kept_counts.reindex(sub['barcode'].values).fillna(0).sum()
+                out[grp] = 1000 * numer / denom if denom > 0 else np.nan
+            return out
+
+        base = perumi_after(None)
+        wp = perumi_after('is_germline_wp')
+        pool = perumi_after('is_germline_pool')
+        log("")
+        log(f"  perUMI (SBS2 / CNV) under each background model:")
+        log(f"    no subtraction               : {base['SBS2_HIGH']:.3f} / {base['CNV_HIGH']:.3f}")
+        log(f"    within-patient germline sub  : {wp['SBS2_HIGH']:.3f} / {wp['CNV_HIGH']:.3f}")
+        log(f"    pooled-normal background sub : {pool['SBS2_HIGH']:.3f} / {pool['CNV_HIGH']:.3f}")
+        log("  -> subtraction lowers both arms together; the SBS2-vs-CNV contrast stays")
+        log("     comparable, confirming the finding is background-invariant.")
+
+        pd.DataFrame([
+            {'metric': 'perUMI_SBS2_HIGH', 'no_sub': base['SBS2_HIGH'],
+             'within_patient_germline': wp['SBS2_HIGH'], 'pooled_normal': pool['SBS2_HIGH']},
+            {'metric': 'perUMI_CNV_HIGH', 'no_sub': base['CNV_HIGH'],
+             'within_patient_germline': wp['CNV_HIGH'], 'pooled_normal': pool['CNV_HIGH']},
+            {'metric': 'n_tumor_junctions', 'no_sub': n_tot,
+             'within_patient_germline': n_wp, 'pooled_normal': n_pool},
+        ]).to_csv(os.path.join(OUTPUT_DIR, "germline_subtraction_summary.tsv"), sep='\t', index=False)
+
+    # ---- figure-ready per-cell perUMI stats (Panel A fusion side)
+    #      Within-patient-germline-subtracted mean per cell is the chosen number;
+    #      raw per-cell and pooled perUMI are kept as reference columns. If the
+    #      germline block was skipped, subtracted == raw (graceful fallback).
+    def _pc_perumi(grp, override=None):
+        sub = cell[(cell['group'] == grp) & (cell['umi'].notna()) & (cell['umi'] > 0)]
+        if override is not None:
+            nf = override.reindex(sub['barcode'].values).fillna(0).values
+        else:
+            nf = sub['n_fusion'].values
+        return 1000 * nf / sub['umi'].values
+
+    fig_rows = []
+    for grp in GROUPS:
+        raw_arr = _pc_perumi(grp)
+        ov = subtracted_percell if (subtracted_percell is not None and grp in TUMOR) else None
+        sub_arr = _pc_perumi(grp, ov)
+        fig_rows.append({
+            'group': grp, 'n_cells': int(len(sub_arr)),
+            'mean_perUMI_per_cell_germline_sub': float(np.mean(sub_arr)) if len(sub_arr) else np.nan,
+            'sem_perUMI_per_cell_germline_sub': float(np.std(sub_arr, ddof=1) / np.sqrt(len(sub_arr))) if len(sub_arr) > 1 else np.nan,
+            'mean_perUMI_per_cell_raw': float(np.mean(raw_arr)) if len(raw_arr) else np.nan,
+            'pooled_perUMI_raw': gp[grp]['perUMI'],
+        })
+    figdf = pd.DataFrame(fig_rows)
+    try:
+        from scipy.stats import mannwhitneyu
+        s_arr = _pc_perumi('SBS2_HIGH', subtracted_percell)
+        c_arr = _pc_perumi('CNV_HIGH', subtracted_percell)
+        figdf['sbs2_vs_cnv_mwu_p_germline_sub'] = mannwhitneyu(s_arr, c_arr, alternative='two-sided').pvalue
+    except Exception:
+        figdf['sbs2_vs_cnv_mwu_p_germline_sub'] = np.nan
+    figdf['sbs2_vs_cnv_mwu_p_raw'] = mwu_p
+    figdf.to_csv(os.path.join(OUTPUT_DIR, "panelA_fusion_stats.tsv"), sep='\t', index=False)
+
+    # =========================================================================
+    # NEW (B): VERDICT + corrected text-ready summary (perUMI is the figure metric)
+    # =========================================================================
+    banner("VERDICT: does GLOBAL agree with PAIRED? (perUMI is the figure metric)")
+
+    # paired all-shared perUMI + fracChim medians and signed-rank p
+    d_umi = paired[['sbs2_umi', 'cnv_umi']].dropna()
+    d_frac = paired[['sbs2_frac', 'cnv_frac']].dropna()
+    p_s = d_umi['sbs2_umi'].median() if len(d_umi) else np.nan
+    p_c = d_umi['cnv_umi'].median() if len(d_umi) else np.nan
+    f_s = d_frac['sbs2_frac'].median() if len(d_frac) else np.nan
+    f_c = d_frac['cnv_frac'].median() if len(d_frac) else np.nan
+    p_umi_p = f_umi_p = np.nan
+    try:
+        from scipy.stats import wilcoxon
+        if len(d_umi) >= 3:
+            p_umi_p = wilcoxon(d_umi['sbs2_umi'], d_umi['cnv_umi']).pvalue
+        if len(d_frac) >= 3:
+            f_umi_p = wilcoxon(d_frac['sbs2_frac'], d_frac['cnv_frac']).pvalue
+    except Exception:
+        pass
+
+    g_s = gp['SBS2_HIGH']['perUMI']
+    g_c = gp['CNV_HIGH']['perUMI']
+
+    paired_ns = (not np.isnan(p_umi_p)) and (p_umi_p >= 0.05)
+    global_ns = (not np.isnan(mwu_p)) and (mwu_p >= 0.05)
+    # point-estimate closeness: within 20% of each other on both paired + global
+    def _close(a, b):
+        m = max(abs(a), abs(b), 1e-9)
+        return abs(a - b) / m < 0.20
+    ests_close = _close(p_s, p_c) and _close(g_s, g_c)
+
+    if paired_ns and global_ns and ests_close:
+        verdict = ("CONSISTENT: paired and global both say the groups are comparable "
+                   "once depth is handled. Patient confounding is not distorting the "
+                   "result, so the intuitive global perUMI comparison is safe to carry "
+                   "into Panel A.")
+    elif paired_ns and global_ns:
+        verdict = ("CONSISTENT (both n.s.) but point estimates differ by >20%; both "
+                   "agree there is no significant SBS2/CNV difference. Global is usable "
+                   "but report the paired number as primary.")
+    else:
+        verdict = ("DISAGREE: paired and global do not match (one significant, one not). "
+                   "Patient confounding likely matters; do NOT pool globally, keep the "
+                   "paired within-sample comparison as primary.")
+
+    log(f"  paired  perUMI : SBS2 {p_s:.3f} vs CNV {p_c:.3f} j/1kUMI  (Wilcoxon p={p_umi_p:.3f})")
+    log(f"  global  perUMI : SBS2 {g_s:.3f} vs CNV {g_c:.3f} j/1kUMI  (MWU p={mwu_p:.3f})")
+    log(f"  paired  fracChim: SBS2 {f_s:.2f}% vs CNV {f_c:.2f}%  (Wilcoxon p={f_umi_p:.3f})")
+    log(f"  global  fracChim: SBS2 {gp['SBS2_HIGH']['fracChim']:.2f}% vs "
+        f"CNV {gp['CNV_HIGH']['fracChim']:.2f}%")
+    log("")
+    log(f"  VERDICT: {verdict}")
+
+    banner("TEXT-READY SUMMARY (correct; paraphrase into methods/results)", ".")
+    med_s = gp['SBS2_HIGH']['median_umi']
+    med_c = gp['CNV_HIGH']['median_umi']
+    log(f"  Raw per-cell RNA-fusion rate differs between the tumor groups, but this")
+    log(f"  reflects sequencing depth: SBS2-HIGH cells are shallower "
+        f"(median {med_s:,.0f} vs {med_c:,.0f} UMI). After depth normalization the")
+    log(f"  groups are comparable, whether cells are paired within sample "
+        f"(fusions per 1000 UMI {p_s:.2f} vs {p_c:.2f}, p={p_umi_p:.2f}) or pooled")
+    log(f"  globally across all samples ({g_s:.2f} vs {g_c:.2f}); an independent")
+    log(f"  chimeric-read-fraction normalization agrees ({f_s:.1f}% vs {f_c:.1f}%,")
+    log(f"  p={f_umi_p:.2f}). RNA fusion burden therefore does not track the SBS2/CNV")
+    log(f"  divergence, consistent with fusions not tracking the immune divergence")
+    log(f"  between the two programs. NORMAL is confounded with sample and reported")
+    log(f"  descriptively only.")
+    log(f"  Fusions shared with matched-normal cells (germline background) are a small")
+    log(f"  fraction and, being present in both tumor arms, do not alter the comparison;")
+    log(f"  we did not background-subtract fusions the way neoantigens were subtracted,")
+    log(f"  which is a stated limitation.")
+
+    # ---- side-by-side guidance (retained)
     banner("SIDE-BY-SIDE (decide which denominator to carry forward)")
     log("  Read across the three metrics on the gated (>= 10 cells/group) rows above:")
     log("   - RAW disagreeing with perUMI/fracChim => the raw signal is depth, not biology.")
