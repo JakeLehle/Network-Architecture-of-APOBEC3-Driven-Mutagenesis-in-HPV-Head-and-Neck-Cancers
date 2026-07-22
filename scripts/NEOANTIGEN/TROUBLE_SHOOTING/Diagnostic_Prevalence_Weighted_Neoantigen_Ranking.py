@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
 """
-Diagnostic_Prevalence_Weighted_Neoantigen_Ranking_v2.py
+Diagnostic_Prevalence_Weighted_Neoantigen_Ranking_v3.py
 =======================================================
 Read-only diagnostic. Ranks SBS2 + CNV differential neoantigens by CLONAL
 PREVALENCE (primary) and MHC-I BINDING GAIN (secondary), with tier-aware
 denominators so shared (Tier 1) hits are neither inflated by pool size nor
 penalized for being spread across two niches.
+
+v3 additions (this revision)
+----------------------------
+- Tier-conditional expression columns so full.tsv is the SINGLE source the
+  Figure 7 scripts read (binding, prevalence, and expression all from one row,
+  eliminating figure/text drift):
+    pct_expressing_tier         bar height; denom 546 (specific) or 1092 (shared)
+    carrier_pct_of_expressers   carriage among expressers (panel annotation)
+    n_expressers_tier           expresser count in the tier population
+  The coral carriage segment of the expression panel == prevalence_tier, because
+  carriers are a subset of expressers (an RNA variant is only detectable where
+  the gene is expressed).
+- FEATURED report: prints the exact rows the figure will read for the three
+  retargeted vaccine candidates (COX4I1 p.Ala9Thr, SPRR1A p.Val61Ile,
+  KRT6B p.Glu342Lys) and fails loud if any is absent from the ranked set.
 
 What changed from v1 (this revision)
 -------------------------------------
@@ -81,6 +96,15 @@ EXEMPLAR_EXPECTED = {
     "KLF3": (1, "shared"), "CAST": (6, "SBS2_specific"),
     "SERPINB2": (42, "shared"), "KRT6B": (51, "SBS2_specific"),
     "ANXA1": (6, "SBS2_specific"),
+}
+
+# Featured Figure 7 vaccine-candidate mutations (gene -> hgvs_p). One per tier.
+# The figure reads its prevalence, binding, and tier-conditional expression for
+# these exact rows from full.tsv, so the panel value == the manuscript value.
+FEATURED = {
+    "COX4I1":  "p.Ala9Thr",    # CNV-specific  (Tier 3)
+    "SPRR1A":  "p.Val61Ile",   # shared        (Tier 1); reported pooled /1092
+    "KRT6B":   "p.Glu342Lys",  # SBS2-specific (Tier 2); TCW clean C>T
 }
 
 # =============================================================================
@@ -498,6 +522,47 @@ def beat6_assemble(state):
     gene_tcw = rep.groupby("gene")["is_tcw"].mean().mul(100).rename("gene_pct_TCW")
     rep = rep.merge(gene_tcw, on="gene", how="left")
 
+    # ---- Tier-conditional expression (point 5): specific tiers over 546,
+    # shared over 1092. Carriers of a mutation are a subset of expressers (an
+    # RNA variant can only be detected where the gene is expressed), so the
+    # coral carriage segment of the figure == prevalence_tier by construction.
+    n_sbs2, n_cnv = state["n_sbs2"], state["n_cnv"]
+    rep["expressers_sbs2"] = rep["pct_expressing_sbs2"] / 100.0 * n_sbs2
+    rep["expressers_cnv"]  = rep["pct_expressing_cnv"] / 100.0 * n_cnv
+
+    def _tier_expr(row):
+        t = row["tier"]
+        if t == "SBS2_specific":
+            denom, expr, carr = n_sbs2, row["expressers_sbs2"], row["carriers_sbs2"]
+        elif t == "CNV_specific":
+            denom, expr, carr = n_cnv, row["expressers_cnv"], row["carriers_cnv"]
+        elif t == "shared":
+            denom = n_sbs2 + n_cnv
+            e1 = row["expressers_sbs2"] if pd.notna(row["expressers_sbs2"]) else np.nan
+            e2 = row["expressers_cnv"] if pd.notna(row["expressers_cnv"]) else np.nan
+            expr = (0 if pd.isna(e1) else e1) + (0 if pd.isna(e2) else e2)
+            if pd.isna(e1) and pd.isna(e2):
+                expr = np.nan
+            carr = row["carriers_sbs2"] + row["carriers_cnv"]
+        else:
+            return pd.Series({"n_expressers_tier": np.nan,
+                              "pct_expressing_tier": np.nan,
+                              "carrier_pct_of_expressers": np.nan})
+        pct = 100.0 * expr / denom if (denom and pd.notna(expr)) else np.nan
+        cpe = 100.0 * carr / expr if (pd.notna(expr) and expr and expr > 0) else np.nan
+        return pd.Series({"n_expressers_tier": expr,
+                          "pct_expressing_tier": pct,
+                          "carrier_pct_of_expressers": cpe})
+
+    rep = pd.concat([rep, rep.apply(_tier_expr, axis=1)], axis=1)
+
+    # Sanity: carriage among expressers must not exceed 100% (data-source check).
+    bad = rep["carrier_pct_of_expressers"] > 100.0
+    if bad.any():
+        log(f"  [WARN] {int(bad.sum())} mutations have carrier_pct_of_expressers > "
+            f"100% (SComatic detected the variant in cells adata scores as "
+            f"non-expressing). Check these before using their expression panel.")
+
     rep["prevalence_rank"] = rep["prevalence_tier"].rank(ascending=False, method="min")
     rep["delta_rank"] = rep["delta_IC50"].rank(ascending=False, method="min")
     rep["rank_product"] = rep["prevalence_rank"] * rep["delta_rank"]
@@ -510,8 +575,9 @@ def beat6_assemble(state):
             "prevalence_sbs2", "prevalence_cnv",
             "prevalence_tier", "prevalence_max",
             "gene_union_sbs2", "gene_union_cnv", "gene_union_comb",
-            "pct_expressing_sbs2", "pct_expressing_cnv", "gene_pct_TCW",
-            "tier_carrier_note",
+            "pct_expressing_sbs2", "pct_expressing_cnv",
+            "pct_expressing_tier", "carrier_pct_of_expressers", "n_expressers_tier",
+            "gene_pct_TCW", "tier_carrier_note",
             "prevalence_rank", "delta_rank", "rank_product"]
     cols = [c for c in cols if c in rep.columns]
     out = rep[cols].copy()
@@ -581,12 +647,37 @@ def beat7_report(state):
     for gene in ["KRT6B", "SERPINB2", "SPRR1A"]:
         log(f"  {gene}: {'in top 10 by prevalence_tier' if gene in top10 else 'not in top 10'}")
 
+    # ---- FEATURED figure mutations: the exact rows the figure will read ----
+    banner("FEATURED FIGURE MUTATIONS (values the figure will read from full.tsv)",
+           char="-")
+    log("  These are the numbers that will appear in the panels and the text.\n")
+    log("  {:9s}  {:13s}  {:13s}  {:>7s}  {:>7s}  {:>8s}  {:>4s}  {:>8s}  {:>9s}  {:>9s}".format(
+        "gene", "hgvs_p", "tier", "wtIC50", "mutIC50", "deltaIC50", "TCW",
+        "prevTier", "pctExprT", "carr/expr"))
+    for gene, hgvs in FEATURED.items():
+        sub = out[(out["gene"] == gene) & (out["hgvs_p"] == hgvs)]
+        if len(sub) == 0:
+            near = out[out["gene"] == gene]["hgvs_p"].tolist()[:5]
+            log(f"  {gene:9s}  {hgvs:13s}  [!] NOT FOUND. gene rows present: {near}")
+            continue
+        r = sub.iloc[0]
+        log("  {:9s}  {:13s}  {:13s}  {:>7.1f}  {:>7.1f}  {:>8.1f}  {:>4s}  "
+            "{:>7.2f}%  {:>8.1f}%  {:>8.1f}%".format(
+                gene, hgvs, str(r["tier"])[:13],
+                r["wt_IC50"], r["mut_IC50"], r["delta_IC50"],
+                "Y" if bool(r["is_tcw"]) else "-",
+                100 * r["prevalence_tier"],
+                r.get("pct_expressing_tier", np.nan),
+                r.get("carrier_pct_of_expressers", np.nan)))
+    log("\n  prevTier is the headline prevalence AND the coral carriage segment.")
+    log("  pctExprT is the bar height (tier denominator: 546 specific, 1092 shared).")
+
 
 # =============================================================================
 # MAIN
 # =============================================================================
 def main():
-    banner("PREVALENCE-WEIGHTED NEOANTIGEN RANKING v2 (read-only)")
+    banner("PREVALENCE-WEIGHTED NEOANTIGEN RANKING v3 (read-only)")
     log(f"  BASE_DIR: {BASE_DIR}")
     log(f"  Candidate universe: SBS2 + CNV neoantigen files")
     log(f"  Headline: tier-conditional prevalence; fairness: prevalence_max")

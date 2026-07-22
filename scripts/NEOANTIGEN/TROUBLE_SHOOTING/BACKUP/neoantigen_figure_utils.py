@@ -1,26 +1,32 @@
 #!/usr/bin/env python3
 """
-neoantigen_figure_utils.py
-==========================
-Shared loaders and renderers for the Figure 7 neoantigen landscape (main +
-supplemental). Every number is read from a locked diagnostic output; nothing is
-recomputed here.
+neoantigen_figure_utils.py  (v2, single-source)
+===============================================
+Shared loaders and renderers for the Figure 7 neoantigen landscape. Every
+binding, prevalence, and expression number is read from ONE locked table,
+neoantigen_prevalence_ranking_full.tsv, so a panel value and the manuscript
+value cannot drift. Nothing is recomputed here.
 
-Card layout (one gene): three coupled panels
-  - MHC-binding bars  : one row per differential neoantigen mutation, best peptide,
-                        wild-type -> mutant IC50 drop (dumbbell), sorted by mut IC50.
-  - Gene track        : native-HGVS-frame backbone, domain boxes, disordered underlay,
-                        lollipops colored by TCW status at their labeled positions.
-  - Expression/carrier: tier-correct % expressing + fraction of expressing cells
-                        carrying any of the gene's mutations.
+Retargeted to three featured vaccine candidates, one per tier:
+    COX4I1 p.Ala9Thr   CNV-specific (Tier 3)   prevalence 24.9%
+    SPRR1A p.Val61Ile  shared       (Tier 1)   prevalence 16.9% (pooled /1092)
+    KRT6B  p.Glu342Lys SBS2-specific(Tier 2)   prevalence  7.9%, TCW clean C>T
 
-Data sources (all under data/FIG_7/):
-  03_mhc_binding/{group}_neoantigens.tsv                 (binding, differential)
-  fasta_context/ref_tri_fasta.tsv                        (genome TCW per variant)
-  protein_domains/protein_domains.tsv (+ {gene}_mutation_map.tsv)   (native tracks)
-  TROUBLESHOOTING/group_aware_expression/
-      group_aware_expression_carrier.tsv                 (expression + carrier)
-      panelA_burden_stats.tsv                            (Panel A means/SEM/adj p)
+Two color languages, one per analytical axis:
+    TIER palette  (prevalence / expression panels): CNV mustard, shared purple,
+                  SBS2 coral. Encodes which niche(s) a hit belongs to.
+    TCW palette   (binding / track panels): clean C>T coral, C>G orange,
+                  non-APOBEC gray. Encodes mutational provenance.
+Both legends are drawn so the dual encoding is unambiguous.
+
+Building blocks:
+  load_featured            the three featured rows from full.tsv (validated)
+  load_gene_track          native-frame backbone + domains (protein_domains.tsv)
+  load_panelA / load_venn  burden stats and gene-level Venn (own sources)
+  draw_binding_featured    one panel, 3 horizontal stacked bars (wt + TCW gain)
+  draw_expr_featured       one panel, 3 vertical stacked bars (expr + carriage)
+  draw_gene_track          protein track with the featured lollipop
+  draw_panelA / draw_panelB_venn   burden and Venn
 
 Conventions: Agg backend, hex colors, fonts 28-34, PDF+PNG at 300 DPI.
 Author: Jake Lehle / Claude (2026 NMF Paper)
@@ -33,41 +39,55 @@ matplotlib.use('Agg')
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle
-from matplotlib.gridspec import GridSpecFromSubplotSpec
+from matplotlib.patches import Rectangle, Circle, Patch
+from matplotlib.lines import Line2D
+from matplotlib.offsetbox import TextArea, HPacker, AnnotationBbox
 
 # =============================================================================
 # PATHS
 # =============================================================================
 BASE_DIR = "/master/jlehle/WORKING/2026_NMF_PAPER"
-MHC_DIR = os.path.join(BASE_DIR, "data/FIG_7/03_mhc_binding")
-FASTA_TSV = os.path.join(BASE_DIR, "data/FIG_7/fasta_context/ref_tri_fasta.tsv")
+RANK_DIR = os.path.join(BASE_DIR, "data/FIG_7/06_prevalence_ranking")
+FULL_TSV = os.path.join(RANK_DIR, "neoantigen_prevalence_ranking_full.tsv")   # SINGLE SOURCE
+MHC_DIR = os.path.join(BASE_DIR, "data/FIG_7/03_mhc_binding")                 # Venn only
 DOMAINS_TSV = os.path.join(BASE_DIR, "data/FIG_7/protein_domains/protein_domains.tsv")
-DOMAINS_DIR = os.path.join(BASE_DIR, "data/FIG_7/protein_domains")
 GA_DIR = os.path.join(BASE_DIR, "data/FIG_7/TROUBLESHOOTING/group_aware_expression")
-EXPR_TSV = os.path.join(GA_DIR, "group_aware_expression_carrier.tsv")
-PANELA_TSV = os.path.join(GA_DIR, "panelA_burden_stats.tsv")
+PANELA_TSV = os.path.join(GA_DIR, "panelA_burden_stats.tsv")                  # burden only
 OUTPUT_DIR = os.path.join(BASE_DIR, "data/FIG_7/figures")
+
+# =============================================================================
+# FEATURED MUTATIONS  (order = prevalence_tier descending, used across bar panels)
+# =============================================================================
+FEATURED = {
+    "COX4I1": "p.Ala9Thr",     # CNV-specific  (Tier 3)
+    "SPRR1A": "p.Val61Ile",    # shared        (Tier 1)
+    "KRT6B":  "p.Glu342Lys",   # SBS2-specific (Tier 2), TCW clean C>T
+}
+TRACK_LONG = "KRT6B"                       # full-width track (has real domains)
+TRACK_SHORT = ["COX4I1", "SPRR1A"]         # paired short tracks
 
 # =============================================================================
 # STYLE
 # =============================================================================
-COLOR_SBS2 = '#ed6a5a'     # coral  (SBS2 / A3A)
-COLOR_CNV = '#F6D155'      # mustard (CNV / A3B)
+COLOR_SBS2 = '#ed6a5a'     # coral  (SBS2 tier / clean C>T TCW)
+COLOR_CNV = '#F6D155'      # mustard (CNV tier)
 COLOR_SHARED = '#9B59B6'   # purple (shared tier)
 TCW_CT = '#ed6a5a'         # clean C>T TCW  (SBS2 signature)
 TCW_CG = '#E67E22'         # C>G TCW        (SBS13, off-signature)
 NONTCW = '#9AA0A6'         # non-APOBEC     (gray)
-DISORDER = '#B0BEC5'       # disordered regions
-BACKBONE = '#D5DBDB'       # protein backbone bar
-THRESH_IC50 = 500.0        # binder threshold (nM)
+DISORDER = '#B0BEC5'
+BACKBONE = '#D5DBDB'
+WT_GRAY = '#D0D3D4'        # wild-type baseline / expressing (non-carrier) segment
+MUT_RED = '#D1352B'        # mutated residue highlight in peptide sequences
+THRESH_IC50 = 500.0
+THRESH_SCORE = 1.0 - np.log10(THRESH_IC50) / np.log10(50000.0)   # ~0.426
 
 FS_TITLE, FS_LABEL, FS_TICK, FS_ANNOT, FS_SMALL = 34, 30, 28, 28, 24
 
-GENE_TIER = {'KLF3': 'Tier1_shared', 'CAST': 'Tier2_sbs2_specific',
-             'SERPINB2': 'Tier1_shared', 'KRT6B': 'Tier2_sbs2_specific',
-             'ANXA1': 'Tier2_sbs2_specific'}
-GENE_GROUP = {g: 'SBS2_HIGH' for g in GENE_TIER}   # neoantigen source group
+TIER_COLOR = {'SBS2_specific': COLOR_SBS2, 'CNV_specific': COLOR_CNV,
+              'shared': COLOR_SHARED}
+TIER_LABEL = {'SBS2_specific': 'SBS2-specific', 'CNV_specific': 'CNV-specific',
+              'shared': 'shared'}
 
 plt.rcParams.update({'font.size': FS_TICK, 'axes.linewidth': 1.4,
                      'pdf.fonttype': 42, 'ps.fonttype': 42})
@@ -81,12 +101,22 @@ def _pos(hgvs):
     return int(m.group(1)) if m else None
 
 
+def _tobool(s):
+    return str(s).strip().lower() in ('true', '1', '1.0', 'yes')
+
+
 def tcw_color(is_tcw, is_tcw_ct):
-    if bool(is_tcw_ct):
+    if _tobool(is_tcw_ct):
         return TCW_CT
-    if bool(is_tcw):
+    if _tobool(is_tcw):
         return TCW_CG
     return NONTCW
+
+
+def _bind_score(ic50):
+    """MHCflurry-style transformed affinity: 1 = strong (1 nM), 0 = weak (50000 nM)."""
+    ic50 = float(min(max(float(ic50), 1.0), 50000.0))
+    return float(np.clip(1.0 - np.log10(ic50) / np.log10(50000.0), 0.0, 1.0))
 
 
 def _read(path, what):
@@ -95,15 +125,116 @@ def _read(path, what):
     return pd.read_csv(path, sep='\t')
 
 
-def _tobool(s):
-    return str(s).strip().lower() in ('true', '1', '1.0', 'yes')
+def _mut_position_map():
+    """(gene, hgvs_p, mut_peptide) -> 1-based index of the mutated residue in the
+    peptide, read from the neoantigen files (mut_position_in_peptide). Position is
+    a property of the peptide window, not the allele, so it is unambiguous. Used
+    only to color the changed residue; it is not a manuscript number."""
+    pos = {}
+    for group in ('SBS2_HIGH', 'CNV_HIGH'):
+        p = os.path.join(MHC_DIR, f"{group}_neoantigens.tsv")
+        if not os.path.exists(p):
+            continue
+        df = pd.read_csv(p, sep='\t')
+        if not {'gene', 'hgvs_p', 'mut_peptide', 'mut_position_in_peptide'} <= set(df.columns):
+            continue
+        d = df.dropna(subset=['mut_position_in_peptide'])
+        for r in d.itertuples(index=False):
+            pos[(str(r.gene), str(r.hgvs_p), str(r.mut_peptide))] = int(r.mut_position_in_peptide)
+    return pos
+
+
+def _colored_peptide(ax, x, y, peptide, mut_pos, suffix, fontsize):
+    """Render a monospace peptide at data coords (x, y), left-anchored, with the
+    residue at 1-based mut_pos drawn in red. `suffix` (e.g. IC50) is appended plain.
+    Falls back to a single black label if mut_pos is missing/out of range."""
+    tp = dict(family='monospace', size=fontsize)
+    parts = []
+    if mut_pos and 1 <= mut_pos <= len(peptide):
+        pre, mid, post = peptide[:mut_pos - 1], peptide[mut_pos - 1], peptide[mut_pos:]
+        if pre:
+            parts.append(TextArea(pre, textprops={**tp, 'color': '#222222'}))
+        parts.append(TextArea(mid, textprops={**tp, 'color': MUT_RED, 'weight': 'bold'}))
+        if post:
+            parts.append(TextArea(post, textprops={**tp, 'color': '#222222'}))
+    else:
+        parts.append(TextArea(peptide, textprops={**tp, 'color': '#222222'}))
+    parts.append(TextArea(suffix, textprops={**tp, 'color': '#222222'}))
+    box = HPacker(children=parts, align='baseline', pad=0, sep=0)
+    ax.add_artist(AnnotationBbox(box, (x, y), xycoords=('data', 'data'),
+                                 box_alignment=(0, 0.5), frameon=False, pad=0))
+
+
+def binding_legend_handles():
+    return [Patch(facecolor=WT_GRAY, edgecolor='#333', label='wild-type baseline'),
+            Patch(facecolor=TCW_CT, edgecolor='#333', label='SBS2 gain (TCW C>T)'),
+            Patch(facecolor=TCW_CG, edgecolor='#333', label='SBS13 gain (TCW C>G)'),
+            Patch(facecolor=NONTCW, edgecolor='#333', label='non-APOBEC gain')]
+
+
+def tier_legend_handles():
+    return [Patch(facecolor=WT_GRAY, edgecolor='#333', label='expressing (no mutation)'),
+            Patch(facecolor=COLOR_CNV, edgecolor='#333', label='carries mutation (CNV tier)'),
+            Patch(facecolor=COLOR_SHARED, edgecolor='#333', label='carries mutation (shared tier)'),
+            Patch(facecolor=COLOR_SBS2, edgecolor='#333', label='carries mutation (SBS2 tier)')]
 
 
 # =============================================================================
-# LOADERS
+# LOADERS  (single source: full.tsv)
 # =============================================================================
+def load_featured():
+    """The three featured rows from full.tsv, validated, ordered by prevalence."""
+    df = _read(FULL_TSV, "prevalence ranking full")
+    rows = []
+    for gene, hgvs in FEATURED.items():
+        sub = df[(df['gene'].astype(str) == gene) & (df['hgvs_p'].astype(str) == hgvs)]
+        if len(sub) == 0:
+            near = df[df['gene'].astype(str) == gene]['hgvs_p'].tolist()[:6]
+            raise ValueError(f"Featured mutation {gene} {hgvs} not in {FULL_TSV}. "
+                             f"Re-run the ranking diagnostic (v3+). Gene rows present: {near}")
+        rows.append(sub.iloc[0])
+    out = pd.DataFrame(rows).reset_index(drop=True)
+    out = out.sort_values('prevalence_tier', ascending=False).reset_index(drop=True)
+    # attach the mutated-residue index within each featured peptide (for red highlight)
+    pos = _mut_position_map()
+    out['mut_pos_in_pep'] = [pos.get((str(r.gene), str(r.hgvs_p), str(r.peptide)))
+                             for r in out.itertuples()]
+    for r in out.itertuples():
+        mp = r.mut_pos_in_pep
+        pep = str(r.peptide)
+        res = pep[mp - 1] if (mp and 1 <= mp <= len(pep)) else '?'
+        print(f"  featured: {r.gene:8s} {r.hgvs_p:14s} {pep:12s} "
+              f"mutated residue '{res}' at position {mp}")
+    return out
+
+
+def load_gene_track(gene):
+    dm = _read(DOMAINS_TSV, "protein domains")
+    g = dm[dm['gene'].astype(str) == gene].copy()
+    if len(g) == 0:
+        raise ValueError(
+            f"{gene} is not in {DOMAINS_TSV}. Re-run Diagnostic_Fetch_Protein_Domains.py "
+            f"with FIGURE_GENES = ['COX4I1', 'SPRR1A', 'KRT6B'] before building the figure.")
+    native_len = int(g['native_length'].iloc[0])
+    acc = str(g['uniprot_acc'].iloc[0])
+    domains = g[g['category'] == 'domain'][['start', 'end', 'name', 'color']]
+    disordered = g[g['category'] == 'disordered'][['start', 'end', 'name']]
+    return {'native_len': native_len, 'acc': acc,
+            'domains': domains.to_dict('records'),
+            'disordered': disordered.to_dict('records')}
+
+
+def featured_lollipop(feat_row):
+    """Single featured lollipop for a gene's track, colored by TCW class."""
+    p = _pos(feat_row['hgvs_p'])
+    if p is None:
+        return []
+    return [{'pos': p, 'mut_ic50': float(feat_row['mut_IC50']),
+             'color': tcw_color(feat_row['is_tcw'], feat_row['is_tcw_ct']),
+             'hgvs': str(feat_row['hgvs_p'])}]
+
+
 def load_panelA():
-    """means, SEM, and BH-adjusted p for the two per-cell per-UMI burden tests."""
     df = _read(PANELA_TSV, "Panel A burden stats").set_index('comparison')
     out = {}
     for key, label in [('neoantigen_perUMI', 'neoantigen'), ('fusion_perUMI', 'fusion')]:
@@ -112,13 +243,12 @@ def load_panelA():
             out[label] = {'sbs2': float(r['sbs2_mean']), 'cnv': float(r['cnv_mean']),
                           'sbs2_sem': float(r.get('sbs2_sem', np.nan)),
                           'cnv_sem': float(r.get('cnv_sem', np.nan)),
-                          'adj_p': float(r['bh_adjusted_p']),
-                          'metric': str(r.get('metric', ''))}
+                          'adj_p': float(r['bh_adjusted_p'])}
     return out
 
 
 def load_venn():
-    """Neoantigen gene sets -> (sbs2_only, shared, cnv_only)."""
+    """Gene-level neoantigen overlap (should read the current 272/82/143)."""
     def genes(group):
         p = os.path.join(MHC_DIR, f"{group}_neoantigens.tsv")
         return set(_read(p, f"{group} neoantigens")['gene'].dropna().astype(str))
@@ -127,115 +257,90 @@ def load_venn():
     return len(s - c), len(shared), len(c - s)
 
 
-def load_fasta_tcw():
-    df = _read(FASTA_TSV, "FASTA trinucleotide table")
-    df['_pos'] = df['hgvs_p'].map(_pos)
-    return df
-
-
-def load_gene_binding(gene, fasta=None):
-    """Differential neoantigen mutations for a gene: best peptide per mutation,
-    with TCW status joined from the FASTA table. Sorted by mut IC50 ascending."""
-    group = GENE_GROUP.get(gene, 'SBS2_HIGH')
-    neo = _read(os.path.join(MHC_DIR, f"{group}_neoantigens.tsv"), f"{group} neoantigens")
-    sub = neo[neo['gene'].astype(str) == gene].copy()
-    if 'is_differential' in sub.columns:
-        sub = sub[sub['is_differential'].map(_tobool)]
-    if len(sub) == 0:
-        return pd.DataFrame(columns=['hgvs_p', 'pos', 'mut_peptide', 'wt_ic50',
-                                     'mut_ic50', 'best_allele', 'is_tcw', 'is_tcw_ct'])
-    sub = sub.sort_values('mut_ic50').drop_duplicates(subset=['hgvs_p'], keep='first').copy()
-    sub['pos'] = sub['hgvs_p'].map(_pos)
-    if fasta is None:
-        fasta = load_fasta_tcw()
-    key = fasta[fasta['gene'].astype(str) == gene][['hgvs_p', 'is_tcw', 'is_tcw_ct']].copy()
-    key['is_tcw'] = key['is_tcw'].map(_tobool)
-    key['is_tcw_ct'] = key['is_tcw_ct'].map(_tobool)
-    sub = sub.merge(key, on='hgvs_p', how='left')
-    sub['is_tcw'] = sub['is_tcw'].fillna(False)
-    sub['is_tcw_ct'] = sub['is_tcw_ct'].fillna(False)
-    return sub.sort_values('mut_ic50').reset_index(drop=True)
-
-
-def load_gene_track(gene):
-    """Native-frame domain/disordered segments + backbone length for a gene."""
-    dm = _read(DOMAINS_TSV, "protein domains")
-    g = dm[dm['gene'].astype(str) == gene].copy()
-    native_len = int(g['native_length'].iloc[0]) if len(g) else 0
-    acc = str(g['uniprot_acc'].iloc[0]) if len(g) else ''
-    domains = g[g['category'] == 'domain'][['start', 'end', 'name', 'color']]
-    disordered = g[g['category'] == 'disordered'][['start', 'end', 'name']]
-    return {'native_len': native_len, 'acc': acc,
-            'domains': domains.to_dict('records'),
-            'disordered': disordered.to_dict('records')}
-
-
-def load_expression_carrier(gene):
-    df = _read(EXPR_TSV, "group-aware expression/carrier")
-    r = df[df['gene'].astype(str) == gene]
-    if len(r) == 0:
-        return None
-    r = r.iloc[0]
-    return {'tier': str(r['tier']), 'headline_pct': float(r['headline_pct']),
-            'pct_sbs2': float(r['pct_sbs2']), 'pct_cnv': float(r['pct_cnv']),
-            'pct_pooled': float(r['pct_pooled']),
-            'carrier_pct': float(r['carrier_pct_all_expressers']),
-            'n_expressers': int(r['n_expressers']), 'n_carriers': int(r['n_carriers'])}
-
-
-def load_gene_card(gene, fasta=None):
-    b = load_gene_binding(gene, fasta=fasta)
-    t = load_gene_track(gene)
-    e = load_expression_carrier(gene)
-    lolli = [{'pos': int(row.pos), 'mut_ic50': float(row.mut_ic50),
-              'color': tcw_color(row.is_tcw, row.is_tcw_ct), 'hgvs': row.hgvs_p}
-             for row in b.itertuples() if pd.notna(row.pos)]
-    return {'gene': gene, 'tier': GENE_TIER.get(gene, '?'), 'binding': b,
-            'track': t, 'expr': e, 'lollipops': lolli}
-
-
 # =============================================================================
 # RENDERERS
 # =============================================================================
-def draw_binding_bars(ax, gene, binding):
-    ax.set_title(f"{gene}  MHC-I binding", fontsize=FS_LABEL, style='italic', pad=10)
-    if len(binding) == 0:
-        ax.text(0.5, 0.5, "no differential neoantigen", ha='center', va='center',
-                fontsize=FS_SMALL, transform=ax.transAxes)
-        ax.axis('off')
-        return
-    n = len(binding)
+def draw_binding_featured(ax, feat, panel=None):
+    """One panel, one horizontal stacked bar per featured mutation: wild-type
+    baseline binding score, then the mutation's binding gain stacked on top and
+    colored by TCW provenance. Bars ordered by prevalence_tier (panel-consistent)."""
+    ttl = "MHC-I binding gain of featured neoantigens"
+    ax.set_title((f"{panel}  " if panel else "") + ttl, fontsize=FS_LABEL, loc='left', pad=10)
+    n = len(feat)
     ys = np.arange(n)[::-1]
-    for y, row in zip(ys, binding.itertuples()):
-        wt = min(float(row.wt_ic50), 50000.0)
-        mut = float(row.mut_ic50)
+    for y, row in zip(ys, feat.itertuples()):
+        s_wt = _bind_score(row.wt_IC50)
+        s_mut = _bind_score(row.mut_IC50)
         col = tcw_color(row.is_tcw, row.is_tcw_ct)
-        ax.plot([mut, wt], [y, y], '-', color='#B0B0B0', lw=3, zorder=1)
-        ax.scatter([wt], [y], s=180, facecolors='white', edgecolors='#555555',
-                   linewidths=2.2, zorder=2)
-        ax.scatter([mut], [y], s=260, facecolors=col, edgecolors='#333333',
-                   linewidths=2.2, zorder=3)
-        ax.text(mut, y + 0.30, f"{row.mut_peptide}", ha='center', va='bottom',
-                fontsize=FS_SMALL - 4, family='monospace')
-        ax.text(-0.02, y, f"{row.hgvs_p}", transform=ax.get_yaxis_transform(),
+        ax.barh(y, s_wt, height=0.58, color=WT_GRAY, edgecolor='#333333', linewidth=1.3, zorder=2)
+        ax.barh(y, max(s_mut - s_wt, 0), left=s_wt, height=0.58, color=col,
+                edgecolor='#333333', linewidth=1.3, zorder=3)
+        ax.text(-0.02, y, f"{row.gene}  {row.hgvs_p}", transform=ax.get_yaxis_transform(),
                 ha='right', va='center', fontsize=FS_SMALL - 2, clip_on=False)
-    ax.axvline(THRESH_IC50, color='#444444', ls='--', lw=2)
-    ax.text(THRESH_IC50, ys.max() + 0.7, '500 nM', ha='center', va='bottom',
-            fontsize=FS_SMALL - 2, color='#444444')
-    ax.set_xscale('log')
-    ax.set_xlim(1, 55000)
-    ax.set_ylim(-0.7, n - 0.3 + 0.9)
+        mut_pos = getattr(row, 'mut_pos_in_pep', None)
+        _colored_peptide(ax, s_mut + 0.015, y, str(row.peptide), mut_pos,
+                         f"  ({row.mut_IC50:.0f} nM)", FS_SMALL - 4)
+    ax.axvline(THRESH_SCORE, color='#444444', ls='--', lw=2, zorder=4)
+    ax.text(THRESH_SCORE, n - 0.35, 'binder\n(500 nM)', ha='center', va='bottom',
+            fontsize=FS_SMALL - 6, color='#444444')
+    ax.set_xlim(0, 1.32)
+    ax.set_ylim(-0.7, n - 0.4 + 0.7)
     ax.set_yticks([])
-    ax.set_xlabel('IC50 (nM, log)   wt (open) → mut (filled)', fontsize=FS_TICK - 2)
-    ax.tick_params(labelsize=FS_TICK - 2)
+    ax.set_xlabel('MHC-I binding score  (1 = strong)', fontsize=FS_TICK - 2)
+    ax.tick_params(labelsize=FS_TICK - 4)
     for s in ('top', 'right', 'left'):
         ax.spines[s].set_visible(False)
+    # inline TCW legend (this panel and the tracks are colored by provenance)
+    ax.legend(handles=binding_legend_handles(), fontsize=FS_SMALL - 6, frameon=False,
+              loc='lower right', bbox_to_anchor=(1.0, -0.04), ncol=1)
 
 
-def draw_gene_track(ax, gene, track, lollipops):
+def draw_expr_featured(ax, feat, panel=None):
+    """One panel, one vertical stacked bar per featured mutation. Bar height =
+    % of TIER cells expressing the gene (denominator 546 for specific tiers, 1092
+    for shared). The colored base = prevalence_tier (the fraction that both
+    express and carry the mutation), colored by tier. The colored base IS the
+    headline prevalence number."""
+    xs = np.arange(len(feat))
+    for x, row in zip(xs, feat.itertuples()):
+        total = float(row.pct_expressing_tier)
+        carriage = float(row.prevalence_tier) * 100.0     # == coral segment height
+        col = TIER_COLOR.get(row.tier, NONTCW)
+        ax.bar(x, carriage, width=0.60, color=col, edgecolor='#333333', linewidth=1.4, zorder=3)
+        ax.bar(x, max(total - carriage, 0), bottom=carriage, width=0.60, color=WT_GRAY,
+               edgecolor='#333333', linewidth=1.4, zorder=2)
+        ax.text(x, total + 1.6, f"{total:.0f}% expr", ha='center', va='bottom', fontsize=FS_SMALL - 2)
+        ax.text(x, carriage + 0.6, f"{carriage:.1f}%", ha='center', va='bottom',
+                fontsize=FS_SMALL - 2, color='#1a1a1a', fontweight='bold')
+    ax.set_xticks(xs)
+    ax.set_xticklabels([r.gene for r in feat.itertuples()], fontsize=FS_TICK - 2)
+    # tier sublabel under each gene, colored by tier so the palette is self-documenting
+    ymax = max(float(r.pct_expressing_tier) for r in feat.itertuples())
+    ax.set_ylim(0, min(ymax * 1.25, 108))
+    for x, row in zip(xs, feat.itertuples()):
+        ax.annotate(TIER_LABEL.get(row.tier, row.tier), xy=(x, 0), xytext=(0, -34),
+                    textcoords='offset points', ha='center', va='top',
+                    fontsize=FS_SMALL - 6, color=TIER_COLOR.get(row.tier, '#333'),
+                    fontweight='bold', annotation_clip=False)
+    ax.set_ylabel('% of tier cells', fontsize=FS_TICK - 2)
+    ax.tick_params(labelsize=FS_TICK - 4)
+    ax.legend(handles=[Patch(facecolor=WT_GRAY, edgecolor='#333', label='expressing, no mutation'),
+                       Patch(facecolor=NONTCW, edgecolor='#333',
+                             label='carries mutation = prevalence (color = tier)')],
+              fontsize=FS_SMALL - 6, frameon=False, loc='upper right')
+    for s in ('top', 'right'):
+        ax.spines[s].set_visible(False)
+    ttl = "expression and neoantigen carriage"
+    ax.set_title((f"{panel}  " if panel else "") + ttl, fontsize=FS_LABEL, loc='left', pad=10)
+
+
+def draw_gene_track(ax, gene, track, lollipops, panel=None, legend='disorder'):
+    """Native-frame backbone with functional domain boxes, muted disordered underlay,
+    and the featured TCW-colored lollipop. Robust to a domain-empty track (short
+    proteins render as backbone + one lollipop)."""
     L = max(track['native_len'], 1)
     ax.set_xlim(-L * 0.02, L * 1.02)
-    ax.set_ylim(-1.2, 2.9)
+    ax.set_ylim(-2.0, 2.9)
     bar_y, bar_h = 0.0, 0.5
     for d in track['disordered']:
         ax.add_patch(Rectangle((d['start'], bar_y - 0.18), d['end'] - d['start'],
@@ -248,72 +353,40 @@ def draw_gene_track(ax, gene, track, lollipops):
                                bar_h + 0.12, facecolor=dom['color'], edgecolor='#333333',
                                linewidth=1.4, zorder=3))
         ax.text((dom['start'] + dom['end']) / 2, bar_y + bar_h / 2, dom['name'],
-                ha='center', va='center', fontsize=FS_SMALL - 8, zorder=4, clip_on=True)
-    if lollipops:
-        anchor = min(range(len(lollipops)), key=lambda i: lollipops[i]['mut_ic50'])
-        for i, lp in enumerate(lollipops):
-            x = lp['pos']
-            ax.plot([x, x], [bar_y + bar_h, bar_y + bar_h + 1.3], '-',
-                    color='#555555', lw=2, zorder=5)
-            ax.scatter([x], [bar_y + bar_h + 1.4], s=520 if i == anchor else 320,
-                       facecolors=lp['color'], edgecolors='#222222', linewidths=2.4,
-                       zorder=6)
-    ax.text(0, bar_y + bar_h + 2.15, f"{gene}  ({track['acc']}, {L} aa)",
-            fontsize=FS_SMALL, style='italic', va='bottom')
+                ha='center', va='center', fontsize=FS_SMALL - 6, zorder=4, clip_on=True)
+    for lp in lollipops:
+        x = lp['pos']
+        ax.plot([x, x], [bar_y + bar_h, bar_y + bar_h + 1.3], '-', color='#555555', lw=2, zorder=5)
+        ax.scatter([x], [bar_y + bar_h + 1.4], s=560, facecolors=lp['color'],
+                   edgecolors='#222222', linewidths=2.4, zorder=6)
+        ax.text(x, bar_y + bar_h + 1.75, lp['hgvs'], ha='center', va='bottom',
+                fontsize=FS_SMALL - 6, zorder=7)
+    label = f"{gene}  ({track['acc']}, {L} aa)"
+    ax.text(0, bar_y + bar_h + 2.2, (f"{panel}  " if panel else "") + label,
+            fontsize=FS_LABEL - 2, va='bottom')
+    if legend:
+        handles = []
+        if track['disordered']:
+            handles.append(Patch(facecolor=DISORDER, edgecolor='none', alpha=0.55,
+                                 label='disordered region'))
+        if legend == 'full':
+            handles += [Line2D([0], [0], marker='o', linestyle='none', markersize=13,
+                               markerfacecolor=c, markeredgecolor='#222', label=l)
+                        for c, l in [(TCW_CT, 'SBS2 mutation (C>T)'),
+                                     (TCW_CG, 'SBS13 mutation (C>G)'),
+                                     (NONTCW, 'non-APOBEC mutation')]]
+        if handles:
+            ax.legend(handles=handles, loc='lower right', fontsize=FS_SMALL - 4, frameon=False)
     ax.set_yticks([])
-    ax.set_xlabel('residue (native numbering)', fontsize=FS_TICK - 4)
+    ax.set_xlabel('residue (native numbering)', fontsize=FS_TICK - 2)
     ax.tick_params(labelsize=FS_TICK - 4)
     for s in ('top', 'right', 'left'):
         ax.spines[s].set_visible(False)
 
 
-def draw_expression_carrier(ax, gene, expr):
-    if expr is None:
-        ax.axis('off')
-        return
-    shared = expr['tier'].startswith('Tier1')
-    denom_lbl = 'SBS2+CNV' if shared else 'SBS2'
-    expr_col = COLOR_SHARED if shared else COLOR_SBS2
-    ax.barh([1.0], [expr['headline_pct']], height=0.55, color=expr_col,
-            edgecolor='#333333', linewidth=1.4)
-    ax.text(min(expr['headline_pct'] + 1.5, 101), 1.0, f"{expr['headline_pct']:.1f}%",
-            va='center', fontsize=FS_SMALL)
-    ax.text(0, 1.55, f"% expressing ({denom_lbl})", fontsize=FS_SMALL - 2, va='bottom')
-    ax.barh([0.0], [expr['carrier_pct']], height=0.55, color='#34495E',
-            edgecolor='#333333', linewidth=1.4)
-    ax.text(expr['carrier_pct'] + 1.5, 0.0,
-            f"{expr['carrier_pct']:.1f}%  ({expr['n_carriers']}/{expr['n_expressers']})",
-            va='center', fontsize=FS_SMALL)
-    ax.text(0, 0.55, "carrier / expressers", fontsize=FS_SMALL - 2, va='bottom')
-    ax.set_xlim(0, 108)
-    ax.set_ylim(-0.6, 2.1)
-    ax.set_yticks([])
-    ax.set_xlabel('percent', fontsize=FS_TICK - 4)
-    ax.tick_params(labelsize=FS_TICK - 4)
-    for s in ('top', 'right', 'left'):
-        ax.spines[s].set_visible(False)
-
-
-def make_card_axes(fig, cell):
-    gs = GridSpecFromSubplotSpec(2, 2, subplot_spec=cell, width_ratios=[0.44, 0.56],
-                                 height_ratios=[0.62, 0.38], wspace=0.30, hspace=0.6)
-    ax_bind = fig.add_subplot(gs[:, 0])
-    ax_track = fig.add_subplot(gs[0, 1])
-    ax_expr = fig.add_subplot(gs[1, 1])
-    return ax_bind, ax_track, ax_expr
-
-
-def draw_card(fig, cell, card):
-    ax_bind, ax_track, ax_expr = make_card_axes(fig, cell)
-    draw_binding_bars(ax_bind, card['gene'], card['binding'])
-    draw_gene_track(ax_track, card['gene'], card['track'], card['lollipops'])
-    draw_expression_carrier(ax_expr, card['gene'], card['expr'])
-
-
-def draw_panelA(ax, stats):
+def draw_panelA(ax, stats, panel='A'):
     blocks = [('neoantigen', 'neoantigens'), ('fusion', 'RNA fusions')]
-    xcenters = [0, 1.5]
-    w = 0.5
+    xcenters, w = [0, 1.5], 0.5
     for (key, _), xc in zip(blocks, xcenters):
         d = stats.get(key)
         if not d:
@@ -321,82 +394,40 @@ def draw_panelA(ax, stats):
         vals = [d['sbs2'], d['cnv']]
         sems = [d.get('sbs2_sem', np.nan), d.get('cnv_sem', np.nan)]
         xs = [xc - w / 2, xc + w / 2]
-        ax.bar(xs, vals, width=w, color=[COLOR_SBS2, COLOR_CNV],
-               edgecolor='#333333', linewidth=1.6,
+        ax.bar(xs, vals, width=w, color=[COLOR_SBS2, COLOR_CNV], edgecolor='#333333', linewidth=1.6,
                yerr=[[0, 0], [s if np.isfinite(s) else 0 for s in sems]],
                error_kw={'elinewidth': 2, 'capsize': 6, 'capthick': 2})
         top = max(v + (s if np.isfinite(s) else 0) for v, s in zip(vals, sems))
         br = top * 1.12
-        ax.plot([xs[0], xs[0], xs[1], xs[1]], [top * 1.04, br, br, top * 1.04],
-                color='#333333', lw=1.8)
+        ax.plot([xs[0], xs[0], xs[1], xs[1]], [top * 1.04, br, br, top * 1.04], color='#333333', lw=1.8)
         p = d['adj_p']
-        ptxt = f"adj p = {p:.2g}" if p >= 1e-4 else f"adj p = {p:.1e}"
-        ax.text(xc, br * 1.02, ptxt, ha='center', va='bottom', fontsize=FS_SMALL)
+        ax.text(xc, br * 1.02, f"adj p = {p:.2g}" if p >= 1e-4 else f"adj p = {p:.1e}",
+                ha='center', va='bottom', fontsize=FS_SMALL)
     ax.set_xticks(xcenters)
     ax.set_xticklabels(['neoantigens', 'RNA fusions'], fontsize=FS_TICK)
-    ax.set_ylabel('events / 1000 UMI (per cell)', fontsize=FS_TICK)
+    ax.set_ylabel('events / 1000 UMI (per cell)', fontsize=FS_TICK - 2)
     ax.tick_params(labelsize=FS_TICK - 2)
-    from matplotlib.patches import Patch
     ax.legend(handles=[Patch(facecolor=COLOR_SBS2, edgecolor='#333', label='SBS2-HIGH'),
                        Patch(facecolor=COLOR_CNV, edgecolor='#333', label='CNV-HIGH')],
-              fontsize=FS_SMALL, frameon=False, loc='upper right')
+              fontsize=FS_SMALL, frameon=False, loc='upper left')
     for s in ('top', 'right'):
         ax.spines[s].set_visible(False)
-    ax.set_title('A  mutational burden per cell', fontsize=FS_LABEL, loc='left', pad=10)
+    ax.set_title((f"{panel}  " if panel else "") + 'mutational burden per cell',
+                 fontsize=FS_LABEL, loc='left', pad=10)
 
 
-def draw_panelB_venn(ax, counts):
+def draw_panelB_venn(ax, counts, panel='B'):
     sbs2_only, shared, cnv_only = counts
     ax.set_xlim(0, 10); ax.set_ylim(0, 7); ax.axis('off')
-    ax.add_patch(Circle((4.0, 3.4), 2.6, facecolor=COLOR_SBS2, edgecolor='#333',
-                        linewidth=1.8, alpha=0.55))
-    ax.add_patch(Circle((6.0, 3.4), 2.6, facecolor=COLOR_CNV, edgecolor='#333',
-                        linewidth=1.8, alpha=0.55))
+    ax.add_patch(Circle((4.0, 3.4), 2.6, facecolor=COLOR_SBS2, edgecolor='#333', linewidth=1.8, alpha=0.55))
+    ax.add_patch(Circle((6.0, 3.4), 2.6, facecolor=COLOR_CNV, edgecolor='#333', linewidth=1.8, alpha=0.55))
     ax.text(2.8, 3.4, f"{sbs2_only}", ha='center', va='center', fontsize=FS_TITLE)
     ax.text(7.2, 3.4, f"{cnv_only}", ha='center', va='center', fontsize=FS_TITLE)
     ax.text(5.0, 3.4, f"{shared}", ha='center', va='center', fontsize=FS_LABEL)
     ax.text(2.8, 0.5, 'SBS2-specific', ha='center', fontsize=FS_SMALL, color='#C0392B')
     ax.text(7.2, 0.5, 'CNV-specific', ha='center', fontsize=FS_SMALL, color='#B7950B')
     ax.text(5.0, 6.4, 'neoantigen genes', ha='center', fontsize=FS_SMALL)
-    ax.set_title('B  neoantigen gene overlap', fontsize=FS_LABEL, loc='left')
-
-
-def draw_carrier_comparison(ax, genes=('KLF3', 'CAST', 'SERPINB2', 'KRT6B', 'ANXA1')):
-    """Carrier fraction across the five genes, highlighting the SERPINB2/KRT6B
-    ~10x recurrence and flagging ANXA1 as the off-signature counterpoint."""
-    data = []
-    for g in genes:
-        e = load_expression_carrier(g)
-        if e:
-            data.append((g, e['carrier_pct']))
-    names = [x[0] for x in data]
-    vals = [x[1] for x in data]
-    colors = []
-    for g, _ in data:
-        if g in ('SERPINB2', 'KRT6B'):
-            colors.append(COLOR_SBS2)          # the recurrent carriers
-        elif g == 'ANXA1':
-            colors.append(TCW_CG)              # off-signature (SBS13)
-        else:
-            colors.append('#BDC3C7')
-    xs = np.arange(len(names))
-    ax.bar(xs, vals, width=0.66, color=colors, edgecolor='#333333', linewidth=1.4)
-    for x, v in zip(xs, vals):
-        ax.text(x, v + 0.3, f"{v:.1f}%", ha='center', va='bottom', fontsize=FS_SMALL - 2)
-    ax.set_xticks(xs)
-    ax.set_xticklabels(names, fontsize=FS_TICK - 2, style='italic')
-    ax.set_ylabel('carrier / expressers (%)', fontsize=FS_TICK - 2)
-    ax.tick_params(labelsize=FS_TICK - 4)
-    ax.set_ylim(0, max(vals) * 1.25 if vals else 1)
-    from matplotlib.patches import Patch
-    ax.legend(handles=[Patch(facecolor=COLOR_SBS2, edgecolor='#333', label='recurrent carrier'),
-                       Patch(facecolor=TCW_CG, edgecolor='#333', label='off-signature (SBS13)'),
-                       Patch(facecolor='#BDC3C7', edgecolor='#333', label='low carrier')],
-              fontsize=FS_SMALL - 2, frameon=False, loc='upper left')
-    for s in ('top', 'right'):
-        ax.spines[s].set_visible(False)
-    ax.set_title('A  neoantigen carrier fraction among expressing cells',
-                 fontsize=FS_LABEL, loc='left', pad=10)
+    ax.set_title((f"{panel}  " if panel else "") + 'neoantigen gene overlap', fontsize=FS_LABEL, loc='left')
 
 
 def save_figure(fig, name):
