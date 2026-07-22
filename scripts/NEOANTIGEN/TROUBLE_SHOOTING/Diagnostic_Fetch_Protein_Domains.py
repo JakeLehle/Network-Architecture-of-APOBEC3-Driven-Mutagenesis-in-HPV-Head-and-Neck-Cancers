@@ -49,7 +49,7 @@ ANNOTATION_DIR = os.path.join(BASE_DIR, "data/FIG_7/02_snpeff_annotation")
 OUTPUT_DIR = os.path.join(BASE_DIR, "data/FIG_7/protein_domains")
 OUTPUT_TSV = os.path.join(OUTPUT_DIR, "protein_domains.tsv")
 
-FIGURE_GENES = ['KLF3', 'CAST', 'SERPINB2', 'KRT6B', 'ANXA1']
+FIGURE_GENES = ['COX4I1', 'SPRR1A', 'KRT6B']
 GROUPS = ['SBS2_HIGH', 'CNV_HIGH']
 
 UNIPROT_SEARCH = "https://rest.uniprot.org/uniprotkb/search"
