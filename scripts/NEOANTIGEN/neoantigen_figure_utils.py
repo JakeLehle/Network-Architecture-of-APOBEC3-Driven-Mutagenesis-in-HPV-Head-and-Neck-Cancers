@@ -75,6 +75,7 @@ COLOR_SHARED = '#9B59B6'   # purple (shared tier)
 TCW_CT = '#ed6a5a'         # clean C>T TCW  (SBS2 signature)
 TCW_CG = '#E67E22'         # C>G TCW        (SBS13, off-signature)
 NONTCW = '#9AA0A6'         # non-APOBEC     (gray)
+BASE_DARK = '#6C7378'      # wild-type baseline (dark gray; bar majority)
 DISORDER = '#B0BEC5'
 BACKBONE = '#D5DBDB'
 WT_GRAY = '#D0D3D4'        # wild-type baseline / expressing (non-carrier) segment
@@ -144,7 +145,7 @@ def _mut_position_map():
     return pos
 
 
-def _colored_peptide(ax, x, y, peptide, mut_pos, suffix, fontsize):
+def _colored_peptide(ax, x, y, peptide, mut_pos, suffix, fontsize, xcoords='data'):
     """Render a monospace peptide at data coords (x, y), left-anchored, with the
     residue at 1-based mut_pos drawn in red. `suffix` (e.g. IC50) is appended plain.
     Falls back to a single black label if mut_pos is missing/out of range."""
@@ -161,15 +162,15 @@ def _colored_peptide(ax, x, y, peptide, mut_pos, suffix, fontsize):
         parts.append(TextArea(peptide, textprops={**tp, 'color': '#222222'}))
     parts.append(TextArea(suffix, textprops={**tp, 'color': '#222222'}))
     box = HPacker(children=parts, align='baseline', pad=0, sep=0)
-    ax.add_artist(AnnotationBbox(box, (x, y), xycoords=('data', 'data'),
+    ax.add_artist(AnnotationBbox(box, (x, y), xycoords=(xcoords, 'data'),
                                  box_alignment=(0, 0.5), frameon=False, pad=0))
 
 
 def binding_legend_handles():
-    return [Patch(facecolor=WT_GRAY, edgecolor='#333', label='wild-type baseline'),
-            Patch(facecolor=TCW_CT, edgecolor='#333', label='SBS2 gain (TCW C>T)'),
-            Patch(facecolor=TCW_CG, edgecolor='#333', label='SBS13 gain (TCW C>G)'),
-            Patch(facecolor=NONTCW, edgecolor='#333', label='non-APOBEC gain')]
+    return [Patch(facecolor=TCW_CT, edgecolor='#333', label='mutant, SBS2 (TCW C>T)'),
+            Patch(facecolor=TCW_CG, edgecolor='#333', label='mutant, SBS13 (C>G)'),
+            Patch(facecolor=WT_GRAY, edgecolor='#333', label='mutant, non-APOBEC'),
+            Patch(facecolor=BASE_DARK, edgecolor='#333', label='up to wild-type IC50')]
 
 
 def tier_legend_handles():
@@ -248,51 +249,70 @@ def load_panelA():
 
 
 def load_venn():
-    """Gene-level neoantigen overlap (should read the current 272/82/143)."""
-    def genes(group):
-        p = os.path.join(MHC_DIR, f"{group}_neoantigens.tsv")
-        return set(_read(p, f"{group} neoantigens")['gene'].dropna().astype(str))
-    s, c = genes('SBS2_HIGH'), genes('CNV_HIGH')
-    shared = s & c
-    return len(s - c), len(shared), len(c - s)
+    """Neoantigen-mutation overlap by tier, read from the single source (full.tsv)
+    so the Venn matches the manuscript tiers and CHECK E: 467 SBS2-specific /
+    93 shared / 215 CNV-specific. Returns (sbs2_specific, shared, cnv_specific)."""
+    df = _read(FULL_TSV, "prevalence ranking full")
+    tier = df['tier'].astype(str)
+    return (int((tier == 'SBS2_specific').sum()),
+            int((tier == 'shared').sum()),
+            int((tier == 'CNV_specific').sum()))
 
 
 # =============================================================================
 # RENDERERS
 # =============================================================================
 def draw_binding_featured(ax, feat, panel=None):
-    """One panel, one horizontal stacked bar per featured mutation: wild-type
-    baseline binding score, then the mutation's binding gain stacked on top and
-    colored by TCW provenance. Bars ordered by prevalence_tier (panel-consistent)."""
+    """Left-anchored horizontal stacked bar per featured mutation on a log IC50 nM
+    axis (ascending: 1 nM at the left, 50,000 at the right; plain integer ticks).
+    Every bar starts at the left (1 nM, log-zero) and runs up to the wild-type
+    IC50. The first (left) segment runs to the mutant IC50 and is colored by TCW
+    provenance (coral C>T, orange C>G, light gray non-APOBEC); the dark-gray
+    segment continues from the mutant up to the wild-type IC50 (the bar end). So
+    the color boundary marks the mutant IC50 and the bar end marks the wild-type
+    IC50. Ordered by prevalence_tier."""
     ttl = "MHC-I binding gain of featured neoantigens"
     ax.set_title((f"{panel}  " if panel else "") + ttl, fontsize=FS_LABEL, loc='left', pad=10)
     n = len(feat)
     ys = np.arange(n)[::-1]
+    XMIN_NM, XMAX_NM = 1.0, 50000.0
+    x0 = np.log10(XMIN_NM)   # 0.0 -> the left "zero" anchor (1 nM)
+    _w = lambda nm: np.log10(min(max(float(nm), XMIN_NM), XMAX_NM))
     for y, row in zip(ys, feat.itertuples()):
-        s_wt = _bind_score(row.wt_IC50)
-        s_mut = _bind_score(row.mut_IC50)
-        col = tcw_color(row.is_tcw, row.is_tcw_ct)
-        ax.barh(y, s_wt, height=0.58, color=WT_GRAY, edgecolor='#333333', linewidth=1.3, zorder=2)
-        ax.barh(y, max(s_mut - s_wt, 0), left=s_wt, height=0.58, color=col,
+        wmut, wwt = _w(row.mut_IC50), _w(row.wt_IC50)
+        if _tobool(row.is_tcw_ct):
+            lightcol = TCW_CT
+        elif _tobool(row.is_tcw):
+            lightcol = TCW_CG
+        else:
+            lightcol = WT_GRAY
+        # first (left) segment: 1 nM up to the mutant IC50, colored by provenance
+        ax.barh(y, wmut - x0, left=x0, height=0.58, color=lightcol,
                 edgecolor='#333333', linewidth=1.3, zorder=3)
+        # dark-gray segment: mutant up to the wild-type IC50 (bar end)
+        ax.barh(y, max(wwt - wmut, 0), left=wmut, height=0.58, color=BASE_DARK,
+                edgecolor='#333333', linewidth=1.3, zorder=2)
         ax.text(-0.02, y, f"{row.gene}  {row.hgvs_p}", transform=ax.get_yaxis_transform(),
                 ha='right', va='center', fontsize=FS_SMALL - 2, clip_on=False)
         mut_pos = getattr(row, 'mut_pos_in_pep', None)
-        _colored_peptide(ax, s_mut + 0.015, y, str(row.peptide), mut_pos,
-                         f"  ({row.mut_IC50:.0f} nM)", FS_SMALL - 4)
-    ax.axvline(THRESH_SCORE, color='#444444', ls='--', lw=2, zorder=4)
-    ax.text(THRESH_SCORE, n - 0.35, 'binder\n(500 nM)', ha='center', va='bottom',
+        _colored_peptide(ax, 1.02, y, str(row.peptide), mut_pos,
+                         f"  (WT {row.wt_IC50:,.0f} to {row.mut_IC50:,.0f} nM)",
+                         FS_SMALL - 4, xcoords='axes fraction')
+    ax.axvline(np.log10(500.0), color='#444444', ls='--', lw=2, zorder=4)
+    ax.text(np.log10(500.0), n - 0.35, 'binder\n(500 nM)', ha='center', va='bottom',
             fontsize=FS_SMALL - 6, color='#444444')
-    ax.set_xlim(0, 1.32)
+    nm_ticks = [1, 10, 100, 1000, 10000, 50000]
+    ax.set_xticks([np.log10(v) for v in nm_ticks])
+    ax.set_xticklabels([f"{v:,}" for v in nm_ticks])
+    ax.set_xlim(x0 - 0.12, np.log10(60000.0))
     ax.set_ylim(-0.7, n - 0.4 + 0.7)
     ax.set_yticks([])
-    ax.set_xlabel('MHC-I binding score  (1 = strong)', fontsize=FS_TICK - 2)
+    ax.set_xlabel('MHC-I IC50 (nM)   rightward = weaker binding (higher nM), bar ends at wild-type', fontsize=FS_TICK - 2)
     ax.tick_params(labelsize=FS_TICK - 4)
     for s in ('top', 'right', 'left'):
         ax.spines[s].set_visible(False)
-    # inline TCW legend (this panel and the tracks are colored by provenance)
     ax.legend(handles=binding_legend_handles(), fontsize=FS_SMALL - 6, frameon=False,
-              loc='lower right', bbox_to_anchor=(1.0, -0.04), ncol=1)
+              loc='upper right', ncol=1)
 
 
 def draw_expr_featured(ax, feat, panel=None):
@@ -426,8 +446,8 @@ def draw_panelB_venn(ax, counts, panel='B'):
     ax.text(5.0, 3.4, f"{shared}", ha='center', va='center', fontsize=FS_LABEL)
     ax.text(2.8, 0.5, 'SBS2-specific', ha='center', fontsize=FS_SMALL, color='#C0392B')
     ax.text(7.2, 0.5, 'CNV-specific', ha='center', fontsize=FS_SMALL, color='#B7950B')
-    ax.text(5.0, 6.4, 'neoantigen genes', ha='center', fontsize=FS_SMALL)
-    ax.set_title((f"{panel}  " if panel else "") + 'neoantigen gene overlap', fontsize=FS_LABEL, loc='left')
+    ax.text(5.0, 6.4, 'neoantigens (mutations)', ha='center', fontsize=FS_SMALL)
+    ax.set_title((f"{panel}  " if panel else "") + 'neoantigen overlap', fontsize=FS_LABEL, loc='left')
 
 
 def save_figure(fig, name):
