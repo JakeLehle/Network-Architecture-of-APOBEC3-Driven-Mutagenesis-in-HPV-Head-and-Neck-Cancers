@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
 """
-Generate_Figure6_Lifecycle_Panels.py  (v6.1 -- split BH-FDR correction)
+Generate_Figure6_Lifecycle_Panels.py  (v6.2 -- Panel C tier restructure)
 =======================================================================
 Figure 6: HPV16 Lifecycle States Drive Divergent Mutagenic Programs
+
+v6.2 changes (Panel C only; Panels A/B/D/E/F and all statistics unchanged):
+  - Panel C restructured from 51 genes / 7 categories to 57 genes / 7 tiers,
+    matching the locked structure in Figure6_PanelC_Tier_Reference.md.
+  - APOBEC3A/B (redundant with Panel B), APOBEC3C/D/F/G/H, CGAS, STING1, and
+    KRT1 dropped; 11 interferon/DDR genes added; CASP7 reinstated as the
+    CHK2-driven E1-cleavage node (Moody & Laimins 2009).
+  - Gene lookup is now alias-aware. DDX58 sits under 'RIGI' in this
+    transcriptome (2024-A / GENCODE v44) and would otherwise drop silently.
+  - Gene labels italicized; gene/tier fonts raised into the figure-standard
+    range; panel width scales with gene count.
+  - Panel C now prints a per-gene mean table so every dot traces to a number.
 
 v6.1 change: Statistics are split by test type.
   - Panels B + D use Mann-Whitney U, BH-FDR corrected together (one family).
@@ -19,7 +31,7 @@ Layout:
               APOBEC3A, APOBEC3B across three populations
 
   ROW 2:
-    Panel C - Host marker dot plot (51 genes, 7 biological categories, horizontal)
+    Panel C - Host marker dot plot (57 genes, 7 tiers, horizontal)
 
   ROW 3:
     Panel D - HPV16 read distribution violin (all cells, threshold line at 8 UMI)
@@ -127,12 +139,16 @@ FONT_TICK   = 26
 FONT_LEGEND = 22
 FONT_ANNOT  = 20
 FONT_LABEL  = 34
-FONT_GENE   = 18
-FONT_CAT    = 20
+FONT_GENE   = 26    # Panel C gene labels (italic), 57 columns
+FONT_CAT    = 28    # Panel C tier labels
 FONT_PHASE  = 28
 FONT_PVAL   = 14
 FONT_STARS  = 20
 FONT_BOX    = 24    # summary box text
+
+# Panel C horizontal scaling: inches of panel width per gene column.
+# Drop to ~0.80 (with FONT_GENE ~22) if the rendered panel is too wide.
+GENE_COL_IN = 0.95
 
 plt.rcParams.update({
     'font.family': 'sans-serif',
@@ -149,37 +165,59 @@ HPV16_PHASES = OrderedDict([
     ('Capsid',        ['L1', 'L2']),
 ])
 
-# Host marker genes for dot plot (Panel C) -- 7 categories, 51 genes
-# Left-to-right: A3 enzymes -> immune -> differentiation -> damage/proliferation
+# Host marker genes for dot plot (Panel C) -- 7 tiers, 57 genes
+# Locked structure: Figure6_PanelC_Tier_Reference.md
+# Order runs immune-visible maintenance end -> differentiation -> productive end
 DOTPLOT_CATEGORIES = OrderedDict([
-    ('APOBEC/\nInnate Immune', [
-        'APOBEC3A', 'APOBEC3B', 'APOBEC3C',
-        'APOBEC3D', 'APOBEC3F', 'APOBEC3G', 'APOBEC3H',
-        'CGAS', 'STING1',
+    ('MHC-I Antigen Presentation\n& IFN Signaling', [
+        'HLA-A', 'HLA-B', 'HLA-C', 'B2M', 'TAP1',
+        'STAT1', 'IRF1', 'STAT2', 'DDX58',
     ]),
-    ('Immune\nSignaling', [
-        'STAT1', 'HLA-A', 'HLA-B', 'HLA-C',
-        'IRF1', 'TAP1', 'B2M',
+    ('Type I Interferon\nEffectors', [
+        'IFI27', 'ISG15', 'IRF9', 'MX1',
+        'OAS1', 'RSAD2', 'IFI44L', 'IFIT1',
     ]),
-    ('Differentiation', [
-        'KRT5', 'KRT14', 'KRT1', 'KRT10', 'CDH1', 'IVL',
+    ('Keratinocyte\nDifferentiation', [
+        'KRT5', 'KRT14', 'IVL', 'KRT10', 'CDH1',
     ]),
-    ('ATM/DNA\nDamage', [
-        'ATM', 'CHEK2', 'CHEK1', 'BRCA1',
-        'MRE11', 'RAD50', 'NBN', 'H2AX',
-        'STAT5A', 'STAT5B',
+    ('HPV-Activated DNA\nDamage Response', [
+        # ATM arm (Moody & Laimins 2009)
+        'CHEK2', 'BRCA1', 'NBN', 'H2AX',
+        'BARD1', 'TP53BP1', 'RIF1',
+        'ATM', 'MRE11', 'RAD50',
+        # ATR arm (Hong & Laimins; STAT5 -> TOPBP1)
+        'TOPBP1', 'CHEK1', 'STAT5A', 'STAT5B',
+        # CHK2 -> caspase-7 -> E1 cleavage node
+        'CASP7',
+        # chromatin, loosest member of the tier
+        'NSD2',
     ]),
-    ('Transformation/\nProliferation', [
-        'CDKN2A', 'MCM7', 'CCNE1', 'MKI67', 'TOP2A',
-        'PCNA', 'BRD4', 'MED1', 'E2F1', 'E2F2',
+    ('Cell-Cycle Re-entry\n& Proliferation', [
+        'MKI67', 'TOP2A', 'MCM7', 'PCNA', 'CCNE1',
+        'CDKN2A', 'E2F1', 'E2F2', 'BRD4', 'MED1',
     ]),
     ('p53/Rb\nPathway', [
-        'CDKN1A', 'BAX', 'MDM2', 'RB1', 'TP53',
+        'CDKN1A', 'MDM2', 'BAX', 'TP53', 'RB1',
     ]),
     ('G2/M\nArrest', [
         'CDC25A', 'CDC25C', 'CDK1', 'CCNB1',
     ]),
 ])
+
+# Locked count. If the rendered panel disagrees, the manuscript number is wrong.
+EXPECTED_PANELC_GENES = 57
+
+# Symbols that may sit under a different name in adata.var_names.
+# DDX58/RIGI is the one that actually fires in this dataset (2024-A / GENCODE v44);
+# the rest are defensive.
+GENE_ALIASES = {
+    'DDX58':   ['RIGI'],
+    'H2AX':    ['H2AFX'],
+    'MRE11':   ['MRE11A'],
+    'NBN':     ['NBS1'],
+    'NSD2':    ['WHSC1', 'MMSET'],
+    'TP53BP1': ['TP53BP'],
+}
 
 # Minimum cells required to run Mann-Whitney for a group
 MIN_CELLS_FOR_STATS = 10
@@ -206,24 +244,37 @@ def save_fig(fig, name):
     plt.close(fig)
 
 # =============================================================================
-# HELPER: Extract gene expression from adata
+# HELPER: Extract gene expression from adata (alias-aware)
 # =============================================================================
-def get_expression(adata, gene_symbol):
-    """Extract expression vector for a gene."""
-    if gene_symbol in adata.var_names:
-        idx = adata.var_names.get_loc(gene_symbol)
+def _fetch_vector(adata, name):
+    """Pull one expression vector by exact symbol, or None."""
+    if name in adata.var_names:
+        idx = adata.var_names.get_loc(name)
         x = adata.X[:, idx]
         if scipy.sparse.issparse(x):
             return np.asarray(x.todense()).flatten()
         return np.asarray(x).flatten()
     if 'gene_symbol' in adata.var.columns:
-        mask = adata.var['gene_symbol'] == gene_symbol
+        mask = (adata.var['gene_symbol'] == name).values
         if mask.any():
             idx = np.where(mask)[0][0]
             x = adata.X[:, idx]
             if scipy.sparse.issparse(x):
                 return np.asarray(x.todense()).flatten()
             return np.asarray(x).flatten()
+    return None
+
+def get_expression(adata, gene_symbol, report_alias=False):
+    """Extract expression vector for a gene, falling back to known aliases."""
+    vec = _fetch_vector(adata, gene_symbol)
+    if vec is not None:
+        return vec
+    for alias in GENE_ALIASES.get(gene_symbol, []):
+        vec = _fetch_vector(adata, alias)
+        if vec is not None:
+            if report_alias:
+                log(f"    {gene_symbol}: matched via alias '{alias}'")
+            return vec
     return None
 
 def p_to_stars(p):
@@ -857,10 +908,15 @@ save_fig(fig, "Panel_6B_baseline_violins")
 
 # #############################################################################
 #
-#   PANEL C: Host marker dot plot (51 genes, 7 categories, HORIZONTAL)
+#   PANEL C: Host marker dot plot (57 genes, 7 tiers, HORIZONTAL)
+#
+#   Color is per-gene min-max scaled ACROSS THE THREE POPULATIONS, so color
+#   encodes direction (which population is highest for that gene) and NOT
+#   absolute magnitude. Dot size encodes percent of cells expressing. State
+#   this in the figure caption.
 #
 # #############################################################################
-banner("PANEL C: Host marker gene dot plot")
+banner("PANEL C: Host marker gene dot plot (57 genes, 7 tiers)")
 
 all_genes = []
 cat_boundaries = []
@@ -869,15 +925,19 @@ for cat_label, genes in DOTPLOT_CATEGORIES.items():
     all_genes.extend(genes)
     end = len(all_genes)
     cat_boundaries.append((start, end, cat_label))
+    log(f"  tier: {cat_label.replace(chr(10), ' ')}  n={len(genes)}")
 
-log(f"  Total genes in dot plot: {len(all_genes)}")
+log(f"  Total genes requested: {len(all_genes)} (expected {EXPECTED_PANELC_GENES})")
+if len(all_genes) != EXPECTED_PANELC_GENES:
+    log(f"  ERROR: tier dict holds {len(all_genes)} genes, expected "
+        f"{EXPECTED_PANELC_GENES}. Fix the dict before trusting the figure.")
 
 dot_records = []
 genes_found = []
 genes_missing = []
 
 for gene in all_genes:
-    expr = get_expression(adata_pop, gene)
+    expr = get_expression(adata_pop, gene, report_alias=True)
     if expr is None:
         log(f"  WARNING: {gene} not found, skipping")
         genes_missing.append(gene)
@@ -886,31 +946,40 @@ for gene in all_genes:
     for pop in POP_ORDER:
         mask = (adata_pop.obs['population'] == pop).values
         vals = expr[mask]
-        mean_expr = np.mean(vals)
-        pct_expr = 100.0 * np.sum(vals > 0) / max(len(vals), 1)
         dot_records.append({
             'gene': gene, 'population': pop,
-            'mean_expression': mean_expr, 'pct_expressing': pct_expr,
+            'mean_expression': np.mean(vals),
+            'pct_expressing': 100.0 * np.sum(vals > 0) / max(len(vals), 1),
         })
 
 dot_df = pd.DataFrame(dot_records)
-log(f"  Genes found: {len(genes_found)}, missing: {len(genes_missing)}")
+log(f"  Genes rendered: {len(genes_found)}, missing: {len(genes_missing)}")
 if genes_missing:
-    log(f"  Missing: {genes_missing}")
+    log(f"  MISSING: {genes_missing}")
+    log("  The panel and the manuscript gene count now DISAGREE. Resolve before use.")
+
+# Per-gene table, so every dot in the figure traces to a printed number
+log("")
+log(f"  {'Gene':<10s}  {'SBS2-HIGH':>10s}  {'CNV-HIGH':>10s}  {'Normal':>10s}   peak")
+log(f"  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}   ----")
+for gene in genes_found:
+    g = dot_df[dot_df['gene'] == gene].set_index('population')['mean_expression']
+    peak = POP_LABELS[g.idxmax()]
+    log(f"  {gene:<10s}  {g['SBS2_HIGH']:>10.3f}  {g['CNV_HIGH']:>10.3f}  "
+        f"{g['NORMAL']:>10.3f}   {peak}")
+log("")
 
 n_found = len(genes_found)
 n_pops = len(POP_ORDER)
 
-fig_width = max(36, n_found * 0.72 + 6)
-fig, ax = plt.subplots(figsize=(fig_width, 7))
+fig_width = max(36, n_found * GENE_COL_IN + 8)
+fig, ax = plt.subplots(figsize=(fig_width, 8))
 
 cmap = plt.cm.YlOrRd
 
-gene_min = {}
-gene_max = {}
+gene_min, gene_max = {}, {}
 for gene in genes_found:
-    gmask = dot_df['gene'] == gene
-    vals = dot_df.loc[gmask, 'mean_expression']
+    vals = dot_df.loc[dot_df['gene'] == gene, 'mean_expression']
     gene_min[gene] = vals.min()
     gene_max[gene] = vals.max()
 
@@ -927,35 +996,33 @@ for j, pop in enumerate(POP_ORDER):
         pct = row['pct_expressing'].values[0]
         mean_e = row['mean_expression'].values[0]
         size = SIZE_MIN + (pct / PCT_MAX) * (SIZE_MAX - SIZE_MIN)
-        gmin = gene_min[gene]
-        gmax = gene_max[gene]
+        gmin, gmax = gene_min[gene], gene_max[gene]
         norm_val = (mean_e - gmin) / (gmax - gmin) if gmax > gmin else 0.5
-        color = cmap(norm_val)
-        ax.scatter(i, j, s=size, c=[color],
+        ax.scatter(i, j, s=size, c=[cmap(norm_val)],
                    edgecolors='#555555', linewidths=0.6, zorder=3)
 
+# Tier separators + labels
 for start_orig, end_orig, cat_label in cat_boundaries:
-    cat_genes_in_order = [g for g in all_genes[start_orig:end_orig]
-                          if g in genes_found]
-    if not cat_genes_in_order:
+    tier_genes = [g for g in all_genes[start_orig:end_orig] if g in genes_found]
+    if not tier_genes:
         continue
-    first_idx = genes_found.index(cat_genes_in_order[0])
-    last_idx = genes_found.index(cat_genes_in_order[-1])
+    first_idx = genes_found.index(tier_genes[0])
+    last_idx = genes_found.index(tier_genes[-1])
     if first_idx > 0:
         ax.axvline(first_idx - 0.5, color='#bbbbbb', linestyle='-',
-                   linewidth=1.2, alpha=0.7)
-    mid_x = (first_idx + last_idx) / 2.0
-    ax.text(mid_x, n_pops - 0.4, cat_label,
+                   linewidth=1.4, alpha=0.8)
+    ax.text((first_idx + last_idx) / 2.0, n_pops - 0.35, cat_label,
             fontsize=FONT_CAT, fontstyle='italic', va='bottom', ha='center',
-            color='#333333')
+            color='#333333', linespacing=1.25)
 
 ax.set_xticks(range(n_found))
-ax.set_xticklabels(genes_found, fontsize=FONT_GENE, rotation=55, ha='right')
+ax.set_xticklabels(genes_found, fontsize=FONT_GENE, rotation=55, ha='right',
+                   fontstyle='italic')
 ax.set_yticks(range(n_pops))
 ax.set_yticklabels([POP_LABELS[p] for p in POP_ORDER],
                    fontsize=FONT_AXIS - 2, fontweight='bold')
 ax.set_xlim(-0.7, n_found - 0.3)
-ax.set_ylim(-0.6, n_pops + 0.8)
+ax.set_ylim(-0.6, n_pops + 1.5)
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 
