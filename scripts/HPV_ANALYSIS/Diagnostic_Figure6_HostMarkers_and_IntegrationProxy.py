@@ -1,39 +1,54 @@
 #!/usr/bin/env python3
 """
-Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py  (v3 -- text-audit harness)
+Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py  (v4 -- 57-gene panel)
 ===================================================================================
 Figure 6 diagnostic + Section 4.4 text-number verification.
 
-v3 adds three sections on top of v2, so that every quantitative claim in
-Section 4.4 can be checked from one script against the same source files and
-the same methodology the figure uses:
+v4 changes (Panel C alignment; Sections 1/2 and Diagnostic A unchanged):
+  - MARKER_GENES replaced with the locked 57-gene / 7-tier Panel C structure,
+    mirroring DOTPLOT_CATEGORIES in Generate_Figure6_Lifecycle_Panels.py v6.2.
+    The BH family here now equals the panel drawn in Figure 6c, so every host
+    q-value quoted in Section 4.4 is corrected across exactly the genes shown.
+  - Gene aliases are resolved at load time by renaming adata.var_names. DDX58 is
+    stored as 'RIGI' in this transcriptome (2024-A / GENCODE v44); without this
+    it drops silently and the family becomes 56, shifting every q.
+  - APOBEC3A / APOBEC3B are REMOVED from the BH family. They are Panel B genes,
+    not Panel C genes, and their q-values come from the figure script's Panel B
+    family of 18. Their means are still computed here, outside the family, as
+    the cross-check that this script and the figure script agree.
+  - Genes evaluated and dropped from Panel C (CASP3, KRT1, CGAS, STING1, the
+    remaining A3 family, IFITM1, BST2, SMC5/6, NSMCE2) are computed outside the
+    family as an audit trail for Figure6_PanelC_Tier_Reference.md, without
+    contaminating the family.
+  - CLAIMS expanded from 39 to a full lock: all 57 panel q-values, including the
+    negative (ns) results. Auditing the ns genes is deliberate; the tier
+    reference doc previously recorded BARD1 as strong at q=1e-41, which was the
+    three-group Kruskal-Wallis p and not the SBS2-vs-CNV contrast (ns, q=0.076).
+    Nothing in the old harness could catch that because ns genes were unaudited.
 
-  SECTION 1 (NEW): LIFECYCLE FRACTIONS. Mirrors Generate_Figure6_Lifecycle_Panels.py
+v3 sections retained:
+  SECTION 1: LIFECYCLE FRACTIONS. Mirrors Generate_Figure6_Lifecycle_Panels.py
     Panel F EXACTLY: gated HPV16-positive set (raw_HPV16 >= 8 AND total > 0),
     per-cell gene fractions = gene / total (no pseudocount), permutation test on
     the difference of means (10,000 perms, seed 42), BH-FDR within the 8-gene
-    family and separately within the 4-phase family. Reproduces the figure's
-    "PANEL F MEAN FRACTIONS" block so the Para-3 numbers are confirmable here.
+    family and separately within the 4-phase family.
 
-  SECTION 2 (NEW): READ-CLASS / URR BREAKDOWN. Reports, per group on the gated
-    set, the URR / ORF / intergenic read fractions BOTH ways: pooled
-    (sum reads / sum total, the estimator behind the prose "two-thirds of reads
-    in the URR") and per-cell mean (the estimator in the figure's internal URR
-    log). These differ for CNV-HIGH (~63.5% pooled vs ~67.1% per-cell mean);
-    the prose should cite pooled.
+  SECTION 2: READ-CLASS / URR BREAKDOWN. Per group on the gated set, the
+    URR / ORF / intergenic read fractions BOTH ways: pooled (sum reads / sum
+    total, the estimator behind the prose "two-thirds of reads in the URR") and
+    per-cell mean (the estimator in the figure's internal URR log). These differ
+    for CNV-HIGH (~63.5% pooled vs ~67.1% per-cell mean); the prose cites pooled.
 
-  SECTION 3 (NEW): TEXT NUMBER AUDIT. Diffs the current Section 4.4 prose
-    (hardcoded below from the manuscript draft) against freshly computed values
-    and prints MATCH / DIFF / OUT-OF-SCOPE per claim. q-values compared on a
-    log10 tolerance to absorb 1-2 sig-fig rounding; means/fractions on relative
-    or absolute tolerance. Para-1 numbers (basal enrichment, tier counts, Fisher)
-    are marked OUT-OF-SCOPE with their correct source (Phase3 L-method).
+  SECTION 3: TEXT NUMBER AUDIT. Diffs the Section 4.4 prose (hardcoded below)
+    against freshly computed values and prints MATCH / DIFF / NO VALUE per claim.
+    q-values compared on a log10 tolerance to absorb 1-2 sig-fig rounding;
+    means/fractions on relative or absolute tolerance. Para-1 numbers and the
+    Panel B q-values are marked OUT-OF-SCOPE with their correct source.
 
-v2 carried over unchanged:
-  - DIAGNOSTIC A: integration proxy on the gated >=8 set, split pseudocount,
+  DIAGNOSTIC A: integration proxy on the gated >=8 set, split pseudocount,
     floor of 10 (NORMAL -> N.D.), BH across the proxy family.
-  - VIRAL LOAD SUMMARY: raw_HPV16 (all cells) vs total reads (gated set).
-  - DIAGNOSTIC B: host-marker panel, ungated 546/546/546, BH per contrast.
+  VIRAL LOAD SUMMARY: raw_HPV16 (all cells) vs total reads (gated set).
+  DIAGNOSTIC B: host-marker panel, ungated 546/546/546, BH per contrast.
 
 INPUTS (identical to the figure script):
   - data/FIG_4/01_group_selection/three_group_assignments.tsv
@@ -47,6 +62,7 @@ OUTPUTS (to data/FIG_6/DIAGNOSTIC_LIFECYCLE_MARKERS/):
   - viral_load_summary.tsv
   - host_marker_expression_summary.tsv
   - host_marker_per_cell_values.tsv
+  - host_marker_outside_family.tsv
   - lifecycle_fractions_panelF_mirror.tsv
   - readclass_urr_breakdown.tsv
   - section4_4_text_audit.tsv
@@ -105,21 +121,59 @@ HPV16_PHASES = OrderedDict([
 ALL_HPV_GENES = [g for genes in HPV16_PHASES.values() for g in genes]
 
 # =============================================================================
-# HOST MARKER GENE PANEL (53 genes)
+# HOST MARKER GENE PANEL (57 genes, 7 tiers)
+# Mirrors DOTPLOT_CATEGORIES in Generate_Figure6_Lifecycle_Panels.py v6.2
+# exactly, so the BH family here equals the panel drawn in Figure 6c.
+# Locked structure: Figure6_PanelC_Tier_Reference.md
 # =============================================================================
 MARKER_GENES = OrderedDict([
-    ('Transformation', ['CDKN2A', 'MCM7', 'CCNE1', 'MKI67', 'TOP2A',
-                        'PCNA', 'BRD4', 'MED1', 'E2F1', 'E2F2']),
-    ('p53_Rb_pathway', ['CDKN1A', 'BAX', 'MDM2', 'RB1', 'TP53']),
-    ('ATM_DNA_damage', ['ATM', 'CHEK2', 'BRCA1', 'NBN', 'MRE11',
-                        'RAD50', 'H2AX', 'CHEK1', 'STAT5A', 'STAT5B']),
-    ('G2M_arrest',     ['CDC25A', 'CDC25C', 'CDK1', 'CCNB1']),
-    ('Caspase',        ['CASP3', 'CASP7']),
-    ('Immune',         ['STAT1', 'HLA-A', 'HLA-B', 'HLA-C', 'IRF1', 'TAP1', 'B2M']),
-    ('Differentiation', ['KRT5', 'KRT14', 'KRT1', 'KRT10', 'CDH1', 'IVL']),
-    ('Innate_APOBEC',  ['APOBEC3A', 'APOBEC3B', 'APOBEC3C', 'APOBEC3D',
-                        'APOBEC3F', 'APOBEC3G', 'APOBEC3H', 'CGAS', 'STING1']),
+    ('MHCI_AgPres_IFN', ['HLA-A', 'HLA-B', 'HLA-C', 'B2M', 'TAP1',
+                         'STAT1', 'IRF1', 'STAT2', 'DDX58']),
+    ('IFN_effectors',   ['IFI27', 'ISG15', 'IRF9', 'MX1',
+                         'OAS1', 'RSAD2', 'IFI44L', 'IFIT1']),
+    ('Differentiation', ['KRT5', 'KRT14', 'IVL', 'KRT10', 'CDH1']),
+    ('DDR_ATM_ATR',     ['CHEK2', 'BRCA1', 'NBN', 'H2AX',
+                         'BARD1', 'TP53BP1', 'RIF1',
+                         'ATM', 'MRE11', 'RAD50',
+                         'TOPBP1', 'CHEK1', 'STAT5A', 'STAT5B',
+                         'CASP7', 'NSD2']),
+    ('CellCycle_Prolif', ['MKI67', 'TOP2A', 'MCM7', 'PCNA', 'CCNE1',
+                          'CDKN2A', 'E2F1', 'E2F2', 'BRD4', 'MED1']),
+    ('p53_Rb_pathway',  ['CDKN1A', 'MDM2', 'BAX', 'TP53', 'RB1']),
+    ('G2M_arrest',      ['CDC25A', 'CDC25C', 'CDK1', 'CCNB1']),
 ])
+
+EXPECTED_PANELC_GENES = 57   # must equal the figure script's constant
+
+# Panel B genes. Computed for the means cross-check ONLY. They are NOT in the
+# Panel C BH family, because they are not in Panel C: their q-values come from
+# the figure script's Panel B family. Keeping them here would silently change
+# every Panel C q.
+PANELB_CROSSCHECK = ['APOBEC3A', 'APOBEC3B']
+
+# Reference values from Generate_Figure6_Lifecycle_Panels.py v6.2, Panel B family
+# (18 Mann-Whitney tests across Panels B and D, BH-corrected together).
+PANELB_REFERENCE_Q = {'APOBEC3A': 2.6644e-135, 'APOBEC3B': 8.0616e-67}
+
+# Genes evaluated and dropped from Panel C. Means are printed for the audit
+# trail in Figure6_PanelC_Tier_Reference.md, but they are EXCLUDED from the BH
+# family so the family matches the rendered figure.
+CONTEXT_GENES_DROPPED = ['CASP3', 'KRT1', 'CGAS', 'STING1',
+                         'APOBEC3C', 'APOBEC3D', 'APOBEC3F',
+                         'APOBEC3G', 'APOBEC3H',
+                         'IFITM1', 'BST2', 'SMC5', 'SMC6', 'NSMCE2']
+
+# DDX58 is stored as 'RIGI' in this transcriptome (2024-A / GENCODE v44).
+# Without this the gene drops silently and the family becomes 56.
+GENE_ALIASES = {
+    'DDX58':   ['RIGI'],
+    'H2AX':    ['H2AFX'],
+    'MRE11':   ['MRE11A'],
+    'NBN':     ['NBS1'],
+    'NSD2':    ['WHSC1', 'MMSET'],
+    'TP53BP1': ['TP53BP'],
+}
+
 
 # =============================================================================
 # LOGGING
@@ -231,6 +285,22 @@ log(f"  Populations: {len(sbs2_cells)} SBS2-HIGH, {len(cnv_cells)} CNV-HIGH, "
 
 log("  Loading adata_final.h5ad ...")
 adata = sc.read_h5ad(ADATA_PATH)
+
+# Alias resolution: DDX58 is stored as 'RIGI' in this transcriptome
+# (2024-A / GENCODE v44). Rename in place so every downstream lookup and every
+# printed table uses the canonical symbol and the BH family stays at 57.
+_rename = {}
+for _canon, _aliases in GENE_ALIASES.items():
+    if _canon not in adata.var_names:
+        for _a in _aliases:
+            if _a in adata.var_names:
+                _rename[_a] = _canon
+                break
+if _rename:
+    adata.var_names = pd.Index([_rename.get(v, v) for v in adata.var_names])
+    for _a, _c in _rename.items():
+        log(f"  alias resolved: {_c} <- '{_a}'")
+
 log(f"  adata: {adata.shape[0]} cells x {adata.shape[1]} genes")
 adata.obs['population'] = 'other'
 adata.obs.loc[adata.obs_names.isin(sbs2_cells), 'population'] = 'SBS2_HIGH'
@@ -338,6 +408,12 @@ AUDIT['q_L2']   = gene_qvals['L2'][0]
 AUDIT['q_Oncogene'] = phase_qvals['Oncogene'][0]
 AUDIT['Oncogene_SBS2_pct'] = 100*np.mean(phase_frac['Oncogene']['SBS2_HIGH'])
 AUDIT['Oncogene_CNV_pct']  = 100*np.mean(phase_frac['Oncogene']['CNV_HIGH'])
+AUDIT['Maintenance_SBS2_pct'] = 100*np.mean(phase_frac['Maintenance']['SBS2_HIGH'])
+AUDIT['Maintenance_CNV_pct']  = 100*np.mean(phase_frac['Maintenance']['CNV_HIGH'])
+AUDIT['Capsid_SBS2_pct']      = 100*np.mean(phase_frac['Capsid']['SBS2_HIGH'])
+AUDIT['Capsid_CNV_pct']       = 100*np.mean(phase_frac['Capsid']['CNV_HIGH'])
+AUDIT['q_Maintenance'] = phase_qvals['Maintenance'][0]
+AUDIT['q_Capsid']      = phase_qvals['Capsid'][0]
 
 
 # =============================================================================
@@ -420,6 +496,18 @@ log("  * NORMAL (n=8) below the 10-cell floor; descriptive only.")
 pd.DataFrame(proxy_rows).to_csv(os.path.join(OUTPUT_DIR, "integration_proxy_metrics.tsv"),
                                 sep='\t', index=False)
 
+# NOTE for the text: E6E7_frac_of_total here (Mann-Whitney, q = 5.6e-05) and the
+# Panel F 'Oncogene' phase fraction (permutation on the difference of means,
+# q = 0.10) are the SAME quantity on the SAME cells, tested two ways. The
+# permutation test compares means; Mann-Whitney tests distributional shift and
+# is far more sensitive to a small consistent offset at n = 197 vs 446. The
+# claim that survives either test is the effect size: E6/E7 is under 1% of viral
+# reads in both populations. Prose should not assert 'no difference'.
+log("\n  NOTE: E6E7_frac_of_total (MW) and the Panel F Oncogene phase fraction")
+log("  (permutation) are the same quantity tested two ways and disagree on")
+log("  significance. Cite the effect size (<1% of viral reads in both groups),")
+log("  not 'no difference'.")
+
 
 # =============================================================================
 # VIRAL LOAD SUMMARY  [v2]
@@ -457,11 +545,19 @@ AUDIT['load_q']    = load_b_q
 
 
 # =============================================================================
-# DIAGNOSTIC B: HOST MARKER PANEL  (ungated, all 1,638; BH per contrast)  [v2]
+# DIAGNOSTIC B: HOST MARKER PANEL  (ungated, all 1,638; BH per contrast)
+#   The BH family is exactly the 57 genes rendered in Figure 6c. Panel B genes
+#   and dropped-candidate genes are computed separately, outside the family.
 # =============================================================================
 banner("DIAGNOSTIC B: Host marker panel (ungated, 546/546/546; BH per contrast)")
 
 flat_genes = [(cat, g) for cat, genes in MARKER_GENES.items() for g in genes]
+log(f"  Panel C BH family: {len(flat_genes)} genes requested "
+    f"(expected {EXPECTED_PANELC_GENES})")
+if len(flat_genes) != EXPECTED_PANELC_GENES:
+    log(f"  ERROR: MARKER_GENES holds {len(flat_genes)} genes, expected "
+        f"{EXPECTED_PANELC_GENES}. Fix before trusting any q-value.")
+
 records = OrderedDict()
 raw_hvc, raw_hvn, raw_cvn, order_genes = [], [], [], []
 per_cell_rows = []
@@ -486,7 +582,8 @@ for cat, gene in flat_genes:
                      **{f'mean_{p}': means[p] for p in POP_ORDER},
                      **{f'pct_{p}': pcts[p] for p in POP_ORDER},
                      'kw_p': kw_p, 'hvc_raw_p': p_hvc, 'hvn_raw_p': p_hvn, 'cvn_raw_p': p_cvn,
-                     'hvc_dir': 'SBS2 > CNV' if means['SBS2_HIGH'] > means['CNV_HIGH'] else 'CNV > SBS2'}
+                     'hvc_dir': 'SBS2 > CNV' if means['SBS2_HIGH'] > means['CNV_HIGH'] else 'CNV > SBS2',
+                     'peak_pop': max(POP_ORDER, key=lambda p: means[p])}
     raw_hvc.append(p_hvc); raw_hvn.append(p_hvn); raw_cvn.append(p_cvn)
     order_genes.append(gene)
     for p in POP_ORDER:
@@ -502,10 +599,14 @@ for gene, qh, qn, qc in zip(order_genes, q_hvc, q_hvn, q_cvn):
     records[gene]['cvn_bh_q'] = qc
 if missing:
     log(f"  WARNING: {len(missing)} marker gene(s) not found: {missing}")
+    log(f"  >>> The BH family is now {len(order_genes)}, NOT {EXPECTED_PANELC_GENES}. "
+        f"Every q below is wrong until this is resolved.")
+else:
+    log(f"  All {len(order_genes)} genes resolved; BH family matches Figure 6c.")
 
 log(f"\n  {'Category':<16s} {'Gene':<10s} {'SBS2':>8s} {'CNV':>8s} {'NORM':>8s}  "
-    f"{'KW p':>9s} {'HvC q':>9s} {'Dir':>11s}")
-log(f"  {'-'*16} {'-'*10} {'-'*8} {'-'*8} {'-'*8}  {'-'*9} {'-'*9} {'-'*11}")
+    f"{'KW p':>9s} {'HvC q':>9s} {'Dir':>11s} {'Peak':>10s}")
+log(f"  {'-'*16} {'-'*10} {'-'*8} {'-'*8} {'-'*8}  {'-'*9} {'-'*9} {'-'*11} {'-'*10}")
 for cat, genes in MARKER_GENES.items():
     for gene in genes:
         if gene not in records:
@@ -513,29 +614,122 @@ for cat, genes in MARKER_GENES.items():
         r = records[gene]
         log(f"  {cat:<16s} {gene:<10s} {r['mean_SBS2_HIGH']:>8.3f} {r['mean_CNV_HIGH']:>8.3f} "
             f"{r['mean_NORMAL']:>8.3f}  {fmt_p(r['kw_p']):>9s} {fmt_p(r['hvc_bh_q']):>9s} "
-            f"{r['hvc_dir']:>11s} {stars(r['hvc_bh_q'])}")
+            f"{r['hvc_dir']:>11s} {POP_LABELS[r['peak_pop']]:>10s} {stars(r['hvc_bh_q'])}")
 pd.DataFrame([records[g] for g in order_genes]).to_csv(
     os.path.join(OUTPUT_DIR, "host_marker_expression_summary.tsv"), sep='\t', index=False)
 pd.DataFrame(per_cell_rows).to_csv(
     os.path.join(OUTPUT_DIR, "host_marker_per_cell_values.tsv"), sep='\t', index=False)
 
-log(f"\n  Panel B cross-check (must equal figure Panel B):")
-for gene in ['APOBEC3A', 'APOBEC3B']:
-    r = records[gene]
-    log(f"    {gene}: SBS2 {r['mean_SBS2_HIGH']:.4f}  CNV {r['mean_CNV_HIGH']:.4f}  "
-        f"NORM {r['mean_NORMAL']:.4f}")
+# Per-tier peak-direction summary (the structural claim in the Results text)
+log(f"\n  Tier peak-direction summary (how many genes peak where, and how many")
+log(f"  reach significance in the SBS2-vs-CNV contrast):")
+log(f"    {'Tier':<18s} {'n':>3s}  {'peak SBS2':>10s} {'peak CNV':>9s} {'peak NORM':>10s}  {'sig':>4s}")
+log(f"    {'-'*18} {'-'*3}  {'-'*10} {'-'*9} {'-'*10}  {'-'*4}")
+for cat, genes in MARKER_GENES.items():
+    present = [g for g in genes if g in records]
+    n_s = sum(records[g]['peak_pop'] == 'SBS2_HIGH' for g in present)
+    n_c = sum(records[g]['peak_pop'] == 'CNV_HIGH' for g in present)
+    n_n = sum(records[g]['peak_pop'] == 'NORMAL' for g in present)
+    n_sig = sum((records[g]['hvc_bh_q'] is not None)
+                and (not np.isnan(records[g]['hvc_bh_q']))
+                and (records[g]['hvc_bh_q'] < 0.05) for g in present)
+    log(f"    {cat:<18s} {len(present):>3d}  {n_s:>10d} {n_c:>9d} {n_n:>10d}  "
+        f"{n_sig:>2d}/{len(present):<2d}")
 
-# Stash host-marker values for the audit
+# -----------------------------------------------------------------------------
+# OUTSIDE THE BH FAMILY: Panel B cross-check + dropped-candidate audit trail.
+# These genes are deliberately excluded from the family above so that the family
+# equals the rendered panel. Means are still computed for traceability.
+# -----------------------------------------------------------------------------
+banner("OUTSIDE THE PANEL C FAMILY: Panel B cross-check + dropped candidates", char="-")
+
+def means_outside_family(gene):
+    """Per-population means for a gene NOT in the BH family. Returns dict or None."""
+    expr = get_expression(adata_pop, gene)
+    if expr is None:
+        return None
+    vals = {p: expr[(adata_pop.obs['population'] == p).values] for p in POP_ORDER}
+    return {'gene': gene,
+            **{f'mean_{p}': float(np.mean(vals[p])) for p in POP_ORDER},
+            **{f'pct_{p}': 100.0 * np.sum(vals[p] > 0) / max(len(vals[p]), 1)
+               for p in POP_ORDER}}
+
+outside_rows = []
+
+log(f"\n  Panel B cross-check (means MUST equal the figure script's Panel B):")
+for gene in PANELB_CROSSCHECK:
+    m = means_outside_family(gene)
+    if m is None:
+        log(f"    {gene}: NOT FOUND in adata.var_names")
+        continue
+    log(f"    {gene}: SBS2 {m['mean_SBS2_HIGH']:.4f}  CNV {m['mean_CNV_HIGH']:.4f}  "
+        f"NORM {m['mean_NORMAL']:.4f}   [outside Panel C family; "
+        f"Panel B q = {PANELB_REFERENCE_Q.get(gene, float('nan')):.2e}]")
+    m['role'] = 'panelB_crosscheck'
+    outside_rows.append(m)
+    key = 'A3A' if gene == 'APOBEC3A' else 'A3B'
+    AUDIT[f'{key}_SBS2'] = m['mean_SBS2_HIGH']
+    AUDIT[f'{key}_CNV']  = m['mean_CNV_HIGH']
+
+log(f"\n  Dropped Panel C candidates (audit trail for the tier reference doc;")
+log(f"  NOT in the BH family, so no q is reported):")
+log(f"    {'Gene':<10s} {'SBS2':>8s} {'CNV':>8s} {'NORM':>8s}")
+log(f"    {'-'*10} {'-'*8} {'-'*8} {'-'*8}")
+for gene in CONTEXT_GENES_DROPPED:
+    m = means_outside_family(gene)
+    if m is None:
+        log(f"    {gene:<10s} {'--':>8s} {'--':>8s} {'--':>8s}   (not found)")
+        continue
+    log(f"    {gene:<10s} {m['mean_SBS2_HIGH']:>8.3f} {m['mean_CNV_HIGH']:>8.3f} "
+        f"{m['mean_NORMAL']:>8.3f}")
+    m['role'] = 'dropped_candidate'
+    outside_rows.append(m)
+
+if outside_rows:
+    pd.DataFrame(outside_rows).to_csv(
+        os.path.join(OUTPUT_DIR, "host_marker_outside_family.tsv"), sep='\t', index=False)
+
+# -----------------------------------------------------------------------------
+# Stash host-marker values for the audit. Covers all 57 panel genes, including
+# the ns results: an ns gene that later drifts significant, or a q misattributed
+# from the three-group Kruskal-Wallis, is only catchable if it is audited.
+# -----------------------------------------------------------------------------
 def stash(gene, key):
     if gene in records:
         AUDIT[f'{key}_SBS2'] = records[gene]['mean_SBS2_HIGH']
         AUDIT[f'{key}_CNV']  = records[gene]['mean_CNV_HIGH']
+        AUDIT[f'{key}_NORM'] = records[gene]['mean_NORMAL']
         AUDIT[f'q_{key}']    = records[gene]['hvc_bh_q']
-for gene, key in [('B2M','B2M'),('HLA-A','HLAA'),('HLA-B','HLAB'),('TAP1','TAP1'),
-                  ('IVL','IVL'),('APOBEC3A','A3A'),('APOBEC3B','A3B'),
-                  ('BRCA1','BRCA1'),('H2AX','H2AX'),('CHEK2','CHEK2'),
-                  ('CDK1','CDK1'),('CCNB1','CCNB1'),('CDC25C','CDC25C'),
-                  ('KRT14','KRT14'),('MKI67','MKI67'),('KRT5','KRT5')]:
+
+for gene, key in [
+        # MHC-I antigen presentation + IFN signaling/sensing
+        ('HLA-A','HLAA'), ('HLA-B','HLAB'), ('HLA-C','HLAC'), ('B2M','B2M'),
+        ('TAP1','TAP1'), ('STAT1','STAT1'), ('IRF1','IRF1'), ('STAT2','STAT2'),
+        ('DDX58','DDX58'),
+        # Type I interferon effectors
+        ('IFI27','IFI27'), ('ISG15','ISG15'), ('IRF9','IRF9'), ('MX1','MX1'),
+        ('OAS1','OAS1'), ('RSAD2','RSAD2'), ('IFI44L','IFI44L'), ('IFIT1','IFIT1'),
+        # Keratinocyte differentiation
+        ('KRT5','KRT5'), ('KRT14','KRT14'), ('IVL','IVL'), ('KRT10','KRT10'),
+        ('CDH1','CDH1'),
+        # DDR, ATM arm
+        ('CHEK2','CHEK2'), ('BRCA1','BRCA1'), ('NBN','NBN'), ('H2AX','H2AX'),
+        ('BARD1','BARD1'), ('TP53BP1','TP53BP1'), ('RIF1','RIF1'),
+        # DDR, post-translationally regulated members
+        ('ATM','ATM'), ('MRE11','MRE11'), ('RAD50','RAD50'),
+        # DDR, ATR arm + E1-cleavage node + chromatin
+        ('TOPBP1','TOPBP1'), ('CHEK1','CHEK1'), ('STAT5A','STAT5A'),
+        ('STAT5B','STAT5B'), ('CASP7','CASP7'), ('NSD2','NSD2'),
+        # Cell-cycle re-entry / proliferation
+        ('MKI67','MKI67'), ('TOP2A','TOP2A'), ('MCM7','MCM7'), ('PCNA','PCNA'),
+        ('CCNE1','CCNE1'), ('CDKN2A','CDKN2A'), ('E2F1','E2F1'), ('E2F2','E2F2'),
+        ('BRD4','BRD4'), ('MED1','MED1'),
+        # p53/Rb
+        ('CDKN1A','CDKN1A'), ('MDM2','MDM2'), ('BAX','BAX'), ('TP53','TP53'),
+        ('RB1','RB1'),
+        # G2/M arrest
+        ('CDC25A','CDC25A'), ('CDC25C','CDC25C'), ('CDK1','CDK1'), ('CCNB1','CCNB1'),
+]:
     stash(gene, key)
 
 
@@ -544,11 +738,12 @@ for gene, key in [('B2M','B2M'),('HLA-A','HLAA'),('HLA-B','HLAB'),('TAP1','TAP1'
 # =============================================================================
 banner("SECTION 3: Section 4.4 text-number audit")
 
-# Claims hardcoded from the current manuscript draft of Section 4.4.
+# Claims hardcoded from the manuscript draft of Section 4.4, updated to the
+# 57-gene BH family. Every q in the panel is audited, including ns results.
 # kind: 'q' (log10 tol), 'mean' (rel tol), 'pct' (abs tol), 'fold' (abs tol),
-#       'count' (exact), 'scope' (out-of-scope, source noted)
+#       'count' (exact)
 CLAIMS = [
-    # (label, claimed, computed_key, kind)
+    # ---- Panel F cell set + lifecycle fractions -----------------------------
     ('Gated count SBS2 = 197',        197,    'F_count_SBS2', 'count'),
     ('Gated count CNV = 446',         446,    'F_count_CNV',  'count'),
     ('Gated count NORMAL = 8',        8,      'F_count_NORM', 'count'),
@@ -563,31 +758,97 @@ CLAIMS = [
     ('L1 q 2.0e-4',                   2.0e-4, 'q_L1',         'q'),
     ('L2 q 2.0e-4',                   2.0e-4, 'q_L2',         'q'),
     ('E5 q 2.0e-4',                   2.0e-4, 'q_E5',         'q'),
-    ('Oncogene q 0.10',               0.10,   'q_Oncogene',   'q'),
+    ('E2 q 0.11',                     0.11,   'q_E2',         'q'),
+    ('Oncogene q 0.10 (perm)',        0.10,   'q_Oncogene',   'q'),
     ('Oncogene SBS2 <1% (0.53)',      0.53,   'Oncogene_SBS2_pct', 'pct'),
     ('Oncogene CNV <1% (0.79)',       0.79,   'Oncogene_CNV_pct',  'pct'),
-    ('E2 q 0.11',                     0.11,   'q_E2',         'q'),
-    ('B2M q 4.0e-100',                4.0e-100,'q_B2M',       'q'),
-    ('HLA-A q 5.8e-42',               5.8e-42,'q_HLAA',       'q'),
-    ('HLA-B q 1.1e-15',               1.1e-15,'q_HLAB',       'q'),
-    ('TAP1 q 1.2e-4',                 1.2e-4, 'q_TAP1',       'q'),
-    ('IVL SBS2 2.68',                 2.68,   'IVL_SBS2',     'mean'),
-    ('IVL CNV 0.09',                  0.09,   'IVL_CNV',      'mean'),
-    ('IVL q 3.1e-70',                 3.1e-70,'q_IVL',        'q'),
+    ('Maintenance SBS2 25.9%',        25.89,  'Maintenance_SBS2_pct', 'pct'),
+    ('Maintenance CNV 13.2%',         13.23,  'Maintenance_CNV_pct',  'pct'),
+    ('Maintenance q 1.3e-4',          1.3332e-4, 'q_Maintenance', 'q'),
+    ('Capsid SBS2 10.3%',             10.29,  'Capsid_SBS2_pct', 'pct'),
+    ('Capsid CNV 17.8%',              17.80,  'Capsid_CNV_pct',  'pct'),
+    ('Capsid q 1.3e-4',               1.3332e-4, 'q_Capsid',    'q'),
+
+    # ---- Panel B means (outside the Panel C family; q is out-of-scope) ------
     ('A3A SBS2 6.46',                 6.46,   'A3A_SBS2',     'mean'),
     ('A3A CNV 2.08',                  2.08,   'A3A_CNV',      'mean'),
-    ('A3A q 5.5e-134',                5.5e-134,'q_A3A',       'q'),
     ('A3B SBS2 2.21',                 2.21,   'A3B_SBS2',     'mean'),
     ('A3B CNV 4.95',                  4.95,   'A3B_CNV',      'mean'),
-    ('A3B q 8.3e-66',                 8.3e-66,'q_A3B',        'q'),
-    ('BRCA1 q 1.2e-8',                1.2e-8, 'q_BRCA1',      'q'),
-    ('H2AX q 4.6e-11',                4.6e-11,'q_H2AX',       'q'),
-    ('CHEK2 q 1.6e-5',                1.6e-5, 'q_CHEK2',      'q'),
-    ('CDK1 q 4.9e-18',                4.9e-18,'q_CDK1',       'q'),
-    ('CCNB1 q 9.9e-27',               9.9e-27,'q_CCNB1',      'q'),
-    ('CDC25C q 3.3e-12',              3.3e-12,'q_CDC25C',     'q'),
-    ('KRT14 q 4.8e-57',               4.8e-57,'q_KRT14',      'q'),
-    ('MKI67 q 2.6e-19',               2.6e-19,'q_MKI67',      'q'),
+
+    # ---- Tier 1: MHC-I antigen presentation + IFN signaling ----------------
+    ('B2M q 8.7e-100',                8.67e-100,'q_B2M',      'q'),
+    ('HLA-A q 7.3e-42',               7.27e-42,'q_HLAA',      'q'),
+    ('HLA-B q 1.2e-15',               1.22e-15,'q_HLAB',      'q'),
+    ('HLA-C q 6.1e-8',                6.10e-8, 'q_HLAC',      'q'),
+    ('TAP1 q 1.1e-4',                 1.06e-4, 'q_TAP1',      'q'),
+    ('STAT1 ns (q 0.31)',             3.07e-1, 'q_STAT1',     'q'),
+    ('IRF1 ns (q 0.62)',              6.21e-1, 'q_IRF1',      'q'),
+    ('STAT2 ns (q 0.14)',             1.35e-1, 'q_STAT2',     'q'),
+    ('DDX58 ns (q 0.094)',            9.35e-2, 'q_DDX58',     'q'),
+
+    # ---- Tier 2: Type I interferon effectors -------------------------------
+    ('IFI27 q 2.8e-48',               2.77e-48,'q_IFI27',     'q'),
+    ('ISG15 ns (q 0.20)',             1.99e-1, 'q_ISG15',     'q'),
+    ('IRF9 q 1.3e-15',                1.25e-15,'q_IRF9',      'q'),
+    ('MX1 q 1.4e-13',                 1.37e-13,'q_MX1',       'q'),
+    ('OAS1 q 2.3e-30',                2.25e-30,'q_OAS1',      'q'),
+    ('RSAD2 q 2.9e-28',               2.94e-28,'q_RSAD2',     'q'),
+    ('IFI44L q 4.6e-7',               4.55e-7, 'q_IFI44L',    'q'),
+    ('IFIT1 q 7.9e-3',                7.89e-3, 'q_IFIT1',     'q'),
+
+    # ---- Tier 3: Keratinocyte differentiation ------------------------------
+    ('KRT5 q 4.6e-7',                 4.55e-7, 'q_KRT5',      'q'),
+    ('KRT14 q 8.6e-57',               8.56e-57,'q_KRT14',     'q'),
+    ('IVL SBS2 2.68',                 2.68,   'IVL_SBS2',     'mean'),
+    ('IVL CNV 0.09',                  0.09,   'IVL_CNV',      'mean'),
+    ('IVL q 5.1e-70',                 5.05e-70,'q_IVL',       'q'),
+    ('KRT10 q 2.2e-4',                2.15e-4, 'q_KRT10',     'q'),
+    ('CDH1 q 2.5e-11',                2.52e-11,'q_CDH1',      'q'),
+
+    # ---- Tier 4: HPV-activated DNA damage response -------------------------
+    ('CHEK2 q 1.4e-5',                1.38e-5, 'q_CHEK2',     'q'),
+    ('BRCA1 q 1.1e-8',                1.10e-8, 'q_BRCA1',     'q'),
+    ('NBN q 1.3e-3',                  1.28e-3, 'q_NBN',       'q'),
+    ('H2AX q 4.3e-11',                4.28e-11,'q_H2AX',      'q'),
+    ('BARD1 ns (q 0.076)',            7.62e-2, 'q_BARD1',     'q'),
+    ('TP53BP1 q 2.4e-6',              2.42e-6, 'q_TP53BP1',   'q'),
+    ('RIF1 q 6.7e-11',                6.67e-11,'q_RIF1',      'q'),
+    ('ATM q 6.7e-3',                  6.70e-3, 'q_ATM',       'q'),
+    ('ATM peaks NORMAL 0.536',        0.536,  'ATM_NORM',     'mean'),
+    ('MRE11 q 2.1e-3',                2.05e-3, 'q_MRE11',     'q'),
+    ('RAD50 ns (q 0.44)',             4.37e-1, 'q_RAD50',     'q'),
+    ('RAD50 peaks NORMAL 1.573',      1.573,  'RAD50_NORM',   'mean'),
+    ('TOPBP1 q 8.6e-14',              8.55e-14,'q_TOPBP1',    'q'),
+    ('CHEK1 q 7.2e-11',               7.19e-11,'q_CHEK1',     'q'),
+    ('STAT5A ns (q 0.31)',            3.07e-1, 'q_STAT5A',    'q'),
+    ('STAT5B ns (q 0.34)',            3.41e-1, 'q_STAT5B',    'q'),
+    ('CASP7 q 5.7e-3',                5.72e-3, 'q_CASP7',     'q'),
+    ('NSD2 q 8.7e-5',                 8.71e-5, 'q_NSD2',      'q'),
+
+    # ---- Tier 5: Cell-cycle re-entry / proliferation -----------------------
+    ('MKI67 q 2.5e-19',               2.52e-19,'q_MKI67',     'q'),
+    ('TOP2A q 1.2e-25',               1.19e-25,'q_TOP2A',     'q'),
+    ('MCM7 q 1.7e-47',                1.67e-47,'q_MCM7',      'q'),
+    ('PCNA q 3.9e-13',                3.89e-13,'q_PCNA',      'q'),
+    ('CCNE1 q 1.4e-4',                1.40e-4, 'q_CCNE1',     'q'),
+    ('CDKN2A ns (q 0.19)',            1.87e-1, 'q_CDKN2A',    'q'),
+    ('E2F1 q 1.1e-5',                 1.11e-5, 'q_E2F1',      'q'),
+    ('E2F2 q 5.3e-5',                 5.25e-5, 'q_E2F2',      'q'),
+    ('BRD4 q 1.3e-11',                1.34e-11,'q_BRD4',      'q'),
+    ('MED1 q 1.8e-8',                 1.84e-8, 'q_MED1',      'q'),
+
+    # ---- Tier 6: p53/Rb pathway --------------------------------------------
+    ('CDKN1A ns (q 0.19)',            1.87e-1, 'q_CDKN1A',    'q'),
+    ('MDM2 q 1.5e-7',                 1.51e-7, 'q_MDM2',      'q'),
+    ('BAX q 9.1e-19',                 9.12e-19,'q_BAX',       'q'),
+    ('TP53 q 2.6e-11',                2.62e-11,'q_TP53',      'q'),
+    ('RB1 ns (q 0.53)',               5.33e-1, 'q_RB1',       'q'),
+
+    # ---- Tier 7: G2/M arrest ------------------------------------------------
+    ('CDC25A q 2.5e-16',              2.53e-16,'q_CDC25A',    'q'),
+    ('CDC25C q 3.0e-12',              3.02e-12,'q_CDC25C',    'q'),
+    ('CDK1 q 4.9e-18',                4.90e-18,'q_CDK1',      'q'),
+    ('CCNB1 q 9.5e-27',               9.46e-27,'q_CCNB1',     'q'),
 ]
 
 def verdict(claimed, computed, kind):
@@ -607,8 +868,8 @@ def verdict(claimed, computed, kind):
         return 'MATCH' if int(round(computed)) == int(claimed) else 'DIFF'
     return '?'
 
-log(f"\n  {'Claim':<28s} {'claimed':>12s} {'computed':>14s}   Verdict")
-log(f"  {'-'*28} {'-'*12} {'-'*14}   -------")
+log(f"\n  {'Claim':<30s} {'claimed':>12s} {'computed':>14s}   Verdict")
+log(f"  {'-'*30} {'-'*12} {'-'*14}   -------")
 audit_rows = []
 n_match = n_diff = n_novalue = 0
 for label, claimed, key, kind in CLAIMS:
@@ -620,19 +881,29 @@ for label, claimed, key, kind in CLAIMS:
     comp_str = ('--' if computed is None else
                 (f"{computed:.3g}" if kind in ('q',) else f"{computed:.4g}"))
     cl_str = f"{claimed:.3g}" if kind == 'q' else f"{claimed:g}"
-    log(f"  {label:<28s} {cl_str:>12s} {comp_str:>14s}   {v}")
+    log(f"  {label:<30s} {cl_str:>12s} {comp_str:>14s}   {v}")
     audit_rows.append({'claim': label, 'claimed': claimed, 'computed': computed, 'verdict': v})
 
-log(f"\n  MATCH: {n_match}   DIFF: {n_diff}   NO VALUE: {n_novalue}")
+log(f"\n  MATCH: {n_match}   DIFF: {n_diff}   NO VALUE: {n_novalue}   "
+    f"(total {len(CLAIMS)})")
 if n_diff or n_novalue:
     log("  >>> Inspect any DIFF / NO VALUE rows before the text is finalized.")
+else:
+    log("  ALL CLAIMS VERIFIED against this run. Section 4.4 numbers are locked to")
+    log("  the 57-gene Panel C family drawn in Figure 6c.")
 
-# Out-of-scope Para 1 numbers: source is the Phase3 L-method population step.
-log(f"\n  OUT OF SCOPE for this diagnostic (source = Phase3 L-method / population step):")
+# Out-of-scope numbers, with their correct source.
+log(f"\n  OUT OF SCOPE for this diagnostic:")
+log(f"    Source = Phase3 L-method / population step:")
 log(f"    - 94.6% of HPV16+ cells are basal  (needs non-basal HPV+ counts; this")
 log(f"      master table is basal-only, cannot be reconstructed here)")
 log(f"    - Tier counts 22,153 / 14,046 / 15,927 (needs the ambiguous-band thresholds)")
 log(f"    - Fisher OR = 1.01, p = 0.91 (needs the positivity-vs-SBS2-HIGH contrast set)")
+log(f"    Source = Generate_Figure6_Lifecycle_Panels.py, Panel B family of 18:")
+log(f"    - A3A q = {PANELB_REFERENCE_Q['APOBEC3A']:.2e} and "
+    f"A3B q = {PANELB_REFERENCE_Q['APOBEC3B']:.2e}. These are Panel B genes and")
+log(f"      are NOT in the 57-gene Panel C family, so they are not corrected or")
+log(f"      audited here. Their means are cross-checked above and must match.")
 # Partial anchor: positive count at threshold 8 over ALL basal master rows
 n_pos_allbasal = int((master['raw_HPV16'] >= HPV16_THRESHOLD).sum())
 log(f"    Partial anchor: raw_HPV16 >= {HPV16_THRESHOLD} over all {len(master)} basal "
