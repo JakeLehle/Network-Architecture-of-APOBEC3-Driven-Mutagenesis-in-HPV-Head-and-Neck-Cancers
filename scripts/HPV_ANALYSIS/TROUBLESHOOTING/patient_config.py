@@ -85,15 +85,48 @@ CELLTYPE_COL     = "final_annotation"
 RUN_COL          = "run_accession"
 
 # =============================================================================
-# PATIENT DEFINITIONS (from v2 diagnostic)
+# PATIENT DEFINITIONS
 # =============================================================================
+# EXPECTATION ONLY. Every script derives its contributor set at runtime from the
+# fold column via derive_contributors() and warns if the derived set disagrees
+# with this list. Do not use this list as an operative definition.
 HIGH_CONTRIBUTORS = ["Patient SC029", "Patient SC013", "Patient SC001"]
+CNV_HIGH_CONTRIBUTORS = ["Patient SC027", "Patient SC001"]
+
 ALL_PATIENTS = [
     "Patient SC001", "Patient SC003", "Patient SC005", "Patient SC006",
     "Patient SC008", "Patient SC010", "Patient SC013", "Patient SC014",
     "Patient SC019", "Patient SC022", "Patient SC025", "Patient SC026",
     "Patient SC027", "Patient SC029",
 ]
+
+# =============================================================================
+# CONTRIBUTION DENOMINATOR  (single source of truth)
+# =============================================================================
+# Sets the expected-share reference for every patient-level contribution fold
+# and for the contribution chi-square. Change it HERE and nowhere else.
+#
+#   'all_basal'  expected share = the patient's share of ALL basal cells.
+#                Asks whether something about the PATIENT drives contribution.
+#                A3A capability looks partly constitutive (the determinants
+#                diagnostic finds normal-adjacent tissue already carrying A3A),
+#                so conditioning the denominator on tumor tissue would partly
+#                condition on the exposure being measured.
+#
+#   'tumor'      expected share = the patient's share of TUMOR basal only.
+#                Conditions on selection eligibility, since Step00B seeds the
+#                tumor groups from tumor basal exclusively.
+#
+# Every script computes and logs BOTH folds regardless. This only sets which is
+# the headline and which reference the chi-square uses.
+#
+# VIRUS-DERIVED MEASURES ARE UNAFFECTED. Viral load, lifecycle phase, and any
+# other virus quantity stay restricted to tumor cells under either setting,
+# because normal-adjacent basal would dilute them toward zero by construction.
+CONTRIBUTION_DENOMINATOR = 'all_basal'
+
+# High-contributor definition (Figure 5).
+HC_THRESHOLD = 2.0
 
 # =============================================================================
 # A3 GENE DEFINITIONS
@@ -167,6 +200,58 @@ COLOR_OTHER     = "#cccccc"
 def log(msg):
     timestamp = datetime.now().strftime('%H:%M:%S')
     print(f"[{timestamp}] {msg}", flush=True)
+
+# =============================================================================
+# CONTRIBUTION HELPERS
+# =============================================================================
+def contribution_reference(n_basal_p, n_tumor_p):
+    """Reference count for one patient under the active denominator."""
+    if CONTRIBUTION_DENOMINATOR == 'tumor':
+        return int(n_tumor_p)
+    if CONTRIBUTION_DENOMINATOR == 'all_basal':
+        return int(n_basal_p)
+    raise ValueError(f"CONTRIBUTION_DENOMINATOR must be 'all_basal' or 'tumor', "
+                     f"got {CONTRIBUTION_DENOMINATOR!r}")
+
+
+def fold_enrichment(n_group_p, n_group_total, n_ref_p, n_ref_total):
+    """Observed share of the group divided by expected share from the reference."""
+    if n_group_total <= 0 or n_ref_total <= 0 or n_ref_p <= 0:
+        return 0.0
+    return (n_group_p / n_group_total) / (n_ref_p / n_ref_total)
+
+
+def active_fold(prefix):
+    """Column name of the fold under the active denominator.
+    active_fold('fold_sbs2') -> 'fold_sbs2_all_basal' or 'fold_sbs2_tumor'."""
+    return f"{prefix}_{CONTRIBUTION_DENOMINATOR}"
+
+
+def derive_contributors(df, fold_col, patient_col='patient',
+                        threshold=None, expected=None, label='contributors'):
+    """
+    Derive a high-contributor set from a fold column at runtime instead of
+    trusting a hardcoded list. If `expected` is given, any mismatch is logged
+    loudly and the DERIVED set is still what gets returned.
+    """
+    thr = HC_THRESHOLD if threshold is None else threshold
+    if fold_col not in df.columns:
+        raise KeyError(f"derive_contributors: '{fold_col}' not in table "
+                       f"(have: {list(df.columns)})")
+    derived = set(df.loc[df[fold_col] >= thr, patient_col])
+    short_ = lambda s: sorted(str(p).replace('Patient ', '') for p in s)
+    log(f"  {label}: derived from '{fold_col}' at >= {thr:.1f}x "
+        f"[denominator: {CONTRIBUTION_DENOMINATOR}] -> {short_(derived)}")
+    if expected is not None:
+        exp = set(expected)
+        if derived != exp:
+            log(f"  WARNING: {label} disagree with the patient_config expectation.")
+            log(f"    derived only : {short_(derived - exp)}")
+            log(f"    expected only: {short_(exp - derived)}")
+            log(f"    The DERIVED set is in use. Update patient_config if intended.")
+        else:
+            log(f"  {label}: match the patient_config expectation.")
+    return derived
 
 def banner(title):
     log("")

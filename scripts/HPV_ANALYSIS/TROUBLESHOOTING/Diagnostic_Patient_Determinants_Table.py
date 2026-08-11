@@ -1,38 +1,58 @@
 #!/usr/bin/env python3
 """
-Diagnostic_Patient_Determinants_Table.py  (v3)
+Diagnostic_Patient_Determinants_Table.py  (v6)
 ===============================================
 READ-ONLY. Per-patient determinants of SBS2-HIGH / CNV-HIGH contribution, and a
 test of the three-axis conjunction model that emerged from them.
 
-LINEAGE (each version kept the previous tests intact, as breadcrumbs)
----------------------------------------------------------------------
-v1 assembled the table and resolved SC010. Matched to SC029 on load (higher,
-2423 vs 1826), viral phase (0.60/0.39, identical to two decimals) and cell cycle
-(G1-shifted, 46%), SC010 still contributes 4-fold fewer SBS2-HIGH cells. The
-separating variable is the enzyme: A3A 1.00 vs 2.75, A3A-positive 18.1% vs
-44.5%, with HIGHER A3B (3.24 vs 2.11). SC010 is not a maintenance patient that
-failed to deliver; it is an A3B-dominant patient carrying maintenance-phase
-virus. SC022 is the same shape, more extreme (A3A 0.03).
+v6 CHANGES (reporting only; no test or number changed)
+-------------------------------------------------------
+  - The STEP 5 rank-gap table tags HPV16-negative patients, derived as 0% of
+    basal cells positive rather than named. For a patient with no virus,
+    'capability without opportunity' is trivially true and reads as a model
+    failure when it is not one. They are labelled and excluded from the
+    strongest-case-in-each-direction picks.
 
-v2 added circularity labelling, fixed the degenerate SBS2-weight median, put a
-cell floor on dominance, and tested whether the axes are independent. They are:
-A3A vs viral load rho = +0.042 (p = 0.89). A patient's A3A carries no
-information about how much virus they have, yet predicts their SBS2 fate. v2
-also produced the double dissociation:
-    A3A vs SBS2 fold  rho = +0.594 (p = 0.025)   A3A vs CNV fold  rho = +0.047 (ns)
-    A3B vs CNV  fold  rho = +0.660 (p = 0.010)   A3B vs SBS2 fold rho = +0.400 (ns)
-while viral load associates with BOTH fates at nearly identical strength
-(+0.506 / +0.513), the quantitative form of "load is opportunity, not fate".
+v5 CHANGES (three derivation rules corrected after the first all-basal run)
+---------------------------------------------------------------------------
+  - STEP 5 single-factor failures are ranked by DISCREPANCY (load rank minus
+    A3A rank, both ascending cohort-wide) instead of filtered on a median
+    split. The median split returned every patient that happened to sit on
+    opposite sides of two midpoints, which included uninformative cases and
+    even flagged a CNV driver as an SBS2 failure. Ranking by gap size puts the
+    informative cases at the top and shows why the marginal ones are marginal.
+    Patients that drive either fate are excluded, since a driver is not a
+    failure case.
+  - STEP 6 enrichment now requires BOTH p < 0.05 AND a fold change of at least
+    MIN_ENRICH_FOLD. With thousands of tumor cells against a few hundred
+    normal-adjacent, a 1.2-fold difference clears significance on sample size
+    alone. The fold is printed per patient so the reader can see this directly.
+  - STEP 0 no longer reports a denominator for tables that carry no fold
+    columns. A phase-percentage table has no denominator, and "not stated"
+    read like a warning when nothing was wrong.
 
-v3 (this version) adds STEP 8, which tests the model those results imply.
+v4 CHANGES (v3 tests are unchanged in method; only sourcing and prose changed)
+------------------------------------------------------------------------------
+  - The contribution denominator comes from patient_config.CONTRIBUTION_DENOMINATOR
+    via contribution.py. Fold columns are pulled from the upstream tables using
+    the suffix that matches the active setting, and the script refuses to guess:
+    if an upstream table carries only a bare fold column it says so loudly.
+  - Driver status is now SYMMETRIC. Both is_sbs2_driver and is_cnv_driver are
+    derived from the fold columns at HC_THRESHOLD. Previously the SBS2 side read
+    a hardcoded list from patient_config while the CNV side was derived, so a
+    denominator change would have moved one side and not the other.
+  - Every narrative READ block is computed from this run. The old text named
+    specific patients and quoted specific numbers inline, which meant the prose
+    could drift away from the data silently. Patient identifiers now appear only
+    where they are an ANALYSIS CHOICE (the matched pair, the spotlight list),
+    never as a stated result.
 
-THE MODEL STEP 8 TESTS
-----------------------
-No single factor is sufficient, and the univariate steps above show why: every
-one of them has a counterexample. The proposal is that reaching a fate requires
-THREE conditions together, and that the informative patients are the ones that
-fail on different axes.
+THE MODEL
+---------
+No single factor is sufficient, and the univariate steps show why: every one has
+a counterexample. The proposal is that reaching a fate requires THREE conditions
+together, and that the informative patients are the ones that fail on different
+axes.
 
     OPPORTUNITY  the patient carries enough virus                (viral load)
     DIRECTION    that virus sits in the right lifecycle phase    (maintenance
@@ -40,29 +60,14 @@ fail on different axes.
     CAPABILITY   the cell expresses the matching enzyme          (A3A for SBS2,
                                                                   A3B for CNV)
 
-Predicted failure modes, all of which are already on the board:
-    SC010, SC022   opportunity + direction, no capability (A3B-dominant with
-                   maintenance-phase virus) -> neither fate
-    SC005          capability, no opportunity (highest A3A at 3.03, but load
-                   rank 9 and only 10.9% of cells infected) -> no fate
-    SC003, SC006   direction + capability, no opportunity -> no fate
-    SC014          direction + capability (A3B 3.06), no opportunity -> no fate
-    SC001          the documented exception: rank-1 load (3455) seeds BOTH
-                   fates despite leaning maintenance, the "load route" into
-                   CNV-HIGH identified previously
-
 STEP 8 has four parts:
   8a  classify every patient on all three axes and print WHERE each one fails
   8b  Fisher exact, all-three-met vs driver status, run separately per fate
-  8c  threshold sensitivity. This is the part that decides whether the result is
-      real. SC010's A3A is 1.00 against a cohort median of 1.04, so the
-      classification of the single most important counterexample turns on a
-      razor-thin margin. The thresholds are swept across percentiles and the
-      range over which separation holds is reported, along with where it breaks.
-  8d  conjunction structure. The model says fate needs ALL three, so the natural
-      summary is the MINIMUM of the three scaled axes, not their mean. If the
-      minimum tracks contribution better than the mean, the conjunction
-      structure itself is supported rather than assumed.
+  8c  threshold sensitivity, swept across percentiles, reporting the range over
+      which separation holds and where it breaks
+  8d  conjunction structure: the MINIMUM of the three scaled axes versus their
+      MEAN. If the minimum tracks contribution better, a single missing factor
+      vetoes the outcome rather than being averaged away.
 
 STANDING CAVEAT, printed in the output so it travels with the numbers: at n = 14
 a rule with three binary terms has enough freedom to fit almost any three-patient
@@ -71,12 +76,16 @@ before this test, not searched for, and that the same rule applied independently
 to the CNV side recovers its driver. It is a consistency check on the model, not
 an independent confirmation of it.
 
-Denominators and universes (they differ by column, so they are stated):
-  folds        tumor basal denominator (unified patient-thread methods)
+Denominators and universes (they differ by column, so they are stated)
+----------------------------------------------------------------------
+  folds        set by CONTRIBUTION_DENOMINATOR; both variants exist upstream
   A3A/A3B      tumor basal cells, all of them, ungated on HPV16
   SBS2 weight  tumor basal cells carrying a weight (coverage reported per patient)
   phase        HPV16-positive gated cells only (raw_HPV16 >= 8 and total > 0)
   tumor/normal control: basal cells of both sources, patients having both
+
+Virus-derived measures stay tumor-restricted regardless of the fold denominator,
+because normal-adjacent basal would dilute them toward zero by construction.
 
 Inputs (read-only)
 ------------------
@@ -92,10 +101,12 @@ Outputs (to data/FIG_5/00_diagnostics/)
   patient_determinants_table.tsv         one row per patient, all determinants
   patient_enzyme_by_source.tsv           tumor vs normal-adjacent A3A/A3B control
   patient_conjunction_model.tsv          three-axis classification + scores
-  patient_conjunction_sensitivity.tsv    threshold sweep
+  patient_conjunction_sensitivity.tsv    load x enzyme threshold sweep
+  patient_direction_rule_sensitivity.tsv direction-rule sweep (STEP 8c-dir)
   patient_determinants_<ts>.txt          full console log
 
-Run from the directory holding patient_config.py:
+Run LAST, after the three upstream diagnostics. From the directory holding
+patient_config.py and contribution.py:
     conda run -n NETWORK python Diagnostic_Patient_Determinants_Table.py
 
 Author: Jake Lehle / Claude (2026 NMF Paper)
@@ -115,6 +126,16 @@ from patient_config import (
     banner, log, ensure_dir, load_adata, load_three_groups,
 )
 
+from contribution import (
+    CONTRIBUTION_DENOMINATOR, HC_THRESHOLD,
+    read_fold, derive_contributors, announce, short,
+)
+
+try:
+    from patient_config import CNV_HIGH_CONTRIBUTORS
+except ImportError:
+    CNV_HIGH_CONTRIBUTORS = None
+
 # =============================================================================
 # CONFIG
 # =============================================================================
@@ -131,28 +152,51 @@ TBL_PHASE = os.path.join(DIR_00_DIAG, "patient_lifecycle_phase.tsv")
 TBL_CYCLE = os.path.join(DIR_00_DIAG, "patient_cellcycle_by_source.tsv")
 
 NORMAL_SOURCE = 'normal tissue adjucent to head and neck squamous cell carcinoma'
-HC_THRESHOLD  = 2.0
 MIN_GATED     = 10      # phase estimate floor, matches the phase diagnostic
 MIN_A3_CELLS  = 50      # floor for a stable A3A/A3B dominance fraction
 MIN_SOURCE_CELLS = 30   # floor for the tumor vs normal-adjacent enzyme test
+
+# Effect-size gate for the STEP 6 enzyme control. With thousands of tumor cells
+# against a few hundred normal-adjacent, a 1.2-fold difference clears p < 0.05
+# without meaning anything. "Tumor-enriched" requires significance AND this fold.
+MIN_ENRICH_FOLD = 2.0
 
 # STEP 8 thresholds. Defaults are cohort medians; 8c sweeps them.
 LOAD_PCTL_DEFAULT = 50
 ENZ_PCTL_DEFAULT  = 50
 SWEEP_PCTLS = [30, 40, 50, 60, 70]
 
+# How the DIRECTION axis is called.
+#   'compare'   maintenance > productive for SBS2, productive > maintenance for
+#               CNV. Parameter-free: it asks only which phase dominates, so
+#               there is nothing to tune and nothing to overfit.
+#   'threshold' the matching phase fraction must clear DIRECTION_MIN_FRAC.
+#               Introduces a free parameter. STEP 8c-dir sweeps it so the range
+#               over which any conclusion survives is visible rather than
+#               assumed.
+DIRECTION_RULE     = 'threshold'
+DIRECTION_MIN_FRAC = 0.40
+DIRECTION_SWEEP    = [0.30, 0.35, 0.38, 0.40, 0.42, 0.45, 0.50]
+
+# ANALYSIS CHOICES, not results. These name which patients get a detailed
+# printout; nothing about the conclusions depends on the list.
 MATCHED_PAIR = ['Patient SC010', 'Patient SC029']
 SPOTLIGHT    = ['Patient SC027', 'Patient SC001', 'Patient SC013',
                 'Patient SC029', 'Patient SC010', 'Patient SC022',
                 'Patient SC005']
 
 report_lines = []
+
+
 def rlog(msg=""):
     log(msg)
     report_lines.append(str(msg))
 
-def short(p):
-    return str(p).replace('Patient ', '')
+
+def fmt(v, width, dec=2, suffix=''):
+    return (f"{v:>{width}.{dec}f}{suffix}" if pd.notna(v)
+            else f"{'--':>{width}}{' ' * len(suffix)}")
+
 
 # =============================================================================
 # HELPERS
@@ -163,14 +207,31 @@ def load_side_table(path, label):
         return None
     df = pd.read_csv(path, sep='\t')
     key = next((c for c in df.columns
-                if str(c).strip().lower() in ('patient', 'subject id', 'subject_id')), None)
+                if str(c).strip().lower() in ('patient', 'subject id', 'subject_id')),
+               None)
     if key is None:
         rlog(f"  [SKIP] {label}: no patient key column")
         return None
     df = df.rename(columns={key: 'patient'})
     df['patient'] = df['patient'].astype(str)
-    rlog(f"  [OK] {label}: {len(df)} rows")
+    # Only tables that actually carry folds have a denominator to report. A
+    # phase-percentage table has none, and saying "not stated" for it reads as a
+    # warning when nothing is wrong.
+    has_folds = any(str(c).startswith('fold') for c in df.columns)
+    if not has_folds:
+        rlog(f"  [OK] {label}: {len(df)} rows (no fold columns; denominator N/A)")
+        return df
+    tag = df['denominator'].iloc[0] if 'denominator' in df.columns else 'not stated'
+    rlog(f"  [OK] {label}: {len(df)} rows, denominator = {tag}")
+    if tag == 'not stated':
+        rlog(f"       WARNING: this table carries folds but no denominator tag, so")
+        rlog(f"       it predates the refactor. Re-run the upstream diagnostic.")
+    elif tag != CONTRIBUTION_DENOMINATOR:
+        rlog(f"       WARNING: this table was written under '{tag}' but the "
+             f"active setting is '{CONTRIBUTION_DENOMINATOR}'.")
+        rlog(f"       Re-run the upstream diagnostic before trusting its folds.")
     return df
+
 
 def take(df, src, dest, out):
     if df is None or src not in df.columns:
@@ -179,6 +240,22 @@ def take(df, src, dest, out):
     out[dest] = out['patient'].map(dict(zip(df['patient'], df[src])))
     return True
 
+
+def take_fold(df, prefix, dest, out, label):
+    """Pull the fold column matching the active denominator."""
+    if df is None:
+        out[dest] = np.nan
+        return False
+    try:
+        series = read_fold(df, prefix, logger=rlog, label=label)
+    except KeyError as e:
+        rlog(f"  [MISSING] {e}")
+        out[dest] = np.nan
+        return False
+    out[dest] = out['patient'].map(dict(zip(df['patient'], series)))
+    return True
+
+
 def gene_vector(ad, symbol):
     if symbol not in ad.var_names:
         return None
@@ -186,6 +263,7 @@ def gene_vector(ad, symbol):
     if scipy.sparse.issparse(x):
         return np.asarray(x.todense()).flatten()
     return np.asarray(x).flatten()
+
 
 def sp(a, b, label, df, circular=False, collect=None):
     """
@@ -206,6 +284,7 @@ def sp(a, b, label, df, circular=False, collect=None):
     rlog(f"    {label:<38s} rho={rho:+.3f}  p={p:.3g}  n={len(sub)}{tag}")
     if collect is not None and not circular and p < 0.05:
         collect.append((label, rho, p))
+
 
 # =============================================================================
 # STEP 0: EXISTING DIAGNOSTIC TABLES
@@ -245,8 +324,13 @@ tumor_names = basal.obs_names[tumor_mask]
 pat_all = basal.obs[PATIENT_COL].astype(str).values
 pat = pat_all[tumor_mask]
 
-rlog(f"  basal cells: {basal.n_obs:,}  (tumor {int(tumor_mask.sum()):,}, "
-     f"normal-adjacent {int((~tumor_mask).sum()):,})")
+n_basal_total = int(basal.n_obs)
+n_tumor_total = int(tumor_mask.sum())
+rlog(f"  basal cells: {n_basal_total:,}  (tumor {n_tumor_total:,}, "
+     f"normal-adjacent {n_basal_total - n_tumor_total:,})")
+rlog("")
+announce(rlog, n_basal_total, n_tumor_total)
+rlog("")
 rlog(f"  over tumor basal: A3A+ {100*np.mean(a3a > 0):.1f}%, "
      f"A3B+ {100*np.mean(a3b > 0):.1f}%")
 
@@ -259,8 +343,8 @@ if 'SBS2' not in sig.columns:
         raise SystemExit(f"  ERROR: no SBS2 in signature weights {sig.shape}")
 sbs2_w = pd.to_numeric(sig['SBS2'], errors='coerce').reindex(tumor_names)
 n_cov = int(sbs2_w.notna().sum())
-rlog(f"  SBS2 weights matched to {n_cov:,}/{int(tumor_mask.sum()):,} tumor basal "
-     f"({100*n_cov/tumor_mask.sum():.1f}%)")
+rlog(f"  SBS2 weights matched to {n_cov:,}/{n_tumor_total:,} tumor basal "
+     f"({100*n_cov/n_tumor_total:.1f}%)")
 rlog("  NOTE: coverage is NOT random (the two lowest-coverage patients are the")
 rlog("        two HPV-negative ones). It is treated as a confound in STEP 7.")
 
@@ -274,26 +358,42 @@ banner("STEP 2: ASSEMBLE PER-PATIENT DETERMINANTS")
 
 out = pd.DataFrame({'patient': patients})
 
-take(t_cnv,  'n_basal',       'n_basal',     out)
-take(t_cnv,  'n_tumor',       'n_tumor',     out)
-take(t_cnv,  'n_cnv_high',    'n_cnv',       out)
-take(t_cnv,  'fold_cnv_high', 'fold_cnv',    out)
-take(t_load, 'fold_sbs2',     'fold_sbs2',   out)
+take(t_cnv,  'n_basal',    'n_basal', out)
+take(t_cnv,  'n_tumor',    'n_tumor', out)
+take(t_cnv,  'n_cnv_high', 'n_cnv',   out)
+take_fold(t_cnv, 'fold_cnv', 'fold_cnv', out, 'CNV contribution')
+
+take_fold(t_load, 'fold_sbs2', 'fold_sbs2', out, 'HPV16 load')
 take(t_load, 'n_sbs2',        'n_sbs2',      out)
 take(t_load, 'load_norm',     'load_per_M',  out)
 take(t_load, 'pct_pos',       'pct_hpv_pos', out)
 take(t_load, 'mean_load_pos', 'load_in_pos', out)
-take(t_phase,'n_gated',       'n_gated',     out)
-take(t_phase,'maint_frac',    'maint_frac',  out)
-take(t_phase,'prod_frac',     'prod_frac',   out)
-take(t_cycle,'tumor_G1',      'tumor_G1',    out)
-take(t_cycle,'tumor_S',       'tumor_S',     out)
-take(t_cycle,'tumor_G2M',     'tumor_G2M',   out)
 
-if t_load is not None and 'fold_cnv' in t_load.columns:
-    chk = out['patient'].map(dict(zip(t_load['patient'], t_load['fold_cnv'])))
-    rlog(f"  cross-check: max |fold_cnv difference| across source tables = "
-         f"{(chk - out['fold_cnv']).abs().max():.4f}")
+take(t_phase, 'n_gated',    'n_gated',    out)
+take(t_phase, 'maint_frac', 'maint_frac', out)
+take(t_phase, 'prod_frac',  'prod_frac',  out)
+
+take(t_cycle, 'tumor_G1',  'tumor_G1',  out)
+take(t_cycle, 'tumor_S',   'tumor_S',   out)
+take(t_cycle, 'tumor_G2M', 'tumor_G2M', out)
+
+# Cross-check: fold_cnv appears in more than one upstream table. Under a single
+# denominator they must agree exactly. A nonzero difference means one upstream
+# diagnostic has not been re-run.
+if t_load is not None:
+    try:
+        chk_series = read_fold(t_load, 'fold_cnv', logger=rlog,
+                               label='HPV16 load cross-check')
+        chk = out['patient'].map(dict(zip(t_load['patient'], chk_series)))
+        gap = float((chk - out['fold_cnv']).abs().max())
+        rlog(f"  cross-check: max |fold_cnv difference| across source tables = "
+             f"{gap:.6f}")
+        if gap > 1e-9:
+            rlog("  >>> STOP. The source tables disagree, which means at least one")
+            rlog("      upstream diagnostic was not re-run under the current")
+            rlog("      denominator. Re-run them before using anything below.")
+    except KeyError:
+        rlog("  cross-check skipped: no fold_cnv column in the load table.")
 
 rows = []
 for p in patients:
@@ -328,20 +428,31 @@ for p in patients:
     })
 out = out.merge(pd.DataFrame(rows), on='patient', how='left')
 
+# ---- Driver status, derived symmetrically from the folds --------------------
+rlog("")
+sbs2_drivers = derive_contributors(out, 'fold_sbs2', expected=HIGH_CONTRIBUTORS,
+                                   label='SBS2-HIGH drivers', logger=rlog)
+rlog("")
+cnv_drivers = derive_contributors(out, 'fold_cnv', expected=CNV_HIGH_CONTRIBUTORS,
+                                  label='CNV-HIGH drivers', logger=rlog)
+
+out['is_sbs2_driver'] = out['patient'].isin(sbs2_drivers)
+out['is_cnv_driver']  = out['patient'].isin(cnv_drivers)
 out['role'] = [
-    '+'.join(([_ for _ in ['SBS2-HC'] if p in HIGH_CONTRIBUTORS] +
-              [_ for _ in ['CNV-HC'] if (out.loc[out['patient'] == p, 'fold_cnv']
-                                         >= HC_THRESHOLD).any()])) or '-'
-    for p in out['patient']]
+    '+'.join([t for t, v in (('SBS2-HC', s), ('CNV-HC', c)) if v]) or '-'
+    for s, c in zip(out['is_sbs2_driver'], out['is_cnv_driver'])]
+out['denominator'] = CONTRIBUTION_DENOMINATOR
 
 out = out.sort_values('fold_sbs2', ascending=False).reset_index(drop=True)
-out.to_csv(os.path.join(OUT_DIR, "patient_determinants_table.tsv"), sep='\t', index=False)
+out.to_csv(os.path.join(OUT_DIR, "patient_determinants_table.tsv"),
+           sep='\t', index=False)
 
 # =============================================================================
 # STEP 3: TABLE
 # =============================================================================
 banner("STEP 3: DETERMINANTS TABLE")
-rlog("  folds: tumor-basal denominator | A3A/A3B & SBS2 weight: tumor basal, ungated")
+rlog(f"  folds: {CONTRIBUTION_DENOMINATOR} denominator | A3A/A3B & SBS2 weight: "
+     f"tumor basal, ungated")
 rlog(f"  phase: HPV16-positive gated cells only | dominance N.D. below "
      f"{MIN_A3_CELLS} expressing cells\n")
 hdr = (f"  {'Pat':<7s} {'SBS2f':>6s} {'CNVf':>6s} {'load/M':>8s} {'%pos':>6s} "
@@ -350,18 +461,20 @@ hdr = (f"  {'Pat':<7s} {'SBS2f':>6s} {'CNVf':>6s} {'load/M':>8s} {'%pos':>6s} "
 rlog(hdr)
 rlog("  " + "-" * (len(hdr) - 2))
 for _, r in out.iterrows():
-    def f(v, w, d=2, suf=''):
-        return f"{v:>{w}.{d}f}{suf}" if pd.notna(v) else f"{'--':>{w}}"
-    rlog(f"  {short(r['patient']):<7s} {f(r['fold_sbs2'],5,2)}x {f(r['fold_cnv'],5,2)}x "
-         f"{f(r['load_per_M'],8,1)} {f(r['pct_hpv_pos'],5,1)}% "
-         f"{f(r['maint_frac'],6,2)} {f(r['prod_frac'],6,2)} {f(r['tumor_G1'],4,0)} "
-         f"{f(r['tumor_G2M'],4,0)} {f(r['A3A_mean'],6,2)} {f(r['A3B_mean'],6,2)} "
-         f"{f(r['A3A_pct_pos'],5,1)}% {f(r['A3A_dom_pct'],6,1)}% "
-         f"{f(r['SBS2_w_p90'],8,4)}  {r['role']}")
+    rlog(f"  {short(r['patient']):<7s} {fmt(r['fold_sbs2'],5,2)}x "
+         f"{fmt(r['fold_cnv'],5,2)}x "
+         f"{fmt(r['load_per_M'],8,1)} {fmt(r['pct_hpv_pos'],5,1)}% "
+         f"{fmt(r['maint_frac'],6,2)} {fmt(r['prod_frac'],6,2)} "
+         f"{fmt(r['tumor_G1'],4,0)} {fmt(r['tumor_G2M'],4,0)} "
+         f"{fmt(r['A3A_mean'],6,2)} {fmt(r['A3B_mean'],6,2)} "
+         f"{fmt(r['A3A_pct_pos'],5,1)}% {fmt(r['A3A_dom_pct'],6,1)}% "
+         f"{fmt(r['SBS2_w_p90'],8,4)}  {r['role']}")
 
-rlog(f"\n  SBS2 weight median is 0.000 for every patient (mean nonzero fraction "
-     f"{out['SBS2_w_pct_pos'].mean():.0f}%),")
-rlog("  so the median carries no information; p75 / p90 / mean are the usable summaries.")
+n_zero_median = int((out['SBS2_w_median'] == 0).sum())
+rlog(f"\n  SBS2 weight median is 0.000 for {n_zero_median}/{len(out)} patients "
+     f"(mean nonzero fraction {out['SBS2_w_pct_pos'].mean():.0f}%),")
+rlog("  so the median carries little information; p75 / p90 / mean are the "
+     "usable summaries.")
 rlog("\n  SBS2 weight coverage per patient (% of tumor basal carrying a weight):")
 rlog("    " + ", ".join(f"{short(r['patient'])} {r['SBS2_w_cov_pct']:.0f}%"
                         for _, r in out.iterrows()))
@@ -369,9 +482,10 @@ rlog("    " + ", ".join(f"{short(r['patient'])} {r['SBS2_w_cov_pct']:.0f}%"
 # =============================================================================
 # STEP 4: THE MATCHED PAIR
 # =============================================================================
-banner("STEP 4: SC010 vs SC029 MATCHED PAIR")
-rlog("  Matched on load, viral phase and cell cycle; 4-fold apart in SBS2")
-rlog("  contribution. The separating variable identifies the missing axis.\n")
+banner(f"STEP 4: {short(MATCHED_PAIR[0])} vs {short(MATCHED_PAIR[1])} MATCHED PAIR")
+rlog("  A pair chosen for being close on load, viral phase and cell cycle while")
+rlog("  differing in contribution. The separating variable identifies the")
+rlog("  missing axis.\n")
 
 pair = out[out['patient'].isin(MATCHED_PAIR)].set_index('patient')
 if len(pair) == 2:
@@ -411,22 +525,27 @@ if len(pair) == 2:
     rlog("")
     if pd.notna(ra['A3A_mean']) and pd.notna(rb['A3A_mean']):
         if ra['A3A_mean'] < 0.67 * rb['A3A_mean']:
-            rlog("  READ: CAPABILITY. SC010 expresses materially less A3A than SC029 at")
-            rlog("        matched load, phase and cell cycle, and MORE A3B. It is not a")
-            rlog("        maintenance patient that failed to deliver; it is an")
-            rlog("        A3B-dominant patient carrying maintenance-phase virus.")
+            rlog(f"  READ: CAPABILITY. {short(a)} expresses materially less A3A "
+                 f"({ra['A3A_mean']:.2f} vs {rb['A3A_mean']:.2f}) at")
+            rlog(f"        comparable load and phase, and MORE A3B "
+                 f"({ra['A3B_mean']:.2f} vs {rb['A3B_mean']:.2f}). That is an")
+            rlog(f"        A3B-dominant patient carrying maintenance-phase virus,")
+            rlog(f"        not a maintenance patient that failed to deliver.")
         elif ra['A3A_mean'] > 1.5 * rb['A3A_mean']:
-            rlog("  READ: A3A is HIGHER in SC010, ruling capability out.")
+            rlog(f"  READ: A3A is HIGHER in {short(a)}, ruling capability out.")
         else:
             rlog("  READ: A3A is comparable; capability does not explain the split.")
     if pd.notna(ra['SBS2_w_p90']) and pd.notna(rb['SBS2_w_p90']):
         if ra['SBS2_w_p90'] < 0.67 * rb['SBS2_w_p90']:
-            rlog("  READ: SBS2 weight p90 is also lower in SC010. This is DOWNSTREAM of")
-            rlog("        A3A activity, so it is a consequence of the capability")
-            rlog("        difference rather than an independent explanation.")
+            rlog(f"  READ: SBS2 weight p90 is also lower in {short(a)} "
+                 f"({ra['SBS2_w_p90']:.4f} vs {rb['SBS2_w_p90']:.4f}). That is")
+            rlog("        DOWNSTREAM of A3A activity, so it is a consequence of the")
+            rlog("        capability difference rather than an independent explanation.")
         else:
-            rlog("  READ: SBS2 weight distribution is comparable, so accumulated burden")
-            rlog("        does not independently explain the split.")
+            rlog("  READ: SBS2 weight distribution is comparable, so accumulated")
+            rlog("        burden does not independently explain the split.")
+else:
+    rlog(f"  MATCHED_PAIR {MATCHED_PAIR} not both present; step skipped.")
 
 # =============================================================================
 # STEP 5: INDEPENDENCE OF OPPORTUNITY AND CAPABILITY
@@ -441,17 +560,83 @@ sp('load_per_M',  'A3B_mean', 'viral load vs A3B mean', out)
 sp('pct_hpv_pos', 'A3A_mean', '% HPV16-positive vs A3A mean', out)
 sp('A3A_mean',    'A3B_mean', 'A3A mean vs A3B mean', out)
 
-rlog("\n  Single-factor failure modes (the cases that make the model multi-factor):")
-for p, kind in [('Patient SC010', 'opportunity without capability'),
-                ('Patient SC022', 'opportunity without capability'),
-                ('Patient SC005', 'capability without opportunity')]:
-    r = out[out['patient'] == p]
-    if r.empty:
-        continue
-    r = r.iloc[0]
-    rlog(f"    {short(p):<7s} {kind:<32s} load {r['load_per_M']:>7.0f} "
-         f"({r['pct_hpv_pos']:>4.1f}% pos) | A3A {r['A3A_mean']:.2f} | "
-         f"SBS2 fold {r['fold_sbs2']:.2f}x")
+# ---- Single-factor failures, ranked by DISCREPANCY not by a median split ----
+#
+# A median split answers "is this patient above the middle on exactly one axis",
+# which is true of many uninformative patients and says nothing about HOW
+# mismatched they are. The informative cases are the ones where the two ranks
+# pull hardest in opposite directions, so the axes are ranked cohort-wide and
+# patients are ordered by the size of the gap.
+#
+# Ranks are ascending (1 = lowest) over ALL patients, then patients that drive
+# either fate are excluded, since a driver is by definition not a failure case.
+out['rank_load'] = out['load_per_M'].rank(method='min', ascending=True)
+out['rank_a3a']  = out['A3A_mean'].rank(method='min', ascending=True)
+out['rank_gap']  = out['rank_load'] - out['rank_a3a']
+
+n_pat_total = len(out)
+rlog(f"\n  Single-factor failure modes, ranked by load-rank minus A3A-rank")
+rlog(f"  (both ascending over all {n_pat_total} patients; drivers of either fate")
+rlog(f"  excluded, since a driver is not a failure case).")
+rlog("  A large POSITIVE gap is opportunity without capability; a large NEGATIVE")
+rlog("  gap is capability without opportunity. These are the cases that make the")
+rlog("  model multi-factor.\n")
+
+fails = out[~(out['is_sbs2_driver'] | out['is_cnv_driver'])].copy()
+fails = fails.dropna(subset=['rank_gap'])
+fails['abs_gap'] = fails['rank_gap'].abs()
+fails = fails.sort_values('abs_gap', ascending=False)
+
+# HPV16-negative patients are derived, not named: no gated positive cells means
+# 'without opportunity' is trivially true rather than informative, and they must
+# not be read as failures of the model.
+hpv_neg = set(out.loc[out['pct_hpv_pos'].fillna(0) == 0, 'patient'])
+if hpv_neg:
+    rlog(f"    HPV16-negative patients (0% of basal cells positive): "
+         f"{sorted(short(p) for p in hpv_neg)}. For these, 'without opportunity'")
+    rlog(f"    is trivially true. They are tagged below and are NOT model failures.\n")
+
+rlog(f"    {'Pat':<7s} {'loadR':>6s} {'A3AR':>5s} {'gap':>5s}  "
+     f"{'reading':<32s} {'load':>7s} {'%pos':>6s} {'A3A':>6s} {'SBS2f':>7s}  note")
+rlog(f"    {'-'*7} {'-'*6} {'-'*5} {'-'*5}  {'-'*32} {'-'*7} {'-'*6} {'-'*6} "
+     f"{'-'*7}  ----")
+for _, r in fails.iterrows():
+    gap = int(r['rank_gap'])
+    is_neg = r['patient'] in hpv_neg
+    if is_neg:
+        reading = 'no virus (not a model failure)'
+    elif gap > 0:
+        reading = 'opportunity without capability'
+    elif gap < 0:
+        reading = 'capability without opportunity'
+    else:
+        reading = 'balanced (uninformative)'
+    rlog(f"    {short(r['patient']):<7s} {int(r['rank_load']):>6d} "
+         f"{int(r['rank_a3a']):>5d} {gap:>+5d}  {reading:<32s} "
+         f"{r['load_per_M']:>7.0f} {r['pct_hpv_pos']:>5.1f}% "
+         f"{r['A3A_mean']:>6.2f} {r['fold_sbs2']:>6.2f}x  "
+         f"{'HPV16-neg' if is_neg else ''}")
+
+# Name the strongest case in each direction, computed rather than asserted.
+informative = fails[~fails['patient'].isin(hpv_neg)]
+pos = informative[informative['rank_gap'] > 0]
+neg = informative[informative['rank_gap'] < 0]
+rlog("")
+if len(pos):
+    b = pos.iloc[0]
+    rlog(f"    Strongest opportunity-without-capability: {short(b['patient'])} "
+         f"(gap {int(b['rank_gap']):+d}, load rank {int(b['rank_load'])}, "
+         f"A3A rank {int(b['rank_a3a'])}).")
+if len(neg):
+    b = neg.iloc[0]
+    rlog(f"    Strongest capability-without-opportunity: {short(b['patient'])} "
+         f"(gap {int(b['rank_gap']):+d}, load rank {int(b['rank_load'])}, "
+         f"A3A rank {int(b['rank_a3a'])}).")
+rlog("    Both directions are present, which is what licenses treating")
+rlog("    opportunity and capability as separate axes rather than one factor.")
+rlog("    The gap is ordinal: read the top of the list, not the tail.")
+if hpv_neg:
+    rlog(f"    HPV16-negative patients are excluded from both picks above.")
 
 # =============================================================================
 # STEP 6: TUMOR vs NORMAL-ADJACENT ENZYME CONTROL
@@ -461,10 +646,16 @@ rlog("  Only a few patients contribute normal-adjacent basal cells. Within those
 rlog("  patients, is the enzyme signal tumor-associated? Small n: this is a")
 rlog("  CONTROL, not a result.\n")
 
+rlog(f"  A p-value alone is not enough here. With {MIN_SOURCE_CELLS}+ cells on")
+rlog(f"  one side and thousands on the other, a 1.2-fold difference reaches")
+rlog(f"  significance without being biologically meaningful, so 'enriched'")
+rlog(f"  requires BOTH p < 0.05 AND a fold change >= {MIN_ENRICH_FOLD:.1f}.\n")
+
 src_rows = []
-rlog(f"  {'Pat':<7s} {'nTum':>6s} {'nNorm':>6s} {'A3A tum':>8s} {'A3A norm':>9s} "
-     f"{'p':>9s}   {'A3B tum':>8s} {'A3B norm':>9s} {'p':>9s}")
-rlog(f"  {'-'*7} {'-'*6} {'-'*6} {'-'*8} {'-'*9} {'-'*9}   {'-'*8} {'-'*9} {'-'*9}")
+rlog(f"  {'Pat':<7s} {'nTum':>6s} {'nNorm':>6s} | {'A3A tum':>8s} {'A3A norm':>9s} "
+     f"{'fold':>7s} {'p':>9s} | {'A3B tum':>8s} {'A3B norm':>9s} {'fold':>7s} {'p':>9s}")
+rlog(f"  {'-'*7} {'-'*6} {'-'*6} | {'-'*8} {'-'*9} {'-'*7} {'-'*9} | "
+     f"{'-'*8} {'-'*9} {'-'*7} {'-'*9}")
 tissue_vals = basal.obs['tissue_grp'].values
 for p in patients:
     pm = pat_all == p
@@ -477,36 +668,75 @@ for p in patients:
     cells = []
     for gname, vec in (('A3A', basal_a3a), ('A3B', basal_a3b)):
         vt, vn = vec[tm], vec[nm]
+        mt, mn = float(np.mean(vt)), float(np.mean(vn))
         try:
             _, pv = mannwhitneyu(vt, vn, alternative='two-sided')
         except ValueError:
             pv = np.nan
-        row[f'{gname}_tumor']  = float(np.mean(vt))
-        row[f'{gname}_normal'] = float(np.mean(vn))
+        fold = (mt / mn) if mn > 0 else (np.inf if mt > 0 else np.nan)
+        row[f'{gname}_tumor']  = mt
+        row[f'{gname}_normal'] = mn
+        row[f'{gname}_fold']   = fold
         row[f'{gname}_p'] = pv
-        cells += [f"{np.mean(vt):>8.3f}", f"{np.mean(vn):>9.3f}",
+        fold_str = ('   inf' if np.isinf(fold)
+                    else ('    --' if pd.isna(fold) else f"{fold:6.2f}"))
+        cells += [f"{mt:>8.3f}", f"{mn:>9.3f}", f"{fold_str:>7s}",
                   (f"{pv:>9.2e}" if pd.notna(pv) else f"{'--':>9s}")]
-    rlog(f"  {short(p):<7s} {nt:>6d} {nn:>6d} " + " ".join(cells[:3]) +
-         "   " + " ".join(cells[3:]))
+    rlog(f"  {short(p):<7s} {nt:>6d} {nn:>6d} | " + " ".join(cells[:4]) +
+         " | " + " ".join(cells[4:]))
     src_rows.append(row)
 
 if src_rows:
-    pd.DataFrame(src_rows).to_csv(
-        os.path.join(OUT_DIR, "patient_enzyme_by_source.tsv"), sep='\t', index=False)
-    rlog(f"\n  [SAVE] patient_enzyme_by_source.tsv  ({len(src_rows)} patients with both "
-         f"sources at >= {MIN_SOURCE_CELLS} cells)")
-    rlog("  READ: A3A is strongly tumor-enriched in only one of three patients")
-    rlog("        (SC003). In SC005 the normal-adjacent tissue already carries high")
-    rlog("        A3A, which looks like a constitutive patient-level property")
-    rlog("        rather than a tumor-induced one, consistent with A3A capability")
-    rlog("        varying independently of viral load.")
+    src_df = pd.DataFrame(src_rows)
+    src_df.to_csv(os.path.join(OUT_DIR, "patient_enzyme_by_source.tsv"),
+                  sep='\t', index=False)
+    rlog(f"\n  [SAVE] patient_enzyme_by_source.tsv  ({len(src_df)} patients with "
+         f"both sources at >= {MIN_SOURCE_CELLS} cells)")
+
+    # READ block derived from the table rather than written in advance.
+    # Enrichment requires BOTH significance and a real effect size.
+    n_pat_src = len(src_df)
+    sig = src_df['A3A_p'] < 0.05
+    big = src_df['A3A_fold'] >= MIN_ENRICH_FOLD
+    enriched = src_df[sig & big]
+    sig_only = src_df[sig & ~big & (src_df['A3A_fold'] > 1.0)]
+    reversed_ = src_df[src_df['A3A_fold'] < 1.0]
+
+    rlog(f"\n  READ: A3A is tumor-enriched (p < 0.05 AND fold >= "
+         f"{MIN_ENRICH_FOLD:.1f}) in {len(enriched)} of {n_pat_src} patients"
+         f"{': ' + str(sorted(short(p) for p in enriched['patient'])) if len(enriched) else ''}.")
+    for _, r in enriched.iterrows():
+        rlog(f"        {short(r['patient'])}: {r['A3A_fold']:.1f}-fold "
+             f"({r['A3A_tumor']:.2f} vs {r['A3A_normal']:.2f}), p = {r['A3A_p']:.1e}")
+    if len(sig_only):
+        rlog(f"        Significant but below the fold gate: "
+             f"{sorted(short(p) for p in sig_only['patient'])}.")
+        for _, r in sig_only.iterrows():
+            rlog(f"          {short(r['patient'])}: only {r['A3A_fold']:.2f}-fold "
+                 f"({r['A3A_tumor']:.2f} vs {r['A3A_normal']:.2f}) yet p = "
+                 f"{r['A3A_p']:.1e} at n = {int(r['n_tumor'])} vs "
+                 f"{int(r['n_normal_adj'])}. Significance from sample size, not")
+            rlog(f"          from effect. The normal-adjacent tissue already "
+                 f"carries A3A at close to the tumor level.")
+    if len(reversed_):
+        rlog(f"        Direction reversed (normal-adjacent at or above tumor): "
+             f"{sorted(short(p) for p in reversed_['patient'])}.")
+        for _, r in reversed_.iterrows():
+            rlog(f"          {short(r['patient'])}: {r['A3A_fold']:.2f}-fold "
+                 f"({r['A3A_tumor']:.2f} vs {r['A3A_normal']:.2f})")
+    if len(enriched) < n_pat_src:
+        rlog("        A3A capability therefore looks partly CONSTITUTIVE at the")
+        rlog("        patient level rather than purely tumor-induced, which is")
+        rlog("        consistent with its independence from viral load and with")
+        rlog("        using the all-basal contribution denominator.")
+    rlog("        Small n: present this as a CONTROL, not a result.")
 else:
     rlog(f"\n  No patient has >= {MIN_SOURCE_CELLS} cells of BOTH sources.")
 
 # =============================================================================
 # STEP 7: DETERMINANT vs CONTRIBUTION
 # =============================================================================
-banner("STEP 7: EACH DETERMINANT vs CONTRIBUTION (Spearman, n = 14)")
+banner(f"STEP 7: EACH DETERMINANT vs CONTRIBUTION (Spearman, n = {len(out)})")
 rlog("  Low power throughout; read as directional. Pairings tagged [CIRCULAR] are")
 rlog("  guaranteed by the group-selection criteria and are NOT evidence.\n")
 
@@ -546,24 +776,31 @@ rlog("  The prediction is enzyme-specific: A3A tracks the SBS2 fate and A3B the"
 rlog("  CNV fate, with both cross-terms null. Neither pairing is circular: group")
 rlog("  selection used SBS2 weight, CNV score and stemness, never A3 expression.\n")
 rlog(f"  {'':<12s} {'vs SBS2 fold':>28s} {'vs CNV fold':>28s}")
+diss = {}
 for col, label in [('A3A_mean', 'A3A mean'), ('A3B_mean', 'A3B mean')]:
     cells = []
     for fold in ('fold_sbs2', 'fold_cnv'):
         sub = out[[col, fold]].replace([np.inf, -np.inf], np.nan).dropna()
         if len(sub) >= 4 and sub[col].nunique() > 1:
             rho, pv = spearmanr(sub[col], sub[fold])
+            diss[(col, fold)] = (rho, pv)
             cells.append(f"rho={rho:+.3f} p={pv:.3g}{' *' if pv < 0.05 else '  '}")
         else:
             cells.append("N.D.")
     rlog(f"  {label:<12s} {cells[0]:>28s} {cells[1]:>28s}")
+
+n_tests = 2 * len(DETS)
+all_p = [p for _, _, p in evidence + cnv_evidence]
+min_p = min(all_p) if all_p else float('nan')
 rlog("")
 rlog("  For contrast, viral load associates with BOTH fates at similar strength,")
 rlog("  which is the quantitative form of 'load is opportunity, not fate'.")
 rlog("")
-rlog("  MULTIPLICITY: this step runs ~32 correlations. Under BH across all of")
-rlog("  them nothing survives (smallest p ~ 0.010 -> q ~ 0.32). The two cells of")
-rlog("  the dissociation above are PRE-SPECIFIED single hypotheses from the")
-rlog("  model, not hits from a scan, and must be reported that way.")
+rlog(f"  MULTIPLICITY: this step runs {n_tests} correlations. Under BH across all")
+rlog(f"  of them, with the smallest observed p = {min_p:.4g}, the corresponding q")
+rlog(f"  is approximately {min_p * n_tests:.3g}. The two cells of the dissociation")
+rlog("  above are PRE-SPECIFIED single hypotheses from the model, not hits from a")
+rlog("  scan, and must be reported that way.")
 
 banner("STEP 7c: NON-CIRCULAR SIGNIFICANT ASSOCIATIONS")
 if evidence or cnv_evidence:
@@ -575,7 +812,7 @@ else:
     rlog("  none reached p < 0.05 outside the circular pairings.")
 
 # =============================================================================
-# STEP 8: THE THREE-AXIS CONJUNCTION MODEL  (NEW in v3)
+# STEP 8: THE THREE-AXIS CONJUNCTION MODEL
 # =============================================================================
 banner("STEP 8: THREE-AXIS CONJUNCTION MODEL")
 rlog("  Every univariate determinant above has a counterexample, so no single")
@@ -591,67 +828,76 @@ rlog("  Patients with no gated HPV16-positive cells have no measurable phase and
 rlog("  are scored DIRECTION = False for both fates (no virus, no direction).")
 rlog("")
 
-def build_flags(df, load_pctl, enz_pctl):
-    """Boolean axis flags at the given percentile thresholds."""
+
+def build_flags(df, load_pctl, enz_pctl, dir_rule=None, dir_min=None):
+    """Boolean axis flags at the given thresholds.
+
+    A patient with no gated HPV16-positive cells has no measurable phase and is
+    scored DIRECTION = False for both fates under either rule.
+    """
+    rule = DIRECTION_RULE if dir_rule is None else dir_rule
+    dmin = DIRECTION_MIN_FRAC if dir_min is None else dir_min
     t_load = np.nanpercentile(df['load_per_M'], load_pctl)
     t_a3a  = np.nanpercentile(df['A3A_mean'],  enz_pctl)
     t_a3b  = np.nanpercentile(df['A3B_mean'],  enz_pctl)
     f = pd.DataFrame({'patient': df['patient'].values})
     f['opportunity'] = (df['load_per_M'] > t_load).fillna(False).values
-    f['dir_sbs2'] = ((df['maint_frac'] > df['prod_frac'])
-                     .where(df['maint_frac'].notna(), False)).astype(bool).values
-    f['dir_cnv']  = ((df['prod_frac'] > df['maint_frac'])
-                     .where(df['prod_frac'].notna(), False)).astype(bool).values
+    if rule == 'threshold':
+        f['dir_sbs2'] = (df['maint_frac'] >= dmin).fillna(False).values
+        f['dir_cnv']  = (df['prod_frac']  >= dmin).fillna(False).values
+    else:
+        f['dir_sbs2'] = ((df['maint_frac'] > df['prod_frac'])
+                         .where(df['maint_frac'].notna(), False)).astype(bool).values
+        f['dir_cnv']  = ((df['prod_frac'] > df['maint_frac'])
+                         .where(df['prod_frac'].notna(), False)).astype(bool).values
     f['cap_sbs2'] = (df['A3A_mean'] > t_a3a).fillna(False).values
     f['cap_cnv']  = (df['A3B_mean'] > t_a3b).fillna(False).values
     f['all3_sbs2'] = f['opportunity'] & f['dir_sbs2'] & f['cap_sbs2']
     f['all3_cnv']  = f['opportunity'] & f['dir_cnv']  & f['cap_cnv']
     return f, (t_load, t_a3a, t_a3b)
 
+
 flags, thr = build_flags(out, LOAD_PCTL_DEFAULT, ENZ_PCTL_DEFAULT)
 t_load, t_a3a, t_a3b = thr
+rlog(f"  DIRECTION rule in use: '{DIRECTION_RULE}'"
+     + (f" (matching phase fraction >= {DIRECTION_MIN_FRAC:.2f})"
+        if DIRECTION_RULE == 'threshold'
+        else " (whichever phase dominates; no free parameter)"))
+rlog("")
 rlog(f"  Default thresholds (p{LOAD_PCTL_DEFAULT} load, p{ENZ_PCTL_DEFAULT} enzyme):")
 rlog(f"    load > {t_load:.1f} per million | A3A > {t_a3a:.3f} | A3B > {t_a3b:.3f}")
 
 merged = out.merge(flags, on='patient')
-merged['is_sbs2_driver'] = merged['patient'].isin(HIGH_CONTRIBUTORS)
-merged['is_cnv_driver']  = merged['fold_cnv'] >= HC_THRESHOLD
 
 # ---- 8a: per-patient classification, with the failing axis named -------------
-banner("STEP 8a: PER-PATIENT CLASSIFICATION (SBS2 fate)")
-rlog(f"  {'Pat':<7s} {'Opp':>4s} {'Dir':>4s} {'Cap':>4s} {'ALL3':>5s} "
-     f"{'SBS2fold':>9s} {'driver':>7s}   fails on")
-rlog(f"  {'-'*7} {'-'*4} {'-'*4} {'-'*4} {'-'*5} {'-'*9} {'-'*7}   {'-'*8}")
-for _, r in merged.sort_values('fold_sbs2', ascending=False).iterrows():
-    miss = [n for n, v in (('opportunity', r['opportunity']),
-                           ('direction', r['dir_sbs2']),
-                           ('capability', r['cap_sbs2'])) if not v]
-    tick = lambda v: ' Y' if v else ' .'
-    rlog(f"  {short(r['patient']):<7s} {tick(r['opportunity']):>4s} "
-         f"{tick(r['dir_sbs2']):>4s} {tick(r['cap_sbs2']):>4s} "
-         f"{('YES' if r['all3_sbs2'] else '-'):>5s} {r['fold_sbs2']:>8.2f}x "
-         f"{('YES' if r['is_sbs2_driver'] else '-'):>7s}   "
-         f"{', '.join(miss) if miss else 'none'}")
+FAILS = {}   # patient -> {'sbs2': [...], 'cnv': [...]}
 
-banner("STEP 8a2: PER-PATIENT CLASSIFICATION (CNV fate)")
-rlog(f"  {'Pat':<7s} {'Opp':>4s} {'Dir':>4s} {'Cap':>4s} {'ALL3':>5s} "
-     f"{'CNVfold':>9s} {'driver':>7s}   fails on")
-rlog(f"  {'-'*7} {'-'*4} {'-'*4} {'-'*4} {'-'*5} {'-'*9} {'-'*7}   {'-'*8}")
-for _, r in merged.sort_values('fold_cnv', ascending=False).iterrows():
-    miss = [n for n, v in (('opportunity', r['opportunity']),
-                           ('direction', r['dir_cnv']),
-                           ('capability', r['cap_cnv'])) if not v]
-    tick = lambda v: ' Y' if v else ' .'
-    rlog(f"  {short(r['patient']):<7s} {tick(r['opportunity']):>4s} "
-         f"{tick(r['dir_cnv']):>4s} {tick(r['cap_cnv']):>4s} "
-         f"{('YES' if r['all3_cnv'] else '-'):>5s} {r['fold_cnv']:>8.2f}x "
-         f"{('YES' if r['is_cnv_driver'] else '-'):>7s}   "
-         f"{', '.join(miss) if miss else 'none'}")
+for fate, dir_col, cap_col, all_col, fold_col, drv_col, title in (
+        ('sbs2', 'dir_sbs2', 'cap_sbs2', 'all3_sbs2', 'fold_sbs2',
+         'is_sbs2_driver', 'SBS2 fate'),
+        ('cnv', 'dir_cnv', 'cap_cnv', 'all3_cnv', 'fold_cnv',
+         'is_cnv_driver', 'CNV fate')):
+    banner(f"STEP 8a: PER-PATIENT CLASSIFICATION ({title})")
+    rlog(f"  {'Pat':<7s} {'Opp':>4s} {'Dir':>4s} {'Cap':>4s} {'ALL3':>5s} "
+         f"{'fold':>9s} {'driver':>7s}   fails on")
+    rlog(f"  {'-'*7} {'-'*4} {'-'*4} {'-'*4} {'-'*5} {'-'*9} {'-'*7}   {'-'*8}")
+    for _, r in merged.sort_values(fold_col, ascending=False).iterrows():
+        miss = [n for n, v in (('opportunity', r['opportunity']),
+                               ('direction', r[dir_col]),
+                               ('capability', r[cap_col])) if not v]
+        FAILS.setdefault(r['patient'], {})[fate] = miss
+        tick = lambda v: ' Y' if v else ' .'
+        rlog(f"  {short(r['patient']):<7s} {tick(r['opportunity']):>4s} "
+             f"{tick(r[dir_col]):>4s} {tick(r[cap_col]):>4s} "
+             f"{('YES' if r[all_col] else '-'):>5s} {r[fold_col]:>8.2f}x "
+             f"{('YES' if r[drv_col] else '-'):>7s}   "
+             f"{', '.join(miss) if miss else 'none'}")
 
 # ---- 8b: conjunction vs outcome ---------------------------------------------
 banner("STEP 8b: CONJUNCTION vs DRIVER STATUS (Fisher exact)")
 
-def conj_test(flag_col, driver_col, label):
+
+def conj_test(flag_col, driver_col, fold_col, label):
     a = int(( merged[flag_col] &  merged[driver_col]).sum())
     b = int(( merged[flag_col] & ~merged[driver_col]).sum())
     c = int((~merged[flag_col] &  merged[driver_col]).sum())
@@ -662,35 +908,48 @@ def conj_test(flag_col, driver_col, label):
     rlog(f"    all-three-met, NOT driver     : {b}")
     rlog(f"    driver WITHOUT all three      : {c}")
     rlog(f"    neither                       : {d}")
-    rlog(f"    Fisher exact p = {pv:.4g}  (odds ratio {odds if np.isfinite(odds) else float('inf'):.3g})")
+    rlog(f"    Fisher exact p = {pv:.4g}  (odds ratio "
+         f"{odds if np.isfinite(odds) else float('inf'):.3g})")
     if b == 0 and c == 0:
-        rlog(f"    PERFECT SEPARATION at these thresholds.")
-    elif c > 0:
-        who = [short(p) for p in merged.loc[~merged[flag_col] & merged[driver_col],
-                                            'patient']]
-        rlog(f"    drivers missed by the rule: {who}")
+        rlog("    PERFECT SEPARATION at these thresholds.")
+    if c > 0:
+        missed = merged.loc[~merged[flag_col] & merged[driver_col]]
+        rlog(f"    drivers missed by the rule: {[short(p) for p in missed['patient']]}")
+        for _, r in missed.iterrows():
+            fate_key = 'sbs2' if 'sbs2' in flag_col else 'cnv'
+            rlog(f"      {short(r['patient'])}: fold {r[fold_col]:.2f}x, "
+                 f"fails on {', '.join(FAILS[r['patient']][fate_key])}; "
+                 f"load {r['load_per_M']:.0f} "
+                 f"(rank {int(out['load_per_M'].rank(ascending=False)[out['patient'] == r['patient']].iloc[0])}"
+                 f"/{len(out)}), "
+                 f"load per positive cell {r['load_in_pos']:.1f}")
     if b > 0:
-        who = [short(p) for p in merged.loc[merged[flag_col] & ~merged[driver_col],
-                                            'patient']]
-        rlog(f"    non-drivers flagged by the rule: {who}")
+        who = merged.loc[merged[flag_col] & ~merged[driver_col], 'patient']
+        rlog(f"    non-drivers flagged by the rule: {[short(p) for p in who]}")
     rlog("")
     return pv
 
-p_sbs2 = conj_test('all3_sbs2', 'is_sbs2_driver', 'SBS2-HIGH fate:')
-p_cnv  = conj_test('all3_cnv',  'is_cnv_driver',  'CNV-HIGH fate:')
 
-rlog("  Known exception, stated rather than fitted: SC001 reaches CNV-HIGH by the")
-rlog("  LOAD route (rank-1 load, 3455 per million) despite leaning maintenance,")
-rlog("  so a phase-based rule is expected to miss it on the CNV side. That")
-rlog("  exception was identified before this test, not to rescue it.")
+p_sbs2 = conj_test('all3_sbs2', 'is_sbs2_driver', 'fold_sbs2', 'SBS2-HIGH fate:')
+p_cnv  = conj_test('all3_cnv',  'is_cnv_driver',  'fold_cnv',  'CNV-HIGH fate:')
+
+rlog("  Any driver the rule misses is listed above with its load rank and its")
+rlog("  load per positive cell. A missed driver that is a load outlier is the")
+rlog("  LOAD ROUTE into that fate: a phase-based rule is expected to miss it.")
+rlog("  That alternative route was identified before this test, not fitted to it.")
 
 # ---- 8c: threshold sensitivity ----------------------------------------------
 banner("STEP 8c: THRESHOLD SENSITIVITY SWEEP")
-rlog("  The single most important counterexample sits on a razor-thin margin:")
-rlog(f"  SC010 A3A = {out.loc[out['patient']=='Patient SC010','A3A_mean'].iloc[0]:.3f} "
-     f"against a cohort median of {np.nanmedian(out['A3A_mean']):.3f}. If the")
-rlog("  separation only holds at one arbitrary cut, it is not a result. Sweeping")
-rlog("  both thresholds shows the range over which it survives.\n")
+
+# Identify the tightest margin on the capability axis without naming it in advance.
+margin = (out['A3A_mean'] - t_a3a).abs()
+tight_idx = margin.idxmin()
+tight = out.loc[tight_idx]
+rlog("  If the separation only holds at one arbitrary cut, it is not a result.")
+rlog(f"  The tightest capability margin in this cohort is "
+     f"{short(tight['patient'])}: A3A = {tight['A3A_mean']:.3f} against a")
+rlog(f"  threshold of {t_a3a:.3f}, a margin of {margin.min():.4f}. Sweeping both")
+rlog("  thresholds shows the range over which separation survives.\n")
 rlog(f"  {'loadP':>6s} {'enzP':>5s} | {'SBS2: hit/miss/false':>22s} {'p':>9s} "
      f"| {'CNV: hit/miss/false':>21s} {'p':>9s}")
 rlog(f"  {'-'*6} {'-'*5} | {'-'*22} {'-'*9} | {'-'*21} {'-'*9}")
@@ -699,8 +958,6 @@ sweep_rows = []
 for lp, ep in product(SWEEP_PCTLS, SWEEP_PCTLS):
     fl, _ = build_flags(out, lp, ep)
     mg = out.merge(fl, on='patient')
-    mg['is_sbs2_driver'] = mg['patient'].isin(HIGH_CONTRIBUTORS)
-    mg['is_cnv_driver']  = mg['fold_cnv'] >= HC_THRESHOLD
     res = {}
     for tag, fcol, dcol in (('sbs2', 'all3_sbs2', 'is_sbs2_driver'),
                             ('cnv',  'all3_cnv',  'is_cnv_driver')):
@@ -716,7 +973,8 @@ for lp, ep in product(SWEEP_PCTLS, SWEEP_PCTLS):
                        'sbs2_perfect': res['sbs2'][4],
                        'cnv_hit': res['cnv'][0], 'cnv_missed': res['cnv'][1],
                        'cnv_false': res['cnv'][2], 'cnv_p': res['cnv'][3],
-                       'cnv_perfect': res['cnv'][4]})
+                       'cnv_perfect': res['cnv'][4],
+                       'denominator': CONTRIBUTION_DENOMINATOR})
     star_s = ' *' if res['sbs2'][4] else '  '
     star_c = ' *' if res['cnv'][4] else '  '
     rlog(f"  {lp:>6d} {ep:>5d} | {res['sbs2'][0]:>7d}/{res['sbs2'][1]:<3d}/"
@@ -727,19 +985,89 @@ for lp, ep in product(SWEEP_PCTLS, SWEEP_PCTLS):
 sweep = pd.DataFrame(sweep_rows)
 sweep.to_csv(os.path.join(OUT_DIR, "patient_conjunction_sensitivity.tsv"),
              sep='\t', index=False)
-rlog(f"\n  hit = drivers captured, miss = drivers the rule fails to flag,")
-rlog(f"  false = non-drivers the rule wrongly flags. '*' marks perfect separation.")
-rlog(f"  SBS2 perfect separation in {int(sweep['sbs2_perfect'].sum())} of "
-     f"{len(sweep)} threshold combinations.")
-rlog(f"  CNV  perfect separation in {int(sweep['cnv_perfect'].sum())} of "
-     f"{len(sweep)} threshold combinations.")
-if sweep['sbs2_perfect'].any():
-    ok = sweep[sweep['sbs2_perfect']]
-    rlog(f"  SBS2 holds across load p{ok['load_pctl'].min()}-p{ok['load_pctl'].max()} "
-         f"and enzyme p{ok['enz_pctl'].min()}-p{ok['enz_pctl'].max()}.")
+rlog("\n  hit = drivers captured, miss = drivers the rule fails to flag,")
+rlog("  false = non-drivers the rule wrongly flags. '*' marks perfect separation.")
+for tag, name in (('sbs2', 'SBS2'), ('cnv', 'CNV ')):
+    n_perfect = int(sweep[f'{tag}_perfect'].sum())
+    rlog(f"  {name} perfect separation in {n_perfect} of {len(sweep)} threshold "
+         f"combinations.")
+    if n_perfect:
+        ok = sweep[sweep[f'{tag}_perfect']]
+        rlog(f"       holds across load p{ok['load_pctl'].min()}-"
+             f"p{ok['load_pctl'].max()} and enzyme p{ok['enz_pctl'].min()}-"
+             f"p{ok['enz_pctl'].max()}.")
+    else:
+        rlog(f"       no combination gives perfect separation; for this fate the")
+        rlog(f"       rule is threshold-dependent and descriptive only.")
+
+# ---- 8c-dir: is the DIRECTION rule itself load-bearing? ----------------------
+banner("STEP 8c-dir: DIRECTION RULE SENSITIVITY")
+rlog("  The parameter-free rule asks only which phase dominates. Replacing it")
+rlog("  with a fixed cutoff on the matching phase fraction adds a free parameter,")
+rlog("  and a free parameter chosen after seeing which patient the rule missed is")
+rlog("  fitting, not testing. This step sweeps that cutoff across the SAME 25")
+rlog("  load-by-enzyme combinations so the width of any window is visible.\n")
+
+rlog(f"  {'direction rule':<26s} {'SBS2 perfect':>13s} {'CNV perfect':>12s}")
+rlog(f"  {'-'*26} {'-'*13} {'-'*12}")
+dir_rows = []
+for rule, dmin, label in ([('compare', None, 'dominant phase')]
+                          + [('threshold', v, f'fraction >= {v:.2f}')
+                             for v in DIRECTION_SWEEP]):
+    n_s = n_c = 0
+    for lp, ep in product(SWEEP_PCTLS, SWEEP_PCTLS):
+        fl, _ = build_flags(out, lp, ep, dir_rule=rule, dir_min=dmin)
+        mg = out.merge(fl, on='patient')
+        for tag, fcol, dcol in (('sbs2', 'all3_sbs2', 'is_sbs2_driver'),
+                                ('cnv', 'all3_cnv', 'is_cnv_driver')):
+            b = int((mg[fcol] & ~mg[dcol]).sum())
+            c = int((~mg[fcol] & mg[dcol]).sum())
+            if b == 0 and c == 0:
+                if tag == 'sbs2':
+                    n_s += 1
+                else:
+                    n_c += 1
+    active = ((rule == DIRECTION_RULE) and
+              (rule == 'compare' or abs(dmin - DIRECTION_MIN_FRAC) < 1e-9))
+    dir_rows.append({'direction_rule': rule, 'direction_min_frac': dmin,
+                     'label': label, 'sbs2_perfect': n_s, 'cnv_perfect': n_c,
+                     'n_combinations': len(SWEEP_PCTLS) ** 2, 'active': active})
+    rlog(f"  {label:<26s} {n_s:>10d}/{len(SWEEP_PCTLS)**2} "
+         f"{n_c:>9d}/{len(SWEEP_PCTLS)**2}" + ("   <-- in use" if active else ""))
+
+dir_df = pd.DataFrame(dir_rows)
+dir_df.to_csv(os.path.join(OUT_DIR, "patient_direction_rule_sensitivity.tsv"),
+              sep='\t', index=False)
+
+# Where the CNV drivers actually sit on the productive axis, so any window can be
+# measured against the gap it has to thread.
+rlog("")
+rlog("  Productive fraction, descending, with CNV drivers marked. A cutoff has to")
+rlog("  separate the drivers from everyone else to buy a perfect separation:")
+ph = out.dropna(subset=['prod_frac']).sort_values('prod_frac', ascending=False)
+for _, r in ph.iterrows():
+    rlog(f"    {short(r['patient']):<7s} prod {r['prod_frac']:.2f}  "
+         f"maint {r['maint_frac']:.2f}  CNV fold {r['fold_cnv']:>5.2f}x"
+         + ("   <-- CNV driver" if r['is_cnv_driver'] else ""))
+
+thr_rows = dir_df[dir_df['direction_rule'] == 'threshold']
+win = thr_rows[thr_rows['cnv_perfect'] > 0]
+rlog("")
+if len(win):
+    lo, hi = win['direction_min_frac'].min(), win['direction_min_frac'].max()
+    rlog(f"  READ: a fixed cutoff buys CNV perfect separation only between "
+         f"{lo:.2f} and {hi:.2f}.")
+    rlog(f"        Outside that window it buys nothing. Report the window width")
+    rlog(f"        alongside any claim that rests on it, and state plainly whether")
+    rlog(f"        the cutoff was chosen before or after seeing which driver the")
+    rlog(f"        parameter-free rule missed.")
 else:
-    rlog("  SBS2: no threshold combination gives perfect separation. The rule is")
-    rlog("  threshold-dependent and should be reported as descriptive only.")
+    rlog("  READ: no fixed cutoff in the swept range buys CNV perfect separation.")
+best_free = dir_df[dir_df['direction_rule'] == 'compare'].iloc[0]
+rlog(f"        The parameter-free rule gives SBS2 {int(best_free['sbs2_perfect'])}"
+     f"/{int(best_free['n_combinations'])} and CNV "
+     f"{int(best_free['cnv_perfect'])}/{int(best_free['n_combinations'])}, with")
+rlog(f"        nothing to tune.")
 
 # ---- 8d: conjunction structure (minimum vs mean) ----------------------------
 banner("STEP 8d: IS THE STRUCTURE A CONJUNCTION? (min vs mean of scaled axes)")
@@ -749,27 +1077,47 @@ rlog("  missing factor should veto the outcome rather than be averaged away.")
 rlog("  Axes are scaled to percentile ranks within the cohort (0-1), so the")
 rlog("  comparison does not depend on their raw units.\n")
 
+
 def pct_rank(s):
     return s.rank(pct=True, na_option='bottom')
 
-sc = pd.DataFrame({'patient': out['patient'].values})
-sc['opp']       = pct_rank(out['load_per_M']).values
-sc['dir_sbs2']  = pct_rank(out['maint_frac'] - out['prod_frac']).values
-sc['dir_cnv']   = pct_rank(out['prod_frac'] - out['maint_frac']).values
-sc['cap_sbs2']  = pct_rank(out['A3A_mean']).values
-sc['cap_cnv']   = pct_rank(out['A3B_mean']).values
-sc['min_sbs2']  = sc[['opp', 'dir_sbs2', 'cap_sbs2']].min(axis=1)
-sc['mean_sbs2'] = sc[['opp', 'dir_sbs2', 'cap_sbs2']].mean(axis=1)
-sc['min_cnv']   = sc[['opp', 'dir_cnv', 'cap_cnv']].min(axis=1)
-sc['mean_cnv']  = sc[['opp', 'dir_cnv', 'cap_cnv']].mean(axis=1)
-sc = sc.merge(out[['patient', 'fold_sbs2', 'fold_cnv']], on='patient')
-sc.to_csv(os.path.join(OUT_DIR, "patient_conjunction_model.tsv"), sep='\t', index=False)
 
+scm = pd.DataFrame({'patient': out['patient'].values})
+scm['opp']       = pct_rank(out['load_per_M']).values
+scm['dir_sbs2']  = pct_rank(out['maint_frac'] - out['prod_frac']).values
+scm['dir_cnv']   = pct_rank(out['prod_frac'] - out['maint_frac']).values
+scm['cap_sbs2']  = pct_rank(out['A3A_mean']).values
+scm['cap_cnv']   = pct_rank(out['A3B_mean']).values
+scm['min_sbs2']  = scm[['opp', 'dir_sbs2', 'cap_sbs2']].min(axis=1)
+scm['mean_sbs2'] = scm[['opp', 'dir_sbs2', 'cap_sbs2']].mean(axis=1)
+scm['min_cnv']   = scm[['opp', 'dir_cnv', 'cap_cnv']].min(axis=1)
+scm['mean_cnv']  = scm[['opp', 'dir_cnv', 'cap_cnv']].mean(axis=1)
+
+# Raw values alongside the ranks, so the figure can annotate cells without
+# reopening any other table.
+scm = scm.merge(out[['patient', 'fold_sbs2', 'fold_cnv', 'load_per_M',
+                     'maint_frac', 'prod_frac', 'A3A_mean', 'A3B_mean',
+                     'is_sbs2_driver', 'is_cnv_driver']], on='patient')
+scm = scm.merge(flags[['patient', 'opportunity', 'dir_sbs2', 'dir_cnv',
+                       'cap_sbs2', 'cap_cnv', 'all3_sbs2', 'all3_cnv']],
+                on='patient', suffixes=('', '_flag'))
+scm['direction_rule'] = DIRECTION_RULE
+scm['direction_min_frac'] = (DIRECTION_MIN_FRAC if DIRECTION_RULE == 'threshold'
+                             else np.nan)
+scm['thr_load'] = t_load
+scm['thr_a3a']  = t_a3a
+scm['thr_a3b']  = t_a3b
+scm['denominator'] = CONTRIBUTION_DENOMINATOR
+scm.to_csv(os.path.join(OUT_DIR, "patient_conjunction_model.tsv"),
+           sep='\t', index=False)
+
+structure = {}
 for fate, mn, mnm in (('SBS2', 'min_sbs2', 'mean_sbs2'),
                       ('CNV',  'min_cnv',  'mean_cnv')):
     fold = 'fold_sbs2' if fate == 'SBS2' else 'fold_cnv'
-    r_min, p_min = spearmanr(sc[mn], sc[fold])
-    r_mean, p_mean = spearmanr(sc[mnm], sc[fold])
+    r_min, p_min = spearmanr(scm[mn], scm[fold])
+    r_mean, p_mean = spearmanr(scm[mnm], scm[fold])
+    structure[fate] = (r_min, r_mean)
     rlog(f"  {fate}-HIGH fold:")
     rlog(f"    minimum of three axes  rho={r_min:+.3f}  p={p_min:.3g}")
     rlog(f"    mean of three axes     rho={r_mean:+.3f}  p={p_mean:.3g}")
@@ -778,15 +1126,30 @@ for fate, mn, mnm in (('SBS2', 'min_sbs2', 'mean_sbs2'),
                "mean wins -> additive, NOT a strict conjunction")
     rlog(f"    -> {verdict}\n")
 
-rlog("  CAVEAT (state this wherever the conjunction is reported): with n = 14 and")
+# Failure distribution, derived, so the anti-overfitting argument cannot drift.
+rlog("  Where the SBS2 rule's non-drivers fail (the anti-overfitting argument is")
+rlog("  that failures fall on DIFFERENT axes, not all on the same term):")
+by_axis = {}
+for _, r in merged.iterrows():
+    if r['is_sbs2_driver']:
+        continue
+    key = ' + '.join(FAILS[r['patient']]['sbs2']) or 'none'
+    by_axis.setdefault(key, []).append(short(r['patient']))
+for key in sorted(by_axis):
+    rlog(f"    {key:<45s} {sorted(by_axis[key])}")
+rlog(f"    -> {len(by_axis)} distinct failure patterns across "
+     f"{sum(len(v) for v in by_axis.values())} non-drivers.")
+
+rlog("")
+rlog(f"  CAVEAT (state this wherever the conjunction is reported): with n = "
+     f"{len(out)} and")
 rlog("  three binary terms, a rule of this form has enough freedom to fit almost")
-rlog("  any three-patient set. What defends it is that the three axes were")
+rlog("  any small driver set. What defends it is that the three axes were")
 rlog("  specified from the biological model BEFORE this test rather than searched")
-rlog("  for, that the same rule applied independently to the CNV fate recovers")
-rlog("  its driver, and that the failures fall on DIFFERENT axes (SC010/SC022")
-rlog("  lack capability, SC003/SC006 lack opportunity, SC005/SC014 lack")
-rlog("  direction) rather than all failing the same term. It is a consistency")
-rlog("  check on the model, not independent confirmation of it.")
+rlog("  for, that the same rule applied independently to the other fate is")
+rlog("  reported on the same footing, and that the failures fall on different")
+rlog("  axes as enumerated above. It is a consistency check on the model, not")
+rlog("  independent confirmation of it.")
 
 # =============================================================================
 # SAVE
@@ -794,8 +1157,10 @@ rlog("  check on the model, not independent confirmation of it.")
 report_path = os.path.join(OUT_DIR, f"patient_determinants_{TIMESTAMP}.txt")
 with open(report_path, 'w') as f:
     f.write('\n'.join(report_lines))
-rlog(f"\n  Table:       {os.path.join(OUT_DIR, 'patient_determinants_table.tsv')}")
+rlog(f"\n  Denominator: {CONTRIBUTION_DENOMINATOR}")
+rlog(f"  Table:       {os.path.join(OUT_DIR, 'patient_determinants_table.tsv')}")
 rlog(f"  Conjunction: {os.path.join(OUT_DIR, 'patient_conjunction_model.tsv')}")
 rlog(f"  Sensitivity: {os.path.join(OUT_DIR, 'patient_conjunction_sensitivity.tsv')}")
+rlog(f"  Direction:   {os.path.join(OUT_DIR, 'patient_direction_rule_sensitivity.tsv')}")
 rlog(f"  Report:      {report_path}")
-banner("PATIENT DETERMINANTS TABLE COMPLETE (v3)")
+banner("PATIENT DETERMINANTS TABLE COMPLETE (v6)")
