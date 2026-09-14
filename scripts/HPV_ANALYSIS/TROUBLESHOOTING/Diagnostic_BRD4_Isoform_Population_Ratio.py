@@ -210,6 +210,79 @@ def bh_adjust(pvals):
 banner("STEP 0: Load groups + build SRR/CB/population map")
 groups_df = pd.read_csv(THREE_GROUP_PATH, sep='\t')
 log(f"  three_group_assignments: {len(groups_df)} cells")
+log(f"  columns: {list(groups_df.columns)}")
+
+# --- resolve a patient / donor label per cell ------------------------------
+# The CMH in the Figure 6 harness must stratify by PATIENT, not by SRR: samples
+# nest within patients, and only one patient (SC001) contributes to both tumour
+# populations, so an SRR-stratified test can silently collapse onto one donor.
+MASTER_TABLE_PATH = ("/master/jlehle/WORKING/2026_NMF_PAPER/data/FIG_6/"
+                     "01_raw_hpv16_counts/basal_cell_master_table_with_raw_HPV16.tsv")
+# The master table calls it 'subject id', with a space. Ordered so a true
+# subject-level column always wins over anything sample-level.
+PATIENT_CANDIDATES = ['subject id', 'subject_id', 'subject',
+                      'patient', 'patient_id', 'donor', 'donor_id']
+RUN_CANDIDATES = ['run_accession', 'srr', 'run']
+
+def _find_col(cols, cands):
+    low = {str(c).strip().lower(): c for c in cols}
+    for c in cands:
+        if c in low:
+            return low[c]
+    return None
+
+cell_to_patient = {}
+pcol = _find_col(groups_df.columns, PATIENT_CANDIDATES)
+if pcol:
+    cell_to_patient = dict(zip(groups_df['cell_barcode'], groups_df[pcol].astype(str)))
+    log(f"  patient column found in group table: '{pcol}'")
+else:
+    log("  no patient column in the group table; trying the master table ...")
+    try:
+        _m = pd.read_csv(MASTER_TABLE_PATH, sep='\t', index_col=0, nrows=5)
+        mcol = _find_col(_m.columns, PATIENT_CANDIDATES)
+        rcol = _find_col(_m.columns, RUN_CANDIDATES)
+        if mcol:
+            # Read by NAME, not by position. usecols=[0, idx+1] assumes the
+            # index sits at column 0 and nothing has shifted; a column name
+            # containing a space makes that assumption harder to verify.
+            # The table is 52k rows, so reading it whole costs nothing.
+            _mfull = pd.read_csv(MASTER_TABLE_PATH, sep='\t', index_col=0)
+            cell_to_patient = {str(k): str(v)
+                               for k, v in _mfull[mcol].to_dict().items()}
+            log(f"  patient column found in the master table: '{mcol}' "
+                f"({len(set(cell_to_patient.values()))} distinct subjects)")
+
+            # Cross-check: the SRR parsed out of the barcode should equal the
+            # run_accession recorded for that cell. This is the one assumption
+            # the whole barcode join rests on, and it has never been tested.
+            if rcol:
+                _run = {str(k): str(v) for k, v in _mfull[rcol].to_dict().items()}
+                checked = mismatched = 0
+                for _srr, _cells in srr_cell_pop.items():
+                    for _raw_cb in _cells:
+                        _bc = f"{_raw_cb}-{_srr}"
+                        if _bc in _run:
+                            checked += 1
+                            if _run[_bc] != _srr:
+                                mismatched += 1
+                if checked == 0:
+                    log("  WARNING: no barcode matched the master table index; "
+                        "the barcode join may be wrong. Do not trust the "
+                        "patient labels below.")
+                elif mismatched:
+                    log(f"  ERROR: {mismatched}/{checked} barcodes disagree with "
+                        f"'{rcol}'. The SEQ-1-SRR parse is not reliable.")
+                else:
+                    log(f"  barcode-derived SRR matches '{rcol}' for all "
+                        f"{checked} checked cells")
+        else:        
+            log(f"  master table columns: {list(_m.columns)}")
+            log("  NO PATIENT COLUMN ANYWHERE. The CMH will fall back to SRR")
+            log("  stratification, which is NOT equivalent. Resolve this before")
+            log("  any isoform number goes into the manuscript.")
+    except Exception as e:
+        log(f"  master table lookup failed ({e}); falling back to SRR")
 
 srr_cell_pop = defaultdict(dict)   # SRR -> {raw_CB: population}
 n_per_pop = defaultdict(int)
@@ -264,9 +337,10 @@ for srr in sorted(srr_cell_pop):
     bam = pysam.AlignmentFile(bam_path, "rb")
     if not bam.has_index():               # fetch() requires a .bai/.csi
         no_index.append(srr)
-        log(f"  NO INDEX: {srr}  (.bai missing; {len(cellmap)} group cells skipped)")
         bam.close()
-        continue
+        sys.exit(f"ERROR: no .bai for {srr}. These counts feed a manuscript "
+                 f"number, so a silently skipped sample is not acceptable. "
+                 f"Index it with the conda samtools and re-run.")    
     # resolve contig for this BAM
     refs = set(bam.references)
     contig = next((c for c in (seqname, f"chr{seqname}", seqname.replace("chr", ""))
@@ -305,9 +379,22 @@ for srr in sorted(srr_cell_pop):
     for p in POP_ORDER:
         t = srr_tally[p]
         if t['L'] + t['Sa'] + t['Sb'] > 0:
-            srr_rows.append({'SRR': srr, 'population': p,
+            # patient label for this SRR. Take the modal patient across its
+            # group cells; warn loudly if one SRR maps to more than one.
+            pats = set()
+            for raw_cb, gp in cellmap.items():
+                full_bc = f"{raw_cb}-{srr}"
+                if full_bc in cell_to_patient:
+                    pats.add(cell_to_patient[full_bc])
+                elif raw_cb in cell_to_patient:
+                    pats.add(cell_to_patient[raw_cb])
+            if len(pats) > 1:
+                log(f"  WARNING: {srr} maps to multiple patients {sorted(pats)}; "
+                    f"using the first. Check the barcode join.")
+            patient = sorted(pats)[0] if pats else 'UNKNOWN'
+            srr_rows.append({'SRR': srr, 'patient': patient, 'population': p,
                              'L': t['L'], 'Sa': t['Sa'], 'Sb': t['Sb'],
-                             'n_group_cells': sum(1 for v in cellmap.values() if v == p)})
+                             'n_group_cells': sum(1 for v in cellmap.values() if v == p)})            
     bam.close()
 log(f"  processed {n_srr_ok}/{len(srr_cell_pop)} sample BAMs")
 if no_index:

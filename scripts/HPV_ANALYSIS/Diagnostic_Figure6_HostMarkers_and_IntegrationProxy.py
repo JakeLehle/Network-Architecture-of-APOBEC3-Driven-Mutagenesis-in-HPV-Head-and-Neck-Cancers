@@ -1,32 +1,68 @@
 #!/usr/bin/env python3
 """
-Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py  (v4 -- 57-gene panel)
+Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py  (v5 -- 59-gene panel)
 ===================================================================================
-Figure 6 diagnostic + Section 4.4 text-number verification.
+Figure 6 diagnostic + Section 4.3 text-number verification.
 
-v4 changes (Panel C alignment; Sections 1/2 and Diagnostic A unchanged):
-  - MARKER_GENES replaced with the locked 57-gene / 7-tier Panel C structure,
-    mirroring DOTPLOT_CATEGORIES in Generate_Figure6_Lifecycle_Panels.py v6.2.
-    The BH family here now equals the panel drawn in Figure 6c, so every host
-    q-value quoted in Section 4.4 is corrected across exactly the genes shown.
-  - Gene aliases are resolved at load time by renaming adata.var_names. DDX58 is
-    stored as 'RIGI' in this transcriptome (2024-A / GENCODE v44); without this
-    it drops silently and the family becomes 56, shifting every q.
-  - APOBEC3A / APOBEC3B are REMOVED from the BH family. They are Panel B genes,
-    not Panel C genes, and their q-values come from the figure script's Panel B
-    family of 18. Their means are still computed here, outside the family, as
-    the cross-check that this script and the figure script agree.
-  - Genes evaluated and dropped from Panel C (CASP3, KRT1, CGAS, STING1, the
-    remaining A3 family, IFITM1, BST2, SMC5/6, NSMCE2) are computed outside the
-    family as an audit trail for Figure6_PanelC_Tier_Reference.md, without
-    contaminating the family.
-  - CLAIMS expanded from 39 to a full lock: all 57 panel q-values, including the
-    negative (ns) results. Auditing the ns genes is deliberate; the tier
-    reference doc previously recorded BARD1 as strong at q=1e-41, which was the
-    three-group Kruskal-Wallis p and not the SBS2-vs-CNV contrast (ns, q=0.076).
-    Nothing in the old harness could catch that because ns genes were unaudited.
+v5 changes
+----------
+  1. SECTION RENUMBER. Everything previously labelled "Section 4.4" is now
+     "Section 4.3". The host-marker / lifecycle material is Results 4.3 in the
+     current manuscript draft; the old label was audit-against-the-wrong-section
+     waiting to happen. Output file renamed section4_3_text_audit.tsv.
 
-v3 sections retained:
+  2. NEW TIER 8: BET_BRD4_axis = [BRD4, BRD3, BRD2].
+     Rationale (Wu et al. Mol Cell 2024, PMID 38103559): pBRD4 recruits the DDR
+     factors 53BP1 (TP53BP1) and BARD1 to the HPV origin of replication in a
+     BRD4-L / BRD4-S isoform-specific manner, and BRD3 -- but explicitly NOT
+     BRD2 -- is required for differentiation-associated HPV genome amplification
+     (their Fig 6F/6G). BRD2 is therefore carried as an internal negative
+     control, which is only legible if the three sit in their own tier.
+     BRD4 MOVED OUT of CellCycle_Prolif (10 -> 9 genes) into this tier, because
+     Wu et al. place BRD4 upstream of the DDR factors at the viral ori rather
+     than as a proliferation marker.
+     Panel C family: 57 -> 59. EXPECTED_PANELC_GENES updated accordingly.
+
+     >>> Results 4.3 prose consequences, all of which need re-checking:
+         - "57 host genes across seven functional tiers" -> 59 / eight
+         - "45 differed significantly" -> read the new count off the tier
+           summary printed by DIAGNOSTIC B
+         - "7 of the 10 genes in that tier" (cell-cycle re-entry) -> that tier
+           is now 9 genes; re-read the peak-direction summary
+         - EVERY q-value in the section shifts, because the BH family grew from
+           57 to 59 (roughly a 3.5% inflation). See item 4.
+
+  3. NEW SECTION 4: BRD4 ISOFORM RATIO.
+     Reads the per-SRR table written by Diagnostic_BRD4_Isoform_Population_Ratio.py
+     rather than touching BAMs, so this harness stays fast and single-purpose.
+     Computes, for BRD4-S (CCDS46004 / O60885-2) versus BRD4-L (CCDS12328 /
+     O60885-1):
+       - pooled S fraction per population
+       - the SBS2-vs-CNV risk ratio with a 95% CI (the number the manuscript
+         should quote; the p-value alone is not informative for a null)
+       - Fisher exact on the pooled 2x2
+       - Cochran-Mantel-Haenszel stratified by patient (or by SRR if no patient
+         column is available), because the pooled test treats ~800 molecules
+         from 36 samples across 14 patients as independent and SBS2-HIGH is
+         74% drawn from three patients. The pooled CI is therefore optimistically
+         narrow; CMH is the honest version.
+     S(b) (CCDS82307) is reported but EXCLUDED from the ratio: at 794 aa it is
+     UniProt O60885-3, a third isoform, not a short variant of BRD4-S.
+     Identity confirmed by Diagnostic_BRD4_CCDS_Isoform_Identity.py.
+
+  4. CLAIMS EMITTER. Growing the BH family invalidates all 57 previously locked
+     q-values at once, so the audit would report DIFF on everything and tell you
+     nothing. After the audit, this script now prints a copy-pasteable CLAIMS
+     block built from the freshly computed values.
+     WORKFLOW, run twice:
+       run 1: expect a wall of DIFF. Copy the emitted CLAIMS block.
+       paste:  replace the CLAIMS list below with the emitted block.
+       run 2:  expect ALL MATCH. Only now are the numbers locked, and only now
+               should the manuscript text be updated from them.
+     Do NOT hand-transcribe 59 q-values.
+
+v4 sections retained unchanged
+------------------------------
   SECTION 1: LIFECYCLE FRACTIONS. Mirrors Generate_Figure6_Lifecycle_Panels.py
     Panel F EXACTLY: gated HPV16-positive set (raw_HPV16 >= 8 AND total > 0),
     per-cell gene fractions = gene / total (no pseudocount), permutation test on
@@ -34,29 +70,32 @@ v3 sections retained:
     family and separately within the 4-phase family.
 
   SECTION 2: READ-CLASS / URR BREAKDOWN. Per group on the gated set, the
-    URR / ORF / intergenic read fractions BOTH ways: pooled (sum reads / sum
-    total, the estimator behind the prose "two-thirds of reads in the URR") and
-    per-cell mean (the estimator in the figure's internal URR log). These differ
-    for CNV-HIGH (~63.5% pooled vs ~67.1% per-cell mean); the prose cites pooled.
+    URR / ORF / intergenic read fractions BOTH ways: pooled and per-cell mean.
+    These differ for CNV-HIGH (~63.5% pooled vs ~67.1% per-cell mean); the
+    prose cites pooled.
 
-  SECTION 3: TEXT NUMBER AUDIT. Diffs the Section 4.4 prose (hardcoded below)
-    against freshly computed values and prints MATCH / DIFF / NO VALUE per claim.
-    q-values compared on a log10 tolerance to absorb 1-2 sig-fig rounding;
-    means/fractions on relative or absolute tolerance. Para-1 numbers and the
-    Panel B q-values are marked OUT-OF-SCOPE with their correct source.
+  SECTION 3: TEXT NUMBER AUDIT. Diffs the Section 4.3 prose (hardcoded below)
+    against freshly computed values and prints MATCH / DIFF / NO VALUE.
 
-  DIAGNOSTIC A: integration proxy on the gated >=8 set, split pseudocount,
-    floor of 10 (NORMAL -> N.D.), BH across the proxy family.
+  DIAGNOSTIC A: integration proxy on the gated >=8 set.
   VIRAL LOAD SUMMARY: raw_HPV16 (all cells) vs total reads (gated set).
   DIAGNOSTIC B: host-marker panel, ungated 546/546/546, BH per contrast.
 
-INPUTS (identical to the figure script):
+  Gene aliases are still resolved at load time. DDX58 is stored as 'RIGI' in
+  this transcriptome (2024-A / GENCODE v44); without this it drops silently and
+  the family shrinks, shifting every q. The same guard now protects BRD3/BRD2.
+
+  APOBEC3A / APOBEC3B remain OUTSIDE the Panel C BH family (they are Panel B
+  genes); their means are computed here only as a cross-check.
+
+INPUTS
   - data/FIG_4/01_group_selection/three_group_assignments.tsv
   - data/FIG_4/00_input/adata_final.h5ad
   - data/FIG_6/01_raw_hpv16_counts/basal_cell_master_table_with_raw_HPV16.tsv
   - data/FIG_6/03_hpv16_genome/per_cell_hpv16_gene_counts.tsv
+  - data/FIG_6/DIAGNOSTIC_BRD4_ISOFORM/brd4_population_ratio_by_srr.tsv   [v5]
 
-OUTPUTS (to data/FIG_6/DIAGNOSTIC_LIFECYCLE_MARKERS/):
+OUTPUTS (to data/FIG_6/DIAGNOSTIC_LIFECYCLE_MARKERS/)
   - diagnostic_figure6_report.txt
   - integration_proxy_metrics.tsv
   - viral_load_summary.tsv
@@ -65,7 +104,9 @@ OUTPUTS (to data/FIG_6/DIAGNOSTIC_LIFECYCLE_MARKERS/):
   - host_marker_outside_family.tsv
   - lifecycle_fractions_panelF_mirror.tsv
   - readclass_urr_breakdown.tsv
-  - section4_4_text_audit.tsv
+  - brd4_isoform_ratio_summary.tsv          [v5]
+  - section4_3_text_audit.tsv               [renamed in v5]
+  - emitted_claims_block.py                 [v5]
 
 Env: NETWORK
 Usage: conda run -n NETWORK python Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py
@@ -78,8 +119,10 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import scipy.sparse
-from scipy.stats import mannwhitneyu, kruskal
+import re
+from scipy.stats import mannwhitneyu, kruskal, fisher_exact
 from statsmodels.stats.multitest import multipletests
+from statsmodels.stats.contingency_tables import StratifiedTable
 from collections import OrderedDict
 import warnings
 warnings.filterwarnings('ignore')
@@ -97,6 +140,10 @@ MASTER_TABLE_PATH = os.path.join(PROJECT_ROOT,
     "data/FIG_6/01_raw_hpv16_counts/basal_cell_master_table_with_raw_HPV16.tsv")
 HPV_GENE_PATH = os.path.join(PROJECT_ROOT,
     "data/FIG_6/03_hpv16_genome/per_cell_hpv16_gene_counts.tsv")
+
+# v5: written by Diagnostic_BRD4_Isoform_Population_Ratio.py
+BRD4_ISOFORM_TSV = os.path.join(PROJECT_ROOT,
+    "data/FIG_6/DIAGNOSTIC_BRD4_ISOFORM/brd4_population_ratio_by_srr.tsv")
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT,
     "data/FIG_6/DIAGNOSTIC_LIFECYCLE_MARKERS")
@@ -121,10 +168,15 @@ HPV16_PHASES = OrderedDict([
 ALL_HPV_GENES = [g for genes in HPV16_PHASES.values() for g in genes]
 
 # =============================================================================
-# HOST MARKER GENE PANEL (57 genes, 7 tiers)
-# Mirrors DOTPLOT_CATEGORIES in Generate_Figure6_Lifecycle_Panels.py v6.2
-# exactly, so the BH family here equals the panel drawn in Figure 6c.
-# Locked structure: Figure6_PanelC_Tier_Reference.md
+# HOST MARKER GENE PANEL (59 genes, 8 tiers)   [v5]
+# Must mirror DOTPLOT_CATEGORIES in Generate_Figure6_Lifecycle_Panels.py
+# exactly, so the BH family here equals the panel drawn in Figure 6.
+# Locked structure: Figure6_PanelC_Tier_Reference.md  (UPDATE THAT DOC TOO)
+#
+# Tier order below sets the row-group order in the dot plot. BET_BRD4_axis is
+# placed immediately after the DDR tier so the BRD4 -> 53BP1/BARD1 relationship
+# reads top to bottom. Move it above DDR_ATM_ATR if you prefer strict
+# mechanistic ordering (BRD4 is upstream of the factors it recruits).
 # =============================================================================
 MARKER_GENES = OrderedDict([
     ('MHCI_AgPres_IFN', ['HLA-A', 'HLA-B', 'HLA-C', 'B2M', 'TAP1',
@@ -137,13 +189,17 @@ MARKER_GENES = OrderedDict([
                          'ATM', 'MRE11', 'RAD50',
                          'TOPBP1', 'CHEK1', 'STAT5A', 'STAT5B',
                          'CASP7', 'NSD2']),
+    # v5 NEW TIER. BRD4 relocated here from CellCycle_Prolif.
+    # BRD2 is the internal negative control (Wu et al. Fig 6F: BRD3 knockdown
+    # suppresses HPV genome amplification, BRD2 knockdown does not).
+    ('BET_BRD4_axis',   ['BRD4', 'BRD3', 'BRD2']),
     ('CellCycle_Prolif', ['MKI67', 'TOP2A', 'MCM7', 'PCNA', 'CCNE1',
-                          'CDKN2A', 'E2F1', 'E2F2', 'BRD4', 'MED1']),
+                          'CDKN2A', 'E2F1', 'E2F2', 'MED1']),
     ('p53_Rb_pathway',  ['CDKN1A', 'MDM2', 'BAX', 'TP53', 'RB1']),
     ('G2M_arrest',      ['CDC25A', 'CDC25C', 'CDK1', 'CCNB1']),
 ])
 
-EXPECTED_PANELC_GENES = 57   # must equal the figure script's constant
+EXPECTED_PANELC_GENES = 59   # v5: was 57. Must equal the figure script's constant.
 
 # Panel B genes. Computed for the means cross-check ONLY. They are NOT in the
 # Panel C BH family, because they are not in Panel C: their q-values come from
@@ -161,10 +217,15 @@ PANELB_REFERENCE_Q = {'APOBEC3A': 2.6644e-135, 'APOBEC3B': 8.0616e-67}
 CONTEXT_GENES_DROPPED = ['CASP3', 'KRT1', 'CGAS', 'STING1',
                          'APOBEC3C', 'APOBEC3D', 'APOBEC3F',
                          'APOBEC3G', 'APOBEC3H',
-                         'IFITM1', 'BST2', 'SMC5', 'SMC6', 'NSMCE2']
+                         'IFITM1', 'BST2', 'SMC5', 'SMC6', 'NSMCE2',
+                         # v5: Wu et al. BRD4-L DSB interactors deliberately NOT
+                         # added to the family. RAD21 and NIPBL are cohesin and
+                         # will track proliferation for reasons unrelated to
+                         # BRD4, so a significant result would be uninterpretable.
+                         'RAD21', 'NIPBL']
 
 # DDX58 is stored as 'RIGI' in this transcriptome (2024-A / GENCODE v44).
-# Without this the gene drops silently and the family becomes 56.
+# Without this the gene drops silently and the family shrinks.
 GENE_ALIASES = {
     'DDX58':   ['RIGI'],
     'H2AX':    ['H2AFX'],
@@ -172,7 +233,22 @@ GENE_ALIASES = {
     'NBN':     ['NBS1'],
     'NSD2':    ['WHSC1', 'MMSET'],
     'TP53BP1': ['TP53BP'],
+    # v5 additions. No alias is expected to be needed for the BET genes in
+    # GENCODE v44, but if either fails to resolve the missing-gene guard in
+    # DIAGNOSTIC B will fire and every q below it is invalid until fixed.
+    'BRD3':    ['RING3L'],
+    'BRD2':    ['RING3', 'FSRG1'],
 }
+
+# --- v5: BRD4 isoform constants ---------------------------------------------
+# Identities confirmed by Diagnostic_BRD4_CCDS_Isoform_Identity.py against the
+# pipeline GTF and the UniProt O60885 CCDS cross-references:
+#   CCDS12328 -> O60885-1, 1362 aa, BRD4-L
+#   CCDS46004 -> O60885-2,  722 aa, BRD4-S   <- the Wu et al. short isoform
+#   CCDS82307 -> O60885-3,  794 aa           <- a THIRD isoform, not BRD4-S
+BRD4_ISO_LABELS = {'L': 'BRD4-L (CCDS12328 / O60885-1)',
+                   'Sa': 'BRD4-S (CCDS46004 / O60885-2)',
+                   'Sb': 'O60885-3 (CCDS82307), excluded from the ratio'}
 
 
 # =============================================================================
@@ -270,6 +346,14 @@ def stars(q):
 def fmt_p(p):
     return 'N.D.' if (p is None or (isinstance(p, float) and np.isnan(p))) else f"{p:.2e}"
 
+def _first(cols, candidates):
+    """Return the first candidate column name present in cols, else None."""
+    lower = {str(c).strip().lower(): c for c in cols}
+    for cand in candidates:
+        if cand.lower() in lower:
+            return lower[cand.lower()]
+    return None
+
 # =============================================================================
 # STEP 0: LOAD DATA  (mirrors the figure script's STEP 0)
 # =============================================================================
@@ -286,9 +370,8 @@ log(f"  Populations: {len(sbs2_cells)} SBS2-HIGH, {len(cnv_cells)} CNV-HIGH, "
 log("  Loading adata_final.h5ad ...")
 adata = sc.read_h5ad(ADATA_PATH)
 
-# Alias resolution: DDX58 is stored as 'RIGI' in this transcriptome
-# (2024-A / GENCODE v44). Rename in place so every downstream lookup and every
-# printed table uses the canonical symbol and the BH family stays at 57.
+# Alias resolution. Rename in place so every downstream lookup and every printed
+# table uses the canonical symbol and the BH family stays at EXPECTED_PANELC_GENES.
 _rename = {}
 for _canon, _aliases in GENE_ALIASES.items():
     if _canon not in adata.var_names:
@@ -345,11 +428,10 @@ AUDIT['F_count_NORM'] = gated_counts['NORMAL']
 
 
 # =============================================================================
-# SECTION 1: LIFECYCLE FRACTIONS  (mirror of figure Panel F; Para-3 source)
+# SECTION 1: LIFECYCLE FRACTIONS  (mirror of figure Panel F)
 # =============================================================================
 banner("SECTION 1: Lifecycle fractions (Panel F mirror; per-cell frac = gene/total)")
 
-# Per-cell gene fractions (bare total, exactly like the figure)
 for g in ALL_HPV_GENES:
     hpv_pos[f'{g}_frac'] = hpv_pos[g] / hpv_pos[TOTAL_COL]
 
@@ -358,14 +440,12 @@ for g in ALL_HPV_GENES:
     gene_frac[g] = {p: hpv_pos.loc[hpv_pos['population'] == p, f'{g}_frac'].values.astype(float)
                     for p in POP_ORDER}
 
-# Per-gene permutation, BH within the 8-gene family
 gene_raw = []
 for g in ALL_HPV_GENES:
     gene_raw.extend(compute_pairwise_perm(gene_frac[g]))
 gene_q = bh(gene_raw)
 gene_qvals = {g: gene_q[i*3:(i+1)*3] for i, g in enumerate(ALL_HPV_GENES)}
 
-# Per-phase fractions, permutation, BH within the 4-phase family (separate)
 phase_frac = OrderedDict()
 for phase, genes in HPV16_PHASES.items():
     hpv_pos[f'{phase}_frac'] = hpv_pos[[f'{g}_frac' for g in genes]].sum(axis=1)
@@ -377,7 +457,6 @@ for phase in HPV16_PHASES:
 phase_q = bh(phase_raw)
 phase_qvals = {ph: phase_q[i*3:(i+1)*3] for i, ph in enumerate(HPV16_PHASES)}
 
-# Print identical to the figure's "PANEL F MEAN FRACTIONS" block
 log(f"\n  {'Item':<14s}  {'SBS2-HIGH':>10s}  {'CNV-HIGH':>10s}  {'Normal':>10s}  {'q SBS2vCNV':>13s}")
 log(f"  {'-'*14}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*13}")
 lc_rows = []
@@ -399,7 +478,6 @@ for phase in HPV16_PHASES:
 pd.DataFrame(lc_rows).to_csv(os.path.join(OUTPUT_DIR, "lifecycle_fractions_panelF_mirror.tsv"),
                              sep='\t', index=False)
 
-# Stash for audit (SBS2-vs-CNV q on pair index 0)
 AUDIT['q_E1']   = gene_qvals['E1'][0]
 AUDIT['q_E2']   = gene_qvals['E2'][0]
 AUDIT['q_E5']   = gene_qvals['E5'][0]
@@ -448,10 +526,13 @@ pd.DataFrame(rc_rows).to_csv(os.path.join(OUTPUT_DIR, "readclass_urr_breakdown.t
                              sep='\t', index=False)
 log("\n  NOTE: prose 'two-thirds of reads in the URR' should cite POOLED URR.")
 log("  The figure's internal URR log uses the per-cell mean (differs for CNV-HIGH).")
+log("  Prose currently quotes 63.5 / 63.5 / 64.9. The two tumour groups agreeing")
+log("  to one decimal is a coincidence worth re-confirming, not a copy error --")
+log("  check the pooled column above matches before the text is finalised.")
 
 
 # =============================================================================
-# DIAGNOSTIC A: INTEGRATION PROXY  (gated >=8 set, figure-matched)  [v2]
+# DIAGNOSTIC A: INTEGRATION PROXY  (gated >=8 set, figure-matched)
 # =============================================================================
 banner("DIAGNOSTIC A: Integration proxy (gated HPV16+ set, n = 197/446/8)")
 
@@ -496,13 +577,6 @@ log("  * NORMAL (n=8) below the 10-cell floor; descriptive only.")
 pd.DataFrame(proxy_rows).to_csv(os.path.join(OUTPUT_DIR, "integration_proxy_metrics.tsv"),
                                 sep='\t', index=False)
 
-# NOTE for the text: E6E7_frac_of_total here (Mann-Whitney, q = 5.6e-05) and the
-# Panel F 'Oncogene' phase fraction (permutation on the difference of means,
-# q = 0.10) are the SAME quantity on the SAME cells, tested two ways. The
-# permutation test compares means; Mann-Whitney tests distributional shift and
-# is far more sensitive to a small consistent offset at n = 197 vs 446. The
-# claim that survives either test is the effect size: E6/E7 is under 1% of viral
-# reads in both populations. Prose should not assert 'no difference'.
 log("\n  NOTE: E6E7_frac_of_total (MW) and the Panel F Oncogene phase fraction")
 log("  (permutation) are the same quantity tested two ways and disagree on")
 log("  significance. Cite the effect size (<1% of viral reads in both groups),")
@@ -510,7 +584,7 @@ log("  not 'no difference'.")
 
 
 # =============================================================================
-# VIRAL LOAD SUMMARY  [v2]
+# VIRAL LOAD SUMMARY
 # =============================================================================
 banner("VIRAL LOAD SUMMARY (pick one; label its cell set and measure in text)")
 
@@ -546,8 +620,7 @@ AUDIT['load_q']    = load_b_q
 
 # =============================================================================
 # DIAGNOSTIC B: HOST MARKER PANEL  (ungated, all 1,638; BH per contrast)
-#   The BH family is exactly the 57 genes rendered in Figure 6c. Panel B genes
-#   and dropped-candidate genes are computed separately, outside the family.
+#   The BH family is exactly the EXPECTED_PANELC_GENES rendered in Figure 6.
 # =============================================================================
 banner("DIAGNOSTIC B: Host marker panel (ungated, 546/546/546; BH per contrast)")
 
@@ -602,17 +675,17 @@ if missing:
     log(f"  >>> The BH family is now {len(order_genes)}, NOT {EXPECTED_PANELC_GENES}. "
         f"Every q below is wrong until this is resolved.")
 else:
-    log(f"  All {len(order_genes)} genes resolved; BH family matches Figure 6c.")
+    log(f"  All {len(order_genes)} genes resolved; BH family matches Figure 6.")
 
-log(f"\n  {'Category':<16s} {'Gene':<10s} {'SBS2':>8s} {'CNV':>8s} {'NORM':>8s}  "
+log(f"\n  {'Category':<18s} {'Gene':<10s} {'SBS2':>8s} {'CNV':>8s} {'NORM':>8s}  "
     f"{'KW p':>9s} {'HvC q':>9s} {'Dir':>11s} {'Peak':>10s}")
-log(f"  {'-'*16} {'-'*10} {'-'*8} {'-'*8} {'-'*8}  {'-'*9} {'-'*9} {'-'*11} {'-'*10}")
+log(f"  {'-'*18} {'-'*10} {'-'*8} {'-'*8} {'-'*8}  {'-'*9} {'-'*9} {'-'*11} {'-'*10}")
 for cat, genes in MARKER_GENES.items():
     for gene in genes:
         if gene not in records:
             continue
         r = records[gene]
-        log(f"  {cat:<16s} {gene:<10s} {r['mean_SBS2_HIGH']:>8.3f} {r['mean_CNV_HIGH']:>8.3f} "
+        log(f"  {cat:<18s} {gene:<10s} {r['mean_SBS2_HIGH']:>8.3f} {r['mean_CNV_HIGH']:>8.3f} "
             f"{r['mean_NORMAL']:>8.3f}  {fmt_p(r['kw_p']):>9s} {fmt_p(r['hvc_bh_q']):>9s} "
             f"{r['hvc_dir']:>11s} {POP_LABELS[r['peak_pop']]:>10s} {stars(r['hvc_bh_q'])}")
 pd.DataFrame([records[g] for g in order_genes]).to_csv(
@@ -621,10 +694,12 @@ pd.DataFrame(per_cell_rows).to_csv(
     os.path.join(OUTPUT_DIR, "host_marker_per_cell_values.tsv"), sep='\t', index=False)
 
 # Per-tier peak-direction summary (the structural claim in the Results text)
-log(f"\n  Tier peak-direction summary (how many genes peak where, and how many")
-log(f"  reach significance in the SBS2-vs-CNV contrast):")
-log(f"    {'Tier':<18s} {'n':>3s}  {'peak SBS2':>10s} {'peak CNV':>9s} {'peak NORM':>10s}  {'sig':>4s}")
-log(f"    {'-'*18} {'-'*3}  {'-'*10} {'-'*9} {'-'*10}  {'-'*4}")
+log(f"\n  Tier peak-direction summary. The Results 4.3 sentences 'N of {EXPECTED_PANELC_GENES}")
+log(f"  differed significantly' and 'X of the Y genes in that tier' come from here.")
+log(f"    {'Tier':<18s} {'n':>3s}  {'peak SBS2':>10s} {'peak CNV':>9s} {'peak NORM':>10s}  {'sig':>6s}")
+log(f"    {'-'*18} {'-'*3}  {'-'*10} {'-'*9} {'-'*10}  {'-'*6}")
+total_sig = 0
+total_n = 0
 for cat, genes in MARKER_GENES.items():
     present = [g for g in genes if g in records]
     n_s = sum(records[g]['peak_pop'] == 'SBS2_HIGH' for g in present)
@@ -633,13 +708,19 @@ for cat, genes in MARKER_GENES.items():
     n_sig = sum((records[g]['hvc_bh_q'] is not None)
                 and (not np.isnan(records[g]['hvc_bh_q']))
                 and (records[g]['hvc_bh_q'] < 0.05) for g in present)
+    total_sig += n_sig
+    total_n += len(present)
     log(f"    {cat:<18s} {len(present):>3d}  {n_s:>10d} {n_c:>9d} {n_n:>10d}  "
-        f"{n_sig:>2d}/{len(present):<2d}")
+        f"{n_sig:>2d}/{len(present):<3d}")
+log(f"    {'-'*18} {'-'*3}  {'-'*10} {'-'*9} {'-'*10}  {'-'*6}")
+log(f"    {'TOTAL':<18s} {total_n:>3d}  {'':>10s} {'':>9s} {'':>10s}  {total_sig:>2d}/{total_n:<3d}")
+log(f"\n  >>> Results 4.3 should read '{total_sig} differed significantly' out of "
+    f"{total_n} host genes.")
+AUDIT['panelC_family_n'] = total_n
+AUDIT['panelC_n_sig'] = total_sig
 
 # -----------------------------------------------------------------------------
 # OUTSIDE THE BH FAMILY: Panel B cross-check + dropped-candidate audit trail.
-# These genes are deliberately excluded from the family above so that the family
-# equals the rendered panel. Means are still computed for traceability.
 # -----------------------------------------------------------------------------
 banner("OUTSIDE THE PANEL C FAMILY: Panel B cross-check + dropped candidates", char="-")
 
@@ -690,9 +771,12 @@ if outside_rows:
         os.path.join(OUTPUT_DIR, "host_marker_outside_family.tsv"), sep='\t', index=False)
 
 # -----------------------------------------------------------------------------
-# Stash host-marker values for the audit. Covers all 57 panel genes, including
-# the ns results: an ns gene that later drifts significant, or a q misattributed
-# from the three-group Kruskal-Wallis, is only catchable if it is audited.
+# Stash host-marker values for the audit. Covers ALL panel genes including ns
+# results: an ns gene that later drifts significant, or a q misattributed from
+# the three-group Kruskal-Wallis, is only catchable if it is audited.
+# (BARD1 was previously recorded at q=1e-41 in the tier reference doc, which was
+#  the three-group KW p, not the SBS2-vs-CNV contrast. That is why ns genes are
+#  audited.)
 # -----------------------------------------------------------------------------
 def stash(gene, key):
     if gene in records:
@@ -701,47 +785,233 @@ def stash(gene, key):
         AUDIT[f'{key}_NORM'] = records[gene]['mean_NORMAL']
         AUDIT[f'q_{key}']    = records[gene]['hvc_bh_q']
 
-for gene, key in [
-        # MHC-I antigen presentation + IFN signaling/sensing
-        ('HLA-A','HLAA'), ('HLA-B','HLAB'), ('HLA-C','HLAC'), ('B2M','B2M'),
-        ('TAP1','TAP1'), ('STAT1','STAT1'), ('IRF1','IRF1'), ('STAT2','STAT2'),
-        ('DDX58','DDX58'),
-        # Type I interferon effectors
-        ('IFI27','IFI27'), ('ISG15','ISG15'), ('IRF9','IRF9'), ('MX1','MX1'),
-        ('OAS1','OAS1'), ('RSAD2','RSAD2'), ('IFI44L','IFI44L'), ('IFIT1','IFIT1'),
-        # Keratinocyte differentiation
-        ('KRT5','KRT5'), ('KRT14','KRT14'), ('IVL','IVL'), ('KRT10','KRT10'),
-        ('CDH1','CDH1'),
-        # DDR, ATM arm
-        ('CHEK2','CHEK2'), ('BRCA1','BRCA1'), ('NBN','NBN'), ('H2AX','H2AX'),
-        ('BARD1','BARD1'), ('TP53BP1','TP53BP1'), ('RIF1','RIF1'),
-        # DDR, post-translationally regulated members
-        ('ATM','ATM'), ('MRE11','MRE11'), ('RAD50','RAD50'),
-        # DDR, ATR arm + E1-cleavage node + chromatin
-        ('TOPBP1','TOPBP1'), ('CHEK1','CHEK1'), ('STAT5A','STAT5A'),
-        ('STAT5B','STAT5B'), ('CASP7','CASP7'), ('NSD2','NSD2'),
-        # Cell-cycle re-entry / proliferation
-        ('MKI67','MKI67'), ('TOP2A','TOP2A'), ('MCM7','MCM7'), ('PCNA','PCNA'),
-        ('CCNE1','CCNE1'), ('CDKN2A','CDKN2A'), ('E2F1','E2F1'), ('E2F2','E2F2'),
-        ('BRD4','BRD4'), ('MED1','MED1'),
-        # p53/Rb
-        ('CDKN1A','CDKN1A'), ('MDM2','MDM2'), ('BAX','BAX'), ('TP53','TP53'),
-        ('RB1','RB1'),
-        # G2/M arrest
-        ('CDC25A','CDC25A'), ('CDC25C','CDC25C'), ('CDK1','CDK1'), ('CCNB1','CCNB1'),
-]:
-    stash(gene, key)
+# key is the gene symbol with non-identifier characters stripped
+STASH_KEY = {'HLA-A': 'HLAA', 'HLA-B': 'HLAB', 'HLA-C': 'HLAC'}
+for _cat, _genes in MARKER_GENES.items():
+    for _g in _genes:
+        stash(_g, STASH_KEY.get(_g, _g))
 
 
 # =============================================================================
-# SECTION 3: TEXT NUMBER AUDIT  (diff current Section 4.4 prose vs computed)
+# SECTION 4: BRD4 ISOFORM RATIO  [v5]
+#   BRD4-S (CCDS46004 / O60885-2) vs BRD4-L (CCDS12328 / O60885-1).
+#   Reads the per-SRR table from Diagnostic_BRD4_Isoform_Population_Ratio.py.
 # =============================================================================
-banner("SECTION 3: Section 4.4 text-number audit")
+banner("SECTION 4: BRD4-S vs BRD4-L isoform ratio (from the isoform script's TSV)")
 
-# Claims hardcoded from the manuscript draft of Section 4.4, updated to the
-# 57-gene BH family. Every q in the panel is audited, including ns results.
-# kind: 'q' (log10 tol), 'mean' (rel tol), 'pct' (abs tol), 'fold' (abs tol),
-#       'count' (exact)
+AUDIT['brd4_iso_available'] = False
+
+if not os.path.exists(BRD4_ISOFORM_TSV):
+    log(f"  [SKIP] not found: {BRD4_ISOFORM_TSV}")
+    log( "  Run Diagnostic_BRD4_Isoform_Population_Ratio.py first. Note that it")
+    log( "  currently WARNS and continues when a BAM index is missing; index")
+    log( "  every sample with the conda samtools before quoting these numbers,")
+    log( "  or the value depends on which .bai files happened to exist at run time.")
+else:
+    iso = pd.read_csv(BRD4_ISOFORM_TSV, sep='\t')
+    log(f"  loaded {len(iso)} rows from {os.path.basename(BRD4_ISOFORM_TSV)}")
+    log(f"  columns: {list(iso.columns)}")
+
+    c_pop = _first(iso.columns, ['population', 'group', 'pop'])
+    c_srr = _first(iso.columns, ['srr', 'sample', 'sample_id', 'srr_id', 'run'])
+    c_pat = _first(iso.columns, ['patient', 'donor', 'patient_id', 'donor_id', 'subject'])
+    c_L   = _first(iso.columns, ['L', 'L_umis', 'L_count', 'n_L', 'umis_L'])
+    c_Sa  = _first(iso.columns, ['Sa', 'S_a', 'Sa_umis', 'Sa_count', 'n_Sa', 'umis_Sa', 'S(a)'])
+    c_Sb  = _first(iso.columns, ['Sb', 'S_b', 'Sb_umis', 'Sb_count', 'n_Sb', 'umis_Sb', 'S(b)'])
+
+    if not all([c_pop, c_L, c_Sa]):
+        log("  ERROR: could not resolve the population / L / S(a) columns.")
+        log("  Expected something like: population, srr, L, Sa, Sb")
+        log("  Rename the columns in the isoform script or extend the _first() lists.")
+    else:
+        strat_col = c_pat or c_srr
+        strat_kind = 'patient' if c_pat else ('SRR' if c_srr else None)
+        if strat_kind == 'SRR':
+            log("  NOTE: no patient column found; stratifying by SRR instead.")
+            log("  Samples nest within patients, so this is conservative but not")
+            log("  identical to patient-level stratification. Add a patient column")
+            log("  to the isoform script's output if you want the exact version.")
+        elif strat_kind is None:
+            log("  NOTE: no patient or SRR column; CMH cannot be computed.")
+
+        iso[c_L]  = pd.to_numeric(iso[c_L],  errors='coerce').fillna(0)
+        iso[c_Sa] = pd.to_numeric(iso[c_Sa], errors='coerce').fillna(0)
+        if c_Sb:
+            iso[c_Sb] = pd.to_numeric(iso[c_Sb], errors='coerce').fillna(0)
+
+        # normalise population labels to POP_ORDER
+        norm = {'sbs2-high': 'SBS2_HIGH', 'sbs2_high': 'SBS2_HIGH',
+                'cnv-high': 'CNV_HIGH', 'cnv_high': 'CNV_HIGH',
+                'normal': 'NORMAL'}
+        iso['_pop'] = iso[c_pop].astype(str).str.strip().str.lower().map(norm)
+        unmapped = iso.loc[iso['_pop'].isna(), c_pop].unique()
+        if len(unmapped):
+            log(f"  WARNING: unmapped population labels dropped: {list(unmapped)}")
+        iso = iso[iso['_pop'].notna()].copy()
+
+        # ---- pooled per population ----
+        log(f"\n  {'Population':<12s} {'L':>7s} {'S(a)':>7s} {'S(b)':>7s} "
+            f"{'S(a) frac':>10s}  {'L/S(a)':>8s}")
+        log(f"  {'-'*12} {'-'*7} {'-'*7} {'-'*7} {'-'*10}  {'-'*8}")
+        pooled = {}
+        iso_rows = []
+        for p in POP_ORDER:
+            sub = iso[iso['_pop'] == p]
+            nL  = int(sub[c_L].sum())
+            nSa = int(sub[c_Sa].sum())
+            nSb = int(sub[c_Sb].sum()) if c_Sb else 0
+            denom = nL + nSa
+            frac = nSa / denom if denom else np.nan
+            ratio = (nL / nSa) if nSa else np.nan
+            pooled[p] = {'L': nL, 'Sa': nSa, 'Sb': nSb, 'frac': frac}
+            log(f"  {POP_LABELS[p]:<12s} {nL:>7d} {nSa:>7d} {nSb:>7d} "
+                f"{100*frac:>9.1f}%  {ratio:>8.2f}")
+            iso_rows.append({'population': POP_LABELS[p], 'L': nL, 'Sa': nSa, 'Sb': nSb,
+                             'Sa_fraction': frac, 'L_over_Sa': ratio})
+
+        log(f"\n  {BRD4_ISO_LABELS['Sb']}")
+        log( "  S(b) counts are reported for completeness only. At 794 aa this is a")
+        log( "  third isoform, not a short variant of BRD4-S, so it is excluded")
+        log( "  from the ratio and must not be pooled with S(a).")
+        log( "\n  The L : S(a) ratio is NOT an abundance ratio. Unique-interval")
+        log( "  lengths differ (L 4658 bp, S(a) 2244 bp) under 3'-biased chemistry,")
+        log( "  so capture geometry contributes. The across-population comparison")
+        log( "  is valid because the same intervals are used in all three groups.")
+        log( "  Never place this number next to the Wu et al. protein-level '<3%'.")
+
+        # ---- SBS2 vs CNV risk ratio with 95% CI (THE number for the text) ----
+        a1, n1 = pooled['SBS2_HIGH']['Sa'], pooled['SBS2_HIGH']['Sa'] + pooled['SBS2_HIGH']['L']
+        a2, n2 = pooled['CNV_HIGH']['Sa'],  pooled['CNV_HIGH']['Sa']  + pooled['CNV_HIGH']['L']
+        if a1 > 0 and a2 > 0 and n1 > 0 and n2 > 0:
+            p1, p2 = a1 / n1, a2 / n2
+            rr = p1 / p2
+            se_log = np.sqrt((1 - p1) / (n1 * p1) + (1 - p2) / (n2 * p2))
+            lo = float(np.exp(np.log(rr) - 1.96 * se_log))
+            hi = float(np.exp(np.log(rr) + 1.96 * se_log))
+        else:
+            rr = lo = hi = np.nan
+
+        odds, fisher_p = fisher_exact([[a1, n1 - a1], [a2, n2 - a2]])
+
+        log(f"\n  SBS2-HIGH vs CNV-HIGH, BRD4-S fraction:")
+        log(f"    SBS2-HIGH  {a1}/{n1} = {100*a1/n1:.1f}%")
+        log(f"    CNV-HIGH   {a2}/{n2} = {100*a2/n2:.1f}%")
+        log(f"    risk ratio = {rr:.3f}   95% CI {lo:.3f} to {hi:.3f}")
+        log(f"    Fisher exact p = {fisher_p:.3f}")
+        log(f"\n  >>> QUOTE THE RATIO AND CI, NOT THE p-VALUE. A p-value cannot")
+        log(f"      express what a null excludes; the CI can. The manuscript")
+        log(f"      sentence is 'did not differ (RR {rr:.2f}, 95% CI {lo:.2f} to {hi:.2f})',")
+        log(f"      plus the exclusion bound this implies.")
+        log(f"  >>> The correct verb is 'does not argue against' the BRD4 axis.")
+        log(f"      NOT 'supports' and NOT 'confirms'. A null is equally consistent")
+        log(f"      with the recruitment-level model, with insufficient power, and")
+        log(f"      with a modest transcriptional difference below detection.")
+
+        # ---- Cochran-Mantel-Haenszel stratified by patient (or SRR) ----
+        cmh_or = cmh_lo = cmh_hi = cmh_p = np.nan
+        n_strata_used = 0
+        if strat_kind is not None:
+            tables = []
+            strata_detail = []
+            for key, sub in iso.groupby(strat_col):
+                s = sub[sub['_pop'].isin(['SBS2_HIGH', 'CNV_HIGH'])]
+                if s.empty:
+                    continue
+                g1 = s[s['_pop'] == 'SBS2_HIGH']
+                g2 = s[s['_pop'] == 'CNV_HIGH']
+                t = np.array([[g1[c_Sa].sum(), g1[c_L].sum()],
+                              [g2[c_Sa].sum(), g2[c_L].sum()]], dtype=float)
+                # a stratum contributes nothing unless both arms have molecules
+                if t[0].sum() > 0 and t[1].sum() > 0 and t[:, 0].sum() > 0 and t[:, 1].sum() > 0:
+                    tables.append(t)
+                    strata_detail.append({
+                        'stratum': key,
+                        'SBS2_Sa': int(t[0, 0]), 'SBS2_L': int(t[0, 1]),
+                        'CNV_Sa':  int(t[1, 0]), 'CNV_L':  int(t[1, 1]),
+                    })
+            n_strata_used = len(tables)
+
+            # WHICH strata carry the CMH, and how much of the data they hold.
+            # If these collapse onto one patient, the CMH is a within-patient
+            # estimate and cannot be reported as a population comparison.
+            if strata_detail:
+                sd = pd.DataFrame(strata_detail)
+                held = sd[['SBS2_Sa', 'SBS2_L', 'CNV_Sa', 'CNV_L']].to_numpy().sum()
+                total_mol = (pooled['SBS2_HIGH']['L'] + pooled['SBS2_HIGH']['Sa'] +
+                             pooled['CNV_HIGH']['L'] + pooled['CNV_HIGH']['Sa'])
+                log(f"\n  INFORMATIVE STRATA ({n_strata_used}), stratified by {strat_kind}:")
+                log(f"    {'stratum':<16s} {'SBS2 Sa/L':>12s} {'CNV Sa/L':>12s} "
+                    f"{'SBS2 Sa%':>9s} {'CNV Sa%':>9s}")
+                log(f"    {'-'*16} {'-'*12} {'-'*12} {'-'*9} {'-'*9}")
+                for r in strata_detail:
+                    s_tot = r['SBS2_Sa'] + r['SBS2_L']
+                    c_tot = r['CNV_Sa'] + r['CNV_L']
+                    log(f"    {str(r['stratum']):<16s} "
+                        f"{r['SBS2_Sa']:>5d}/{r['SBS2_L']:<6d} "
+                        f"{r['CNV_Sa']:>5d}/{r['CNV_L']:<6d} "
+                        f"{100*r['SBS2_Sa']/s_tot if s_tot else float('nan'):>8.1f}% "
+                        f"{100*r['CNV_Sa']/c_tot if c_tot else float('nan'):>8.1f}%")
+                log(f"    These strata hold {held} of {total_mol} tumour molecules "
+                    f"({100*held/total_mol:.1f}%).")
+                log(f"    >>> The other {100 - 100*held/total_mol:.1f}% contributes")
+                log(f"        NOTHING to the CMH. If these strata map to one patient,")
+                log(f"        the CMH is a within-patient estimate and MUST NOT be")
+                log(f"        reported as an SBS2-vs-CNV population comparison.")
+                sd.to_csv(os.path.join(OUTPUT_DIR, "brd4_cmh_strata_detail.tsv"),
+                          sep='\t', index=False)            
+            if n_strata_used >= 2:
+                try:
+                    st = StratifiedTable(tables)
+                    cmh_or = float(st.oddsratio_pooled)
+                    cmh_lo, cmh_hi = [float(v) for v in st.oddsratio_pooled_confint()]
+                    cmh_p = float(st.test_null_odds().pvalue)
+                except Exception as e:
+                    log(f"    CMH failed ({e})")
+            log(f"\n  Cochran-Mantel-Haenszel, stratified by {strat_kind} "
+                f"({n_strata_used} informative strata):")
+            if np.isfinite(cmh_or):
+                log(f"    pooled OR = {cmh_or:.3f}   95% CI {cmh_lo:.3f} to {cmh_hi:.3f}   "
+                    f"p = {cmh_p:.3f}")
+                log(f"    Compare against the unstratified CI above. The pooled test")
+                log(f"    treats every molecule as independent even though SBS2-HIGH is")
+                log(f"    74% drawn from three patients, so the unstratified interval is")
+                log(f"    optimistically narrow. IF THE CMH INTERVAL IS WIDER, QUOTE IT.")
+            else:
+                log(f"    not enough informative strata to compute a pooled estimate")
+
+        AUDIT['brd4_iso_available'] = True
+        AUDIT['brd4_Sa_frac_SBS2'] = 100 * a1 / n1 if n1 else np.nan
+        AUDIT['brd4_Sa_frac_CNV']  = 100 * a2 / n2 if n2 else np.nan
+        AUDIT['brd4_rr']    = rr
+        AUDIT['brd4_rr_lo'] = lo
+        AUDIT['brd4_rr_hi'] = hi
+        AUDIT['brd4_fisher_p'] = fisher_p
+        AUDIT['brd4_cmh_or'] = cmh_or
+        AUDIT['brd4_cmh_p']  = cmh_p
+
+        iso_rows.append({'population': 'SBS2_vs_CNV', 'L': np.nan, 'Sa': np.nan, 'Sb': np.nan,
+                         'Sa_fraction': np.nan, 'L_over_Sa': np.nan,
+                         'risk_ratio': rr, 'rr_ci_lo': lo, 'rr_ci_hi': hi,
+                         'fisher_p': fisher_p, 'cmh_or': cmh_or,
+                         'cmh_ci_lo': cmh_lo, 'cmh_ci_hi': cmh_hi, 'cmh_p': cmh_p,
+                         'cmh_strata': n_strata_used, 'cmh_stratified_by': strat_kind})
+        pd.DataFrame(iso_rows).to_csv(
+            os.path.join(OUTPUT_DIR, "brd4_isoform_ratio_summary.tsv"), sep='\t', index=False)
+
+
+# =============================================================================
+# SECTION 3: TEXT NUMBER AUDIT  (diff current Section 4.3 prose vs computed)
+# =============================================================================
+banner("SECTION 3: Section 4.3 text-number audit")
+
+log("  !! v5 WARNING: the CLAIMS list below is the v4 lock, built on a 57-gene")
+log("     BH family. This run uses a 59-gene family, so EVERY host q-value has")
+log("     shifted (roughly 3.5% inflation) and will report DIFF. That is")
+log("     expected on the first v5 run. Copy the emitted CLAIMS block printed")
+log("     at the end of this script, paste it over the list below, and re-run.")
+log("     Only after the second run reports ALL MATCH are the numbers locked")
+log("     and safe to copy into the manuscript.")
+
 CLAIMS = [
     # ---- Panel F cell set + lifecycle fractions -----------------------------
     ('Gated count SBS2 = 197',        197,    'F_count_SBS2', 'count'),
@@ -774,6 +1044,9 @@ CLAIMS = [
     ('A3A CNV 2.08',                  2.08,   'A3A_CNV',      'mean'),
     ('A3B SBS2 2.21',                 2.21,   'A3B_SBS2',     'mean'),
     ('A3B CNV 4.95',                  4.95,   'A3B_CNV',      'mean'),
+
+    # ---- Panel C family size + significant count (v5: was 45 of 57) --------
+    ('Panel C family n = 59',         59,     'panelC_family_n', 'count'),
 
     # ---- Tier 1: MHC-I antigen presentation + IFN signaling ----------------
     ('B2M q 8.7e-100',                8.67e-100,'q_B2M',      'q'),
@@ -825,7 +1098,15 @@ CLAIMS = [
     ('CASP7 q 5.7e-3',                5.72e-3, 'q_CASP7',     'q'),
     ('NSD2 q 8.7e-5',                 8.71e-5, 'q_NSD2',      'q'),
 
-    # ---- Tier 5: Cell-cycle re-entry / proliferation -----------------------
+    # ---- Tier 5 (v5 NEW): BET / BRD4 axis ----------------------------------
+    # BRD4 relocated from the cell-cycle tier; BRD3 and BRD2 are new. No prior
+    # lock exists for BRD3/BRD2, so these are placeholders that WILL report
+    # DIFF or NO VALUE on run 1. The emitted block supplies the real values.
+    ('BRD4 q 1.3e-11 (was cellcycle tier)', 1.34e-11, 'q_BRD4', 'q'),
+    ('BRD3 q PLACEHOLDER',            1.0,    'q_BRD3',       'q'),
+    ('BRD2 q PLACEHOLDER',            1.0,    'q_BRD2',       'q'),
+
+    # ---- Tier 6: Cell-cycle re-entry / proliferation (v5: BRD4 removed) ----
     ('MKI67 q 2.5e-19',               2.52e-19,'q_MKI67',     'q'),
     ('TOP2A q 1.2e-25',               1.19e-25,'q_TOP2A',     'q'),
     ('MCM7 q 1.7e-47',                1.67e-47,'q_MCM7',      'q'),
@@ -834,17 +1115,16 @@ CLAIMS = [
     ('CDKN2A ns (q 0.19)',            1.87e-1, 'q_CDKN2A',    'q'),
     ('E2F1 q 1.1e-5',                 1.11e-5, 'q_E2F1',      'q'),
     ('E2F2 q 5.3e-5',                 5.25e-5, 'q_E2F2',      'q'),
-    ('BRD4 q 1.3e-11',                1.34e-11,'q_BRD4',      'q'),
     ('MED1 q 1.8e-8',                 1.84e-8, 'q_MED1',      'q'),
 
-    # ---- Tier 6: p53/Rb pathway --------------------------------------------
+    # ---- Tier 7: p53/Rb pathway --------------------------------------------
     ('CDKN1A ns (q 0.19)',            1.87e-1, 'q_CDKN1A',    'q'),
     ('MDM2 q 1.5e-7',                 1.51e-7, 'q_MDM2',      'q'),
     ('BAX q 9.1e-19',                 9.12e-19,'q_BAX',       'q'),
     ('TP53 q 2.6e-11',                2.62e-11,'q_TP53',      'q'),
     ('RB1 ns (q 0.53)',               5.33e-1, 'q_RB1',       'q'),
 
-    # ---- Tier 7: G2/M arrest ------------------------------------------------
+    # ---- Tier 8: G2/M arrest ------------------------------------------------
     ('CDC25A q 2.5e-16',              2.53e-16,'q_CDC25A',    'q'),
     ('CDC25C q 3.0e-12',              3.02e-12,'q_CDC25C',    'q'),
     ('CDK1 q 4.9e-18',                4.90e-18,'q_CDK1',      'q'),
@@ -866,10 +1146,12 @@ def verdict(claimed, computed, kind):
         return 'MATCH' if abs(computed - claimed) <= 0.1 else 'DIFF'
     if kind == 'count':
         return 'MATCH' if int(round(computed)) == int(claimed) else 'DIFF'
+    if kind == 'ratio':
+        return 'MATCH' if abs(computed - claimed) <= 0.02 else 'DIFF'
     return '?'
 
-log(f"\n  {'Claim':<30s} {'claimed':>12s} {'computed':>14s}   Verdict")
-log(f"  {'-'*30} {'-'*12} {'-'*14}   -------")
+log(f"\n  {'Claim':<38s} {'claimed':>12s} {'computed':>14s}   Verdict")
+log(f"  {'-'*38} {'-'*12} {'-'*14}   -------")
 audit_rows = []
 n_match = n_diff = n_novalue = 0
 for label, claimed, key, kind in CLAIMS:
@@ -881,44 +1163,123 @@ for label, claimed, key, kind in CLAIMS:
     comp_str = ('--' if computed is None else
                 (f"{computed:.3g}" if kind in ('q',) else f"{computed:.4g}"))
     cl_str = f"{claimed:.3g}" if kind == 'q' else f"{claimed:g}"
-    log(f"  {label:<30s} {cl_str:>12s} {comp_str:>14s}   {v}")
+    log(f"  {label:<38s} {cl_str:>12s} {comp_str:>14s}   {v}")
     audit_rows.append({'claim': label, 'claimed': claimed, 'computed': computed, 'verdict': v})
 
 log(f"\n  MATCH: {n_match}   DIFF: {n_diff}   NO VALUE: {n_novalue}   "
     f"(total {len(CLAIMS)})")
 if n_diff or n_novalue:
-    log("  >>> Inspect any DIFF / NO VALUE rows before the text is finalized.")
+    log("  >>> Expected on the FIRST v5 run. Paste the emitted block below and re-run.")
 else:
-    log("  ALL CLAIMS VERIFIED against this run. Section 4.4 numbers are locked to")
-    log("  the 57-gene Panel C family drawn in Figure 6c.")
+    log("  ALL CLAIMS VERIFIED against this run. Section 4.3 numbers are locked to")
+    log(f"  the {EXPECTED_PANELC_GENES}-gene Panel C family drawn in Figure 6.")
 
-# Out-of-scope numbers, with their correct source.
 log(f"\n  OUT OF SCOPE for this diagnostic:")
 log(f"    Source = Phase3 L-method / population step:")
-log(f"    - 94.6% of HPV16+ cells are basal  (needs non-basal HPV+ counts; this")
-log(f"      master table is basal-only, cannot be reconstructed here)")
-log(f"    - Tier counts 22,153 / 14,046 / 15,927 (needs the ambiguous-band thresholds)")
-log(f"    - Fisher OR = 1.01, p = 0.91 (needs the positivity-vs-SBS2-HIGH contrast set)")
+log(f"    - 94.6% of HPV16+ cells are basal")
+log(f"    - Tier counts 22,153 / 14,046 / 15,927")
+log(f"    - Fisher OR = 1.01, p = 0.91")
 log(f"    Source = Generate_Figure6_Lifecycle_Panels.py, Panel B family of 18:")
 log(f"    - A3A q = {PANELB_REFERENCE_Q['APOBEC3A']:.2e} and "
-    f"A3B q = {PANELB_REFERENCE_Q['APOBEC3B']:.2e}. These are Panel B genes and")
-log(f"      are NOT in the 57-gene Panel C family, so they are not corrected or")
-log(f"      audited here. Their means are cross-checked above and must match.")
-# Partial anchor: positive count at threshold 8 over ALL basal master rows
+    f"A3B q = {PANELB_REFERENCE_Q['APOBEC3B']:.2e}")
 n_pos_allbasal = int((master['raw_HPV16'] >= HPV16_THRESHOLD).sum())
 log(f"    Partial anchor: raw_HPV16 >= {HPV16_THRESHOLD} over all {len(master)} basal "
     f"cells = {n_pos_allbasal}  (compare to the tier 'positive' = 15,927)")
 
-pd.DataFrame(audit_rows).to_csv(os.path.join(OUTPUT_DIR, "section4_4_text_audit.tsv"),
+pd.DataFrame(audit_rows).to_csv(os.path.join(OUTPUT_DIR, "section4_3_text_audit.tsv"),
                                 sep='\t', index=False)
+
+
+# =============================================================================
+# CLAIMS EMITTER  [v5]
+#   Rebuilds the CLAIMS list from this run's computed values so the 59-gene
+#   family can be re-locked without hand-transcribing every q.
+# =============================================================================
+banner("CLAIMS EMITTER: copy the block below over the CLAIMS list, then re-run")
+
+def _emit_val(key, kind):
+    v = AUDIT.get(key)
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return None
+    if kind == 'q':
+        return f"{v:.4g}"
+    if kind == 'count':
+        return f"{int(round(v))}"
+    return f"{v:.6g}"
+
+# A digit immediately preceded by a letter belongs to a gene symbol (BRD3, SBS2,
+# B2M, CDC25A, E2F1), not to a value. Without the lookbehind, 'BRD3 q' rewrites
+# to 'BRD1.8e-25 q'.
+_NUM_RE = re.compile(r'(?<![A-Za-z])[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?')
+
+def _refresh_label(label, val):
+    """Rewrite the number embedded in a claim label so it matches the new value.
+    Replaces the LAST numeric token; appends if the label carries none."""
+    lab = label.replace(' PLACEHOLDER', '').rstrip()
+    hits = list(_NUM_RE.finditer(lab))
+    if hits:
+        last = hits[-1]
+        return lab[:last.start()] + str(val) + lab[last.end():]
+    return f"{lab} {val}"
+
+emit = []
+emit.append("CLAIMS = [")
+skipped = []
+for label, claimed, key, kind in CLAIMS:
+    val = _emit_val(key, kind)
+    if val is None:
+        skipped.append((label, key))
+        emit.append(f"    # NO VALUE this run, kept the previous claim:")
+        emit.append(f"    ({label!r}, {claimed!r}, {key!r}, {kind!r}),")
+        continue
+    new_label = _refresh_label(label, val)
+    emit.append(f"    ({new_label!r}, {val}, {key!r}, {kind!r}),")
+
+# v5 isoform claims, only if the isoform TSV was present
+if AUDIT.get('brd4_iso_available'):
+    for lbl, key, kind in [
+            ('BRD4-S frac SBS2 (%)',  'brd4_Sa_frac_SBS2', 'pct'),
+            ('BRD4-S frac CNV (%)',   'brd4_Sa_frac_CNV',  'pct'),
+            ('BRD4-S risk ratio',     'brd4_rr',           'ratio'),
+            ('BRD4-S RR CI low',      'brd4_rr_lo',        'ratio'),
+            ('BRD4-S RR CI high',     'brd4_rr_hi',        'ratio'),
+    ]:
+        val = _emit_val(key, kind)
+        if val is not None:
+            emit.append(f"    ({_refresh_label(lbl, val)!r}, {val}, {key!r}, {kind!r}),")
+emit.append("]")
+
+for line in emit:
+    log("  " + line)
+
+if skipped:
+    log(f"\n  {len(skipped)} claim(s) had NO VALUE and kept their previous entry:")
+    for lbl, key in skipped:
+        log(f"    {lbl}  (AUDIT key '{key}' was never set)")
+    log("  Investigate each one; a NO VALUE usually means a gene failed to resolve")
+    log("  or an upstream section was skipped, not that the number is fine.")
+
+emit_path = os.path.join(OUTPUT_DIR, "emitted_claims_block.py")
+with open(emit_path, 'w') as f:
+    f.write("# Emitted by Diagnostic_Figure6_HostMarkers_and_IntegrationProxy.py v5\n")
+    f.write("# Paste over the CLAIMS list in that script, then re-run to confirm ALL MATCH.\n")
+    f.write("\n".join(emit) + "\n")
+log(f"\n  [SAVE] {emit_path}")
 
 
 # =============================================================================
 # SAVE REPORT
 # =============================================================================
 banner("COMPLETE")
+log("  NEXT STEPS")
+log("   1. If run 1: paste emitted_claims_block.py over CLAIMS and re-run.")
+log("   2. Confirm ALL MATCH on run 2.")
+log("   3. Update Generate_Figure6_Lifecycle_Panels.py DOTPLOT_CATEGORIES to the")
+log("      same 8-tier / 59-gene structure, or the figure and the q-values diverge.")
+log("   4. Update Figure6_PanelC_Tier_Reference.md.")
+log("   5. Only then update Results 4.3 from the locked values.")
 report_path = os.path.join(OUTPUT_DIR, "diagnostic_figure6_report.txt")
 with open(report_path, 'w') as f:
     f.write('\n'.join(report_lines))
-log(f"  Report saved: {report_path}")
+log(f"\n  Report saved: {report_path}")
 log(f"  Output directory: {OUTPUT_DIR}")
