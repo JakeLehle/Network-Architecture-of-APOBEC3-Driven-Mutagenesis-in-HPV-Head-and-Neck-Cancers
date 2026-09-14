@@ -180,6 +180,11 @@ DOTPLOT_CATEGORIES = OrderedDict([
     ('Keratinocyte\nDifferentiation', [
         'KRT5', 'KRT14', 'IVL', 'KRT10', 'CDH1',
     ]),
+    ('BET Proteins\n(BRD4 axis)', [
+        # Wu et al. Mol Cell 2024: pBRD4 recruits TP53BP1 and BARD1 to the HPV
+        # origin; BRD3 but not BRD2 is required for genome amplification.
+        'BRD4', 'BRD3', 'BRD2',
+    ]),    
     ('HPV-Activated DNA\nDamage Response', [
         # ATM arm (Moody & Laimins 2009)
         'CHEK2', 'BRCA1', 'NBN', 'H2AX',
@@ -194,7 +199,7 @@ DOTPLOT_CATEGORIES = OrderedDict([
     ]),
     ('Cell-Cycle Re-entry\n& Proliferation', [
         'MKI67', 'TOP2A', 'MCM7', 'PCNA', 'CCNE1',
-        'CDKN2A', 'E2F1', 'E2F2', 'BRD4', 'MED1',
+        'CDKN2A', 'E2F1', 'E2F2', 'MED1',
     ]),
     ('p53/Rb\nPathway', [
         'CDKN1A', 'MDM2', 'BAX', 'TP53', 'RB1',
@@ -205,7 +210,7 @@ DOTPLOT_CATEGORIES = OrderedDict([
 ])
 
 # Locked count. If the rendered panel disagrees, the manuscript number is wrong.
-EXPECTED_PANELC_GENES = 57
+EXPECTED_PANELC_GENES = 59
 
 # Symbols that may sit under a different name in adata.var_names.
 # DDX58/RIGI is the one that actually fires in this dataset (2024-A / GENCODE v44);
@@ -908,7 +913,7 @@ save_fig(fig, "Panel_6B_baseline_violins")
 
 # #############################################################################
 #
-#   PANEL C: Host marker dot plot (57 genes, 7 tiers, HORIZONTAL)
+#   PANEL C: Host marker dot plot (59 genes, 8 tiers, HORIZONTAL)
 #
 #   Color is per-gene min-max scaled ACROSS THE THREE POPULATIONS, so color
 #   encodes direction (which population is highest for that gene) and NOT
@@ -916,7 +921,7 @@ save_fig(fig, "Panel_6B_baseline_violins")
 #   this in the figure caption.
 #
 # #############################################################################
-banner("PANEL C: Host marker gene dot plot (57 genes, 7 tiers)")
+banner("PANEL C: Host marker gene dot plot (59 genes, 8 tiers)")
 
 all_genes = []
 cat_boundaries = []
@@ -973,7 +978,9 @@ n_found = len(genes_found)
 n_pops = len(POP_ORDER)
 
 fig_width = max(36, n_found * GENE_COL_IN + 8)
-fig, ax = plt.subplots(figsize=(fig_width, 8))
+# Height drives row pitch. The y-axis spans about 4.7 units for 3 data rows, so
+# height 10 puts rows roughly 106 pt apart against 58 pt dots.
+fig, ax = plt.subplots(figsize=(fig_width, 10))
 
 cmap = plt.cm.YlOrRd
 
@@ -983,8 +990,12 @@ for gene in genes_found:
     gene_min[gene] = vals.min()
     gene_max[gene] = vals.max()
 
-SIZE_MIN = 40
-SIZE_MAX = 400
+# Dot area in points^2, so diameter = 2 * sqrt(s / pi).
+#   SIZE_MAX = 2600 -> about 58 pt across, just inside the ~68 pt column pitch
+#   set by GENE_COL_IN = 0.95. RAISING GENE_COL_IN WITHOUT RAISING THIS WASTES
+#   THE SPACE; RAISING THIS WITHOUT RAISING GENE_COL_IN CAUSES COLLISIONS.
+SIZE_MIN = 300      # ~20 pt, the floor for a barely-expressed gene
+SIZE_MAX = 2600     # ~58 pt
 PCT_MAX = 100.0
 
 for j, pop in enumerate(POP_ORDER):
@@ -1011,7 +1022,7 @@ for start_orig, end_orig, cat_label in cat_boundaries:
     if first_idx > 0:
         ax.axvline(first_idx - 0.5, color='#bbbbbb', linestyle='-',
                    linewidth=1.4, alpha=0.8)
-    ax.text((first_idx + last_idx) / 2.0, n_pops - 0.35, cat_label,
+    ax.text((first_idx + last_idx) / 2.0, n_pops - 0.55, cat_label,        
             fontsize=FONT_CAT, fontstyle='italic', va='bottom', ha='center',
             color='#333333', linespacing=1.25)
 
@@ -1022,7 +1033,8 @@ ax.set_yticks(range(n_pops))
 ax.set_yticklabels([POP_LABELS[p] for p in POP_ORDER],
                    fontsize=FONT_AXIS - 2, fontweight='bold')
 ax.set_xlim(-0.7, n_found - 0.3)
-ax.set_ylim(-0.6, n_pops + 1.5)
+# Was n_pops + 1.5, which left a band of dead space above the tier labels.
+ax.set_ylim(-0.75, n_pops + 0.95)
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 
