@@ -154,3 +154,4 @@ data/FIG_5/
 ## Environment and Relationships
 
 All scripts run in the `NETWORK` conda environment (scanpy, scipy, scikit-learn, igraph, leidenalg, networkx, statsmodels, gseapy). Figure 4 provides the network partition, DE genes, chains, and three-group assignments used throughout. Figure 5 establishes that the network is not a patient artifact and that the patient-level differentiator is HPV16-associated variants, several inside the network, which Figure 6 follows up through the viral lifecycle.
+

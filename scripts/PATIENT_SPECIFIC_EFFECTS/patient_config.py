@@ -120,7 +120,8 @@ ACTIVATING_CHAIN_GENES = [
     "RALY", "HNRNPA2B1",           # Harris A3 interactor anchors
     "CCL20", "KRT24", "LCN2",      # Inflammatory/epithelial
     "LINC00278", "RRAD", "SMOX",   # Oxidative stress/signaling
-    "UTY",                          # Chromatin
+    "UTY",                         # Chromatin
+    "CHMP4B",                      # Cell membrane
 ]
 INHIBITING_CHAIN_ANCHORS = ["SNHG3", "THYN1", "ZNG1A"]  # A3B boundary genes
 
@@ -142,7 +143,7 @@ SWEEP_THRESHOLDS     = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65,
                         0.70, 0.75, 0.80, 0.85, 0.90]
 
 # Leiden parameters (V4: full-network, component-aware merge)
-LEIDEN_RESOLUTION       = 0.70
+LEIDEN_RESOLUTION       = 0.80
 COMMUNITY_RESOLUTIONS   = [0.2, 0.4, 0.6, 0.8, 1.0]
 RUNS_PER_RESOLUTION     = 15
 COMMUNITY_BASE_SEED     = 42
